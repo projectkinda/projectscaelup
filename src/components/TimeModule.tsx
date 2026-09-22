@@ -171,7 +171,7 @@ export function TimeModule({
           settling.current = true;
           Animated.spring(translateY, {
             toValue: 0,
-            useNativeDriver: true,
+            useNativeDriver: false,
             friction: 10,
             tension: 120,
           }).start(() => {
