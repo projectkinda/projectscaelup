@@ -15,14 +15,26 @@ export type HistorySession = {
 export type HistoryTrendPoint = {
   id: number;
   startedAt: string;
+  modeId: string;
+  durationSeconds: number;
   distractionCount: number;
+};
+
+export type HistoryModeBreakdown = {
+  modeId: string;
+  modeName: string;
+  sessionCount: number;
 };
 
 export type HistoryData = {
   sessions: HistorySession[];
   trend: HistoryTrendPoint[];
+  modeBreakdown: HistoryModeBreakdown[];
+  currentStreak: number;
   bestStreak: number;
+  totalSessionsCompleted: number;
   hasHiddenHistory: boolean;
+  completedSessionCount: number;
 };
 
 type SessionRow = {
@@ -38,7 +50,14 @@ type SessionRow = {
 type TrendRow = {
   id: number;
   started_at: string;
+  mode_id: string;
+  duration_seconds: number;
   distraction_count: number;
+};
+
+type ModeBreakdownRow = {
+  mode_id: string;
+  session_count: number;
 };
 
 const modeNameById = new Map(BUILT_IN_MODES.map(mode => [mode.id, mode.name]));
@@ -83,11 +102,23 @@ export async function loadHistoryData({
 
   const trendRows = await database.getAllAsync<TrendRow>(
     `
-      SELECT id, started_at, distraction_count
+      SELECT id, started_at, mode_id, duration_seconds, distraction_count
       FROM sessions
       WHERE completed = 1
         ${cutoffWhere}
       ORDER BY started_at ASC;
+    `,
+    cutoffParams,
+  );
+
+  const modeBreakdownRows = await database.getAllAsync<ModeBreakdownRow>(
+    `
+      SELECT mode_id, COUNT(*) as session_count
+      FROM sessions
+      WHERE completed = 1
+        ${cutoffWhere}
+      GROUP BY mode_id
+      ORDER BY session_count DESC;
     `,
     cutoffParams,
   );
@@ -114,8 +145,24 @@ export async function loadHistoryData({
     cutoffParams,
   );
 
-  const streak = await database.getFirstAsync<{ best_streak: number }>(
-    'SELECT best_streak FROM streaks WHERE id = 1;',
+  const streak = await database.getFirstAsync<{
+    current_streak: number;
+    best_streak: number;
+    total_sessions_completed: number;
+  }>(
+    `
+      SELECT current_streak, best_streak, total_sessions_completed
+      FROM streaks
+      WHERE id = 1;
+    `,
+  );
+
+  const completedSessions = await database.getFirstAsync<{ count: number }>(
+    `
+      SELECT COUNT(*) AS count
+      FROM sessions
+      WHERE completed = 1;
+    `,
   );
 
   const hiddenHistory = cutoffDate
@@ -134,10 +181,21 @@ export async function loadHistoryData({
     trend: trendRows.map(row => ({
       id: row.id,
       startedAt: row.started_at,
+      modeId: row.mode_id,
+      durationSeconds: row.duration_seconds,
       distractionCount: row.distraction_count,
     })),
     sessions: sessionRows.map(mapSession),
+    modeBreakdown: modeBreakdownRows.map(row => ({
+      modeId: row.mode_id,
+      modeName: modeNameById.get(row.mode_id) ?? row.mode_id,
+      sessionCount: row.session_count,
+    })),
+    currentStreak: streak?.current_streak ?? 0,
     bestStreak: streak?.best_streak ?? 0,
+    totalSessionsCompleted:
+      streak?.total_sessions_completed ?? completedSessions?.count ?? 0,
     hasHiddenHistory: (hiddenHistory?.count ?? 0) > 0,
+    completedSessionCount: completedSessions?.count ?? 0,
   };
 }

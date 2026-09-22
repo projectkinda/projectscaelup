@@ -62,6 +62,11 @@ function statusLabel(state: PermissionState) {
   return 'Unavailable';
 }
 
+function appInitial(name: string) {
+  const trimmed = name.trim();
+  return trimmed.length > 0 ? trimmed[0].toUpperCase() : '?';
+}
+
 async function openAccessibilitySettings() {
   if (Platform.OS === 'android') {
     try {
@@ -107,10 +112,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       {
         id: 'camera',
         label: 'Camera',
-        detail:
-          cameraPermission.status === 'granted'
-            ? 'Face checks can run during sessions.'
-            : 'Camera access is off.',
+        detail: "Used to check you're still at your desk during a session.",
         state:
           cameraPermission.status === 'granted' ? 'granted' : 'revoked',
         fix: () => {
@@ -120,10 +122,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       {
         id: 'usage-tracking',
         label: Platform.OS === 'ios' ? 'Screen Time' : 'Accessibility',
-        detail:
-          Platform.OS === 'ios'
-            ? 'Screen Time status needs the native bridge.'
-            : 'Accessibility status needs the native service bridge.',
+        detail: "Used to track time in apps you've flagged as distracting.",
         state: 'unavailable',
         fix: openAccessibilitySettings,
       },
@@ -171,11 +170,14 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
   const handleRestore = async () => {
     setIsRestoring(true);
-    Alert.alert(
-      'Restore purchases',
-      'RevenueCat is not connected yet. This button is ready for the restore call when billing is added.',
-    );
-    setIsRestoring(false);
+    try {
+      Alert.alert(
+        'Restore purchases',
+        'RevenueCat is not connected yet. This button is ready for the restore call when billing is added.',
+      );
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const contentMinHeight = Math.max(
@@ -214,11 +216,20 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                   {flaggedApps.length > 0 ? (
                     flaggedApps.map(app => (
                       <View key={app.appIdentifier} style={styles.row}>
-                        <View style={styles.rowTextWrap}>
-                          <Text style={styles.rowTitle}>{app.displayName}</Text>
-                          <Text style={styles.rowDetail}>
-                            {app.appIdentifier}
-                          </Text>
+                        <View style={styles.flaggedAppMain}>
+                          <View style={styles.appIconFallback}>
+                            <Text style={styles.appIconText}>
+                              {appInitial(app.displayName)}
+                            </Text>
+                          </View>
+                          <View style={styles.rowTextWrap}>
+                            <Text style={styles.rowTitle}>
+                              {app.displayName}
+                            </Text>
+                            <Text style={styles.rowDetail}>
+                              {app.appIdentifier}
+                            </Text>
+                          </View>
                         </View>
                         <Pressable
                           accessibilityRole="button"
@@ -296,39 +307,44 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Permission status</Text>
-                <View style={styles.list}>
+                <View style={styles.permissionList}>
                   {permissions.map(permission => (
-                    <View key={permission.id} style={styles.row}>
-                      <View style={styles.rowTextWrap}>
+                    <Pressable
+                      key={permission.id}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${permission.label}, ${statusLabel(
+                        permission.state,
+                      )}`}
+                      onPress={permission.fix}
+                      style={({ pressed }) => [
+                        styles.permissionCard,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.permissionTextWrap}>
                         <Text style={styles.rowTitle}>{permission.label}</Text>
                         <Text style={styles.rowDetail}>
                           {permission.detail}
                         </Text>
                       </View>
-                      <View style={styles.permissionAction}>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          permission.state === 'revoked' &&
+                            styles.revokedPill,
+                        ]}
+                      >
                         <Text
                           style={[
-                            styles.statusText,
+                            styles.statusPillText,
                             permission.state === 'revoked' &&
-                              styles.revokedText,
+                              styles.revokedPillText,
                           ]}
                         >
                           {statusLabel(permission.state)}
                         </Text>
-                        {permission.state !== 'granted' ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={permission.fix}
-                            style={({ pressed }) => [
-                              styles.textAction,
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Text style={styles.actionText}>Fix</Text>
-                          </Pressable>
-                        ) : null}
                       </View>
-                    </View>
+                    </Pressable>
                   ))}
                 </View>
               </View>
@@ -411,10 +427,11 @@ const styles = StyleSheet.create({
   },
   section: { marginTop: 30 },
   sectionLabel: {
-    color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
+    textTransform: 'uppercase',
   },
   list: { marginTop: 8 },
   row: {
@@ -428,6 +445,27 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   rowTextWrap: { flex: 1, minWidth: 0 },
+  flaggedAppMain: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  appIconFallback: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink,
+  },
+  appIconText: {
+    color: colors.background,
+    fontSize: 13,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
   rowTitle: {
     color: colors.ink,
     fontSize: 16,
@@ -467,17 +505,46 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '700',
   },
-  permissionAction: {
-    alignItems: 'flex-end',
-    gap: 2,
+  permissionList: {
+    marginTop: 10,
+    gap: 10,
   },
-  statusText: {
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+  permissionCard: {
+    minHeight: 76,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.divider,
+    backgroundColor: colors.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  permissionTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  statusPill: {
+    minWidth: 74,
+    minHeight: 28,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.divider,
+  },
+  statusPillText: {
+    color: colors.ink,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: '700',
   },
-  revokedText: { color: colors.mutedRust },
+  revokedPill: {
+    backgroundColor: colors.mutedRust,
+  },
+  revokedPillText: { color: colors.warmWhite },
   tierText: {
     color: colors.ink,
     fontSize: 15,

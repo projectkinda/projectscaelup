@@ -1,21 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import PlayIcon from '../assets/icons/play.svg';
 import { BottomNavigation } from '../components/BottomNavigation';
 import {
   type HistoryData,
+  type HistoryModeBreakdown,
+  type HistorySession,
   type HistoryTrendPoint,
   loadHistoryData,
 } from '../data/historyRepository';
+import { BUILT_IN_MODES } from '../domain/sessionModes';
 import { colors, layout } from '../theme/tokens';
 
 type HistoryScreenProps = {
@@ -25,6 +32,21 @@ type HistoryScreenProps = {
 const CHART_HEIGHT = 178;
 const CHART_WIDTH = 340;
 const CHART_PADDING = { top: 18, right: 10, bottom: 34, left: 30 };
+const INITIAL_VISIBLE_SESSIONS = 8;
+const SESSION_PAGE_SIZE = 8;
+const HISTORY_BACKGROUND = colors.background;
+const MODE_ACCENTS: Record<string, string> = {
+  'deep-work': colors.ink,
+  'home-work': colors.rewardAmber,
+  meditation: colors.mutedRust,
+  'exam-prep': colors.muted,
+  'creative-work': colors.ink,
+  'online-class': colors.rewardAmber,
+};
+
+function getModeAccent(modeId: string) {
+  return MODE_ACCENTS[modeId] ?? colors.ink;
+}
 
 function formatDuration(seconds: number) {
   const minutes = Math.round(seconds / 60);
@@ -62,6 +84,13 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
   const maxValue = Math.max(1, ...points.map(point => point.distractionCount));
   const plotWidth = CHART_WIDTH - CHART_PADDING.left - CHART_PADDING.right;
   const plotHeight = CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
+  const bestPoint = points.reduce<HistoryTrendPoint | null>((best, point) => {
+    if (!best || point.distractionCount < best.distractionCount) {
+      return point;
+    }
+
+    return best;
+  }, null);
 
   const plotted = points.map((point, index) => {
     const x =
@@ -75,6 +104,16 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
 
     return { x, y, source: point };
   });
+  const bestPlotted = plotted.find(point => point.source.id === bestPoint?.id);
+  const calloutX = bestPlotted
+    ? Math.min(CHART_WIDTH - 104, Math.max(34, bestPlotted.x - 52))
+    : 0;
+  const calloutY = bestPlotted ? Math.max(6, bestPlotted.y - 36) : 0;
+  const bestLabel = bestPoint
+    ? `Best session - ${bestPoint.distractionCount} ${
+        bestPoint.distractionCount === 1 ? 'distraction' : 'distractions'
+      }`
+    : '';
 
   return (
     <View style={styles.chartWrap}>
@@ -124,17 +163,42 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
             strokeWidth={3}
           />
         ) : null}
-        {plotted.map(({ x, y, source }) => (
-          <Rect
-            key={source.id}
-            x={x - 4}
-            y={y - 4}
-            width={8}
-            height={8}
-            rx={2}
-            fill={colors.ink}
-          />
-        ))}
+        {plotted.map(({ x, y, source }) => {
+          const isBest = source.id === bestPoint?.id;
+          return (
+            <Rect
+              key={source.id}
+              x={x - 4}
+              y={y - 4}
+              width={isBest ? 10 : 8}
+              height={isBest ? 10 : 8}
+              rx={2}
+              fill={isBest ? colors.rewardAmber : colors.ink}
+            />
+          );
+        })}
+        {bestPlotted ? (
+          <>
+            <Rect
+              x={calloutX}
+              y={calloutY}
+              width={104}
+              height={24}
+              rx={6}
+              fill={colors.rewardAmber}
+            />
+            <SvgText
+              x={calloutX + 52}
+              y={calloutY + 16}
+              fill={colors.warmWhite}
+              fontSize={9}
+              fontWeight="700"
+              textAnchor="middle"
+            >
+              {bestLabel}
+            </SvgText>
+          </>
+        ) : null}
         <SvgText
           x={CHART_PADDING.left - 10}
           y={CHART_PADDING.top + 5}
@@ -179,12 +243,181 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
   );
 }
 
+function formatStatDays(value: number) {
+  return `${value} ${value === 1 ? 'day' : 'days'}`;
+}
+
+function StatRows({ history }: { history: HistoryData }) {
+  return (
+    <View style={styles.statRows}>
+      <View style={styles.statRow}>
+        <Text style={styles.statLabel}>Current streak</Text>
+        <Text style={[styles.statValue, styles.rewardValue]}>
+          {formatStatDays(history.currentStreak)}
+        </Text>
+      </View>
+      <View style={styles.statRow}>
+        <Text style={styles.statLabel}>Total sessions</Text>
+        <Text style={styles.statValue}>{history.totalSessionsCompleted}</Text>
+      </View>
+      <View style={styles.statRow}>
+        <Text style={styles.statLabel}>Best streak</Text>
+        <Text style={[styles.statValue, styles.rewardValue]}>
+          {formatStatDays(history.bestStreak)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ModeBreakdown({
+  breakdown,
+}: {
+  breakdown: HistoryModeBreakdown[];
+}) {
+  const countsByMode = new Map(
+    breakdown.map(item => [item.modeId, item.sessionCount]),
+  );
+
+  return (
+    <View style={styles.modeBreakdown}>
+      {BUILT_IN_MODES.map(mode => {
+        const sessionCount = countsByMode.get(mode.id) ?? 0;
+        return (
+          <View key={mode.id} style={styles.modePill}>
+            <View
+              style={[
+                styles.modeDot,
+                { backgroundColor: getModeAccent(mode.id) },
+              ]}
+            />
+            <Text style={styles.modePillText}>
+              {mode.name} - {sessionCount > 0 ? sessionCount : 'No data'}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function SessionCard({ session }: { session: HistorySession }) {
+  const hasLockdown = session.lockdownMinutes > 0;
+  const distractionLabel =
+    session.distractionCount === 1
+      ? '1 distraction'
+      : `${session.distractionCount} distractions`;
+
+  return (
+    <View style={styles.sessionCard}>
+      <View style={styles.sessionCardMain}>
+        <View style={styles.sessionTitleWrap}>
+          <Text style={styles.sessionDate}>
+            {formatLongDate(session.startedAt)}
+          </Text>
+          <Text
+            style={[
+              styles.sessionMode,
+              { color: getModeAccent(session.modeId) },
+            ]}
+          >
+            {session.modeName}
+          </Text>
+          <Text style={styles.metaText}>{formatDuration(session.durationSeconds)}</Text>
+        </View>
+        <Text
+          style={[
+            styles.distractionCount,
+            hasLockdown && styles.lockdownDistractionCount,
+          ]}
+        >
+          {session.distractionCount}
+        </Text>
+      </View>
+      <View style={styles.sessionMeta}>
+        <Text style={styles.metaText}>{distractionLabel}</Text>
+        {hasLockdown ? (
+          <Text style={styles.lockdownText}>
+            {session.lockdownMinutes} min lockdown
+          </Text>
+        ) : null}
+      </View>
+      {session.flaggedApps.length > 0 ? (
+        <Text style={styles.flaggedApps} numberOfLines={2}>
+          {session.flaggedApps.join(', ')}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function GhostTrendPreview() {
+  return (
+    <View style={styles.ghostChartWrap} accessibilityElementsHidden>
+      <Svg
+        width="100%"
+        height={CHART_HEIGHT}
+        viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
+      >
+        <Path
+          d="M 28 118 C 78 114, 104 106, 146 108 S 222 92, 268 96 S 316 82, 334 84"
+          fill="none"
+          stroke="rgba(126, 126, 126, 0.24)"
+          strokeLinecap="round"
+          strokeWidth={4}
+        />
+      </Svg>
+    </View>
+  );
+}
+
+function HistoryFirstRunState({
+  onStartSession,
+}: {
+  onStartSession: () => void;
+}) {
+  return (
+    <View style={styles.firstRunState}>
+      <GhostTrendPreview />
+      <View style={styles.firstRunCopy}>
+        <Text style={styles.emptyText}>
+          Your trend shows up after your first few sessions.
+        </Text>
+        <Text style={styles.emptySubtext}>
+          Complete a session to get started.
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Start a session"
+        onPress={onStartSession}
+        style={({ pressed }) => [
+          styles.startShell,
+          pressed && styles.startPressed,
+        ]}
+      >
+        <LinearGradient
+          colors={['#333333', '#141414']}
+          pointerEvents="none"
+          style={styles.startButton}
+        >
+          <PlayIcon width={16} height={16} />
+          <Text style={styles.startLabel}>Start a session</Text>
+        </LinearGradient>
+      </Pressable>
+    </View>
+  );
+}
+
 export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [history, setHistory] = useState<HistoryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [visibleSessionCount, setVisibleSessionCount] = useState(
+    INITIAL_VISIBLE_SESSIONS,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -219,6 +452,30 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
   }, []);
 
   const hasSessions = (history?.sessions.length ?? 0) > 0;
+  const isFirstRunHistory =
+    !isLoading && !errorMessage && (history?.completedSessionCount ?? 0) === 0;
+  const visibleSessions = history?.sessions.slice(0, visibleSessionCount) ?? [];
+  const hasMoreVisibleSessions =
+    history !== null && visibleSessionCount < history.sessions.length;
+  const showViewMore =
+    history !== null && (hasMoreVisibleSessions || history.hasHiddenHistory);
+  const handleViewMore = () => {
+    if (!history) {
+      return;
+    }
+
+    if (history.hasHiddenHistory) {
+      Alert.alert(
+        'Upgrade to see your full history',
+        'Free history is limited to the last 14 days.',
+      );
+      return;
+    }
+
+    if (hasMoreVisibleSessions) {
+      setVisibleSessionCount(current => current + SESSION_PAGE_SIZE);
+    }
+  };
   const contentMinHeight = useMemo(
     () =>
       Math.max(
@@ -247,80 +504,66 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
         <View style={styles.content}>
           <Text style={styles.title}>History</Text>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Distraction trend</Text>
-            {isLoading ? (
-              <View style={styles.emptyChart}>
-                <ActivityIndicator color={colors.ink} />
-              </View>
-            ) : errorMessage ? (
-              <View style={styles.emptyChart}>
-                <Text style={styles.emptyText}>{errorMessage}</Text>
-              </View>
-            ) : hasSessions && history ? (
-              <DistractionTrendChart points={history.trend} />
-            ) : (
-              <View style={styles.emptyChart}>
-                <Text style={styles.emptyText}>
-                  Your trend shows up after your first few sessions.
-                </Text>
-              </View>
-            )}
-          </View>
+          {isFirstRunHistory ? (
+            <HistoryFirstRunState onStartSession={() => onNavigate('home')} />
+          ) : (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Distraction trend</Text>
+              {isLoading ? (
+                <View style={styles.emptyChart}>
+                  <ActivityIndicator color={colors.ink} />
+                </View>
+              ) : errorMessage ? (
+                <View style={styles.emptyChart}>
+                  <Text style={styles.emptyText}>{errorMessage}</Text>
+                </View>
+              ) : hasSessions && history ? (
+                <DistractionTrendChart points={history.trend} />
+              ) : (
+                <View style={styles.emptyChart}>
+                  <Text style={styles.emptyText}>
+                    Your trend shows up after your first few sessions.
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
 
           {hasSessions && history ? (
             <>
-              <View style={styles.streakLine}>
-                <Text style={styles.streakLabel}>Best streak:</Text>
-                <Text style={styles.streakValue}>
-                  {history.bestStreak} {history.bestStreak === 1 ? 'day' : 'days'}
-                </Text>
+              <StatRows history={history} />
+
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Most-used modes</Text>
+                <ModeBreakdown breakdown={history.modeBreakdown} />
               </View>
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Sessions</Text>
                 <View style={styles.sessionList}>
-                  {history.sessions.map(session => (
-                    <View key={session.id} style={styles.sessionRow}>
-                      <View style={styles.sessionHeader}>
-                        <View style={styles.sessionTitleWrap}>
-                          <Text style={styles.sessionDate}>
-                            {formatLongDate(session.startedAt)}
-                          </Text>
-                          <Text style={styles.sessionMode}>
-                            {session.modeName}
-                          </Text>
-                        </View>
-                        <Text style={styles.distractionCount}>
-                          {session.distractionCount}
-                        </Text>
-                      </View>
-                      <View style={styles.sessionMeta}>
-                        <Text style={styles.metaText}>
-                          {formatDuration(session.durationSeconds)}
-                        </Text>
-                        <Text style={styles.metaText}>
-                          {session.distractionCount === 1
-                            ? '1 distraction'
-                            : `${session.distractionCount} distractions`}
-                        </Text>
-                        {session.lockdownMinutes > 0 ? (
-                          <Text style={styles.lockdownText}>
-                            {session.lockdownMinutes} min lockdown
-                          </Text>
-                        ) : null}
-                      </View>
-                      {session.flaggedApps.length > 0 ? (
-                        <Text style={styles.flaggedApps} numberOfLines={2}>
-                          {session.flaggedApps.join(', ')}
-                        </Text>
-                      ) : null}
-                    </View>
+                  {visibleSessions.map(session => (
+                    <SessionCard key={session.id} session={session} />
                   ))}
-                  {history.hasHiddenHistory ? (
-                    <Text style={styles.upgradeLine}>
-                      Upgrade to see your full history
-                    </Text>
+                  {showViewMore ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        history.hasHiddenHistory
+                          ? 'Upgrade to see your full history'
+                          : 'View more sessions'
+                      }
+                      onPress={handleViewMore}
+                      style={({ pressed }) => [
+                        styles.viewMoreAction,
+                        pressed && styles.textActionPressed,
+                      ]}
+                    >
+                      <Text style={styles.viewMoreText}>
+                        {history.hasHiddenHistory
+                          ? 'Upgrade to see your full history'
+                          : 'View more sessions'}
+                      </Text>
+                    </Pressable>
                   ) : null}
                 </View>
               </View>
@@ -331,7 +574,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
       <BottomNavigation
         activeItem="history"
         bottomInset={insets.bottom}
-        backgroundColor={colors.background}
+        backgroundColor={HISTORY_BACKGROUND}
         onSelect={onNavigate}
       />
     </View>
@@ -339,7 +582,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
+  screen: { flex: 1, backgroundColor: HISTORY_BACKGROUND },
   scrollContent: { alignItems: 'center' },
   content: {
     width: '100%',
@@ -365,6 +608,23 @@ const styles = StyleSheet.create({
     marginTop: 14,
     justifyContent: 'center',
   },
+  firstRunState: {
+    marginTop: 82,
+    alignItems: 'center',
+  },
+  ghostChartWrap: {
+    width: '100%',
+    height: CHART_HEIGHT,
+    justifyContent: 'center',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.divider,
+  },
+  firstRunCopy: {
+    marginTop: 22,
+    gap: 7,
+    alignItems: 'center',
+  },
   emptyChart: {
     minHeight: CHART_HEIGHT,
     marginTop: 14,
@@ -377,36 +637,123 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 15,
     lineHeight: 22,
+    textAlign: 'center',
   },
-  streakLine: {
-    marginTop: 22,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 6,
+  emptySubtext: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
   },
-  streakLabel: {
+  textAction: {
+    marginTop: 18,
+    paddingVertical: 8,
+    paddingRight: 8,
+  },
+  textActionPressed: { opacity: 0.55 },
+  textActionLabel: {
     color: colors.ink,
-    fontSize: 17,
-    lineHeight: 24,
-    fontWeight: '400',
-  },
-  streakValue: {
-    color: colors.rewardAmber,
-    fontSize: 22,
-    lineHeight: 28,
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: '700',
   },
-  sessionList: { marginTop: 8 },
-  sessionRow: {
-    paddingVertical: 16,
+  startShell: {
+    width: 236,
+    height: 56,
+    marginTop: 18,
+    borderRadius: 28,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  startButton: {
+    flex: 1,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  startLabel: {
+    color: colors.warmWhite,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  startPressed: { opacity: 0.82, transform: [{ scale: 0.995 }] },
+  statRows: {
+    marginTop: 24,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.divider,
   },
-  sessionHeader: {
+  statRow: {
+    minHeight: 45,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  statLabel: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  statValue: {
+    color: colors.ink,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '700',
+  },
+  rewardValue: { color: colors.rewardAmber },
+  modeBreakdown: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 9,
+  },
+  modePill: {
+    minHeight: 32,
+    borderRadius: 7,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.divider,
+  },
+  modeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  modePillText: {
+    color: colors.ink,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  sessionList: {
+    marginTop: 12,
+    gap: 10,
+  },
+  sessionCard: {
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.divider,
+    backgroundColor: colors.white,
+  },
+  sessionCardMain: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 14,
+    gap: 16,
   },
   sessionTitleWrap: { flex: 1, minWidth: 0 },
   sessionDate: {
@@ -417,9 +764,9 @@ const styles = StyleSheet.create({
   },
   sessionMode: {
     marginTop: 1,
-    color: colors.muted,
     fontSize: 13,
     lineHeight: 18,
+    fontWeight: '700',
   },
   distractionCount: {
     color: colors.ink,
@@ -427,6 +774,7 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     fontWeight: '700',
   },
+  lockdownDistractionCount: { color: colors.mutedRust },
   sessionMeta: {
     marginTop: 9,
     flexDirection: 'row',
@@ -450,11 +798,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  upgradeLine: {
-    paddingVertical: 18,
+  viewMoreAction: {
+    alignSelf: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+  },
+  viewMoreText: {
     color: colors.ink,
-    fontSize: 14,
+    fontSize: 15,
     lineHeight: 20,
-    textAlign: 'center',
+    fontWeight: '700',
   },
 });
