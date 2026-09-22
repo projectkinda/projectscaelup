@@ -331,7 +331,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
       <BottomNavigation
         activeItem="history"
         bottomInset={insets.bottom}
-        backgroundColor={colors.warmWhite}
+        backgroundColor={colors.background}
         onSelect={onNavigate}
       />
     </View>
@@ -339,7 +339,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.warmWhite },
+  screen: { flex: 1, backgroundColor: colors.background },
   scrollContent: { alignItems: 'center' },
   content: {
     width: '100%',
