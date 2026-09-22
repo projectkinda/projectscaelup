@@ -20,11 +20,21 @@ expo-env.d.ts
 
 # Metro
 .metro-health-check*
+.expo-debug.log
+.expo-debug-error.log
 
 # debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+expo-restart*.log
+
+# local captures
+frames-*/
+expo-screen*.png
+emulator-after-selector-fix.png
+selector-after-swipe.png
+vscode-launch.png
 
 # macOS
 .DS_Store

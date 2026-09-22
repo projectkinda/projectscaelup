@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "ProjectScaleUpExpo",
-    "slug": "ProjectScaleUpExpo",
+    "name": "Project ScaleUp",
+    "slug": "project-scaleup",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.projectscaleup.app"
     },
     "android": {
       "adaptiveIcon": {
@@ -16,7 +17,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.projectscaleup.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
