@@ -152,6 +152,39 @@ function Stop-ExpoOnPort([int]$Port) {
   }
 }
 
+function Get-CachedExpoGoApk {
+  return Get-ChildItem "$env:USERPROFILE\.expo\android-apk-cache\Expo-Go-*.apk" -ErrorAction SilentlyContinue |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+}
+
+function Get-ExpoGoVersion([string]$DeviceSerial) {
+  $packageInfo = & $adb -s $DeviceSerial shell dumpsys package host.exp.exponent 2>$null
+  $versionLine = @($packageInfo | Select-String 'versionName=' | Select-Object -First 1)
+
+  if (!$versionLine) {
+    return $null
+  }
+
+  return ($versionLine.ToString() -replace '^.*versionName=', '').Trim()
+}
+
+function Get-ApkSdkVersion([System.IO.FileInfo]$Apk) {
+  if (!$Apk -or $Apk.BaseName -notmatch 'Expo-Go-(\d+)\.') {
+    return $null
+  }
+
+  return [int]$Matches[1]
+}
+
+function Get-InstalledSdkVersion([string]$VersionName) {
+  if (!$VersionName -or $VersionName -notmatch '^(\d+)\.') {
+    return $null
+  }
+
+  return [int]$Matches[1]
+}
+
 $targetInfo = Resolve-Target $Target
 $serial = $targetInfo.Serial
 
@@ -200,17 +233,31 @@ if ($targetInfo.IsEmulator) {
   & $adb -s $serial shell wm size reset 2>$null | Out-Null
 }
 
+$expoGoApk = Get-CachedExpoGoApk
 $expoGoInstalled = & $adb -s $serial shell pm path host.exp.exponent 2>$null
-if (!$expoGoInstalled) {
-  $expoGoApk = Get-ChildItem "$env:USERPROFILE\.expo\android-apk-cache\Expo-Go-*.apk" |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+$installedVersion = Get-ExpoGoVersion $serial
+$installedSdkVersion = Get-InstalledSdkVersion $installedVersion
+$cachedSdkVersion = Get-ApkSdkVersion $expoGoApk
+$needsExpoGoInstall = !$expoGoInstalled
+$needsExpoGoUpgrade = $false
 
+if (
+  $expoGoInstalled -and
+  $expoGoApk -and
+  $null -ne $installedSdkVersion -and
+  $null -ne $cachedSdkVersion -and
+  $installedSdkVersion -lt $cachedSdkVersion
+) {
+  $needsExpoGoUpgrade = $true
+}
+
+if ($needsExpoGoInstall -or $needsExpoGoUpgrade) {
   if (!$expoGoApk) {
-    throw 'Expo Go is not installed and no cached Expo Go APK was found. Run npm run android once to download it.'
+    throw 'Expo Go is not installed or is too old, and no cached Expo Go APK was found. Run npm run android once to download it.'
   }
 
-  Write-Host "Installing Expo Go on $($targetInfo.Name)..."
+  $action = if ($needsExpoGoUpgrade) { "Updating Expo Go from $installedVersion to $($expoGoApk.BaseName -replace '^Expo-Go-', '')" } else { 'Installing Expo Go' }
+  Write-Host "$action on $($targetInfo.Name)..."
   & $adb -s $serial install -r $expoGoApk.FullName | Out-Null
 }
 
