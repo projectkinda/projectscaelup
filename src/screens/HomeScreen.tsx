@@ -16,10 +16,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PlayIcon from '../assets/icons/play.svg';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { RunningTimerDisplay } from '../components/RunningTimerDisplay';
-import { TallyCard } from '../components/TallyCard';
+import { SessionCompletePopup } from '../components/SessionCompletePopup';
+import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
+import { TallyCard, type TallyMarkPosition } from '../components/TallyCard';
+import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { HOME_MODES } from '../domain/sessionModes';
+import { getSessionCount, recordSessionCompleted } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
+
+const TALLY_GRID_SIZE = 20;
 
 type HomeScreenProps = {
   sessionMessage?: string | null;
@@ -40,12 +46,22 @@ export function HomeScreen({
   const { height: windowHeight } = useWindowDimensions();
   const [activeModeId, setActiveModeId] = useState(HOME_MODES[0].id);
   const [tabWidth, setTabWidth] = useState(0);
-  const [hours, setHours] = useState(1);
-  const [minutes, setMinutes] = useState(25);
+  const [hours, setHours] = useState(0);
+  const [minutes, setMinutes] = useState(10);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
+  const [sessionCount, setSessionCount] = useState(0);
+  const [revealIndex, setRevealIndex] = useState<number | null>(null);
+  const [revealLitCount, setRevealLitCount] = useState(0);
+  const [revealArmed, setRevealArmed] = useState(false);
+  const [popupTarget, setPopupTarget] = useState<TallyMarkPosition | null>(null);
   const tabProgress = useRef(new Animated.Value(0)).current;
   const contentProgress = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    getSessionCount().then(setSessionCount);
+  }, []);
 
   const activeMode =
     HOME_MODES.find(mode => mode.id === activeModeId) ?? HOME_MODES[0];
@@ -86,7 +102,13 @@ export function HomeScreen({
   }, [activeModeIndex, contentProgress, tabProgress]);
 
   useEffect(() => {
-    if (remainingSeconds === null || isPaused || remainingSeconds <= 0) {
+    if (remainingSeconds === null || isPaused || awaitingEndChoice) {
+      return;
+    }
+
+    if (remainingSeconds <= 0) {
+      setAwaitingEndChoice(true);
+      setIsPaused(true);
       return;
     }
 
@@ -101,7 +123,7 @@ export function HomeScreen({
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isPaused, remainingSeconds]);
+  }, [awaitingEndChoice, isPaused, remainingSeconds]);
 
   const handleStart = () => {
     const durationSeconds = hours * 60 + minutes;
@@ -122,9 +144,34 @@ export function HomeScreen({
     setIsPaused(false);
   };
 
-  const handleFinish = () => {
+  const handleAddTime = () => {
+    setAwaitingEndChoice(false);
+    setRemainingSeconds(current => (current ?? 0) + 5 * 60);
+    setIsPaused(false);
+  };
+
+  const handleEndFromAlarm = () => {
+    setAwaitingEndChoice(false);
+    handleFinish();
+  };
+
+  const handleFinish = async () => {
     setRemainingSeconds(null);
     setIsPaused(false);
+    setAwaitingEndChoice(false);
+
+    const previousCount = sessionCount;
+    const newCount = await recordSessionCompleted();
+    setSessionCount(newCount);
+
+    const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
+    if (groupIndex < TALLY_GRID_SIZE) {
+      const litCount = newCount - groupIndex * TALLY_GROUP_SIZE;
+      setPopupTarget(null);
+      setRevealArmed(false);
+      setRevealLitCount(litCount);
+      setRevealIndex(groupIndex);
+    }
   };
 
   const handleTabsLayout = (event: LayoutChangeEvent) => {
@@ -205,6 +252,12 @@ export function HomeScreen({
           </View>
         </View>
         <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
+        {awaitingEndChoice ? (
+          <SessionEndChoiceModal
+            onAddTime={handleAddTime}
+            onEndSession={handleEndFromAlarm}
+          />
+        ) : null}
       </View>
     );
   }
@@ -307,11 +360,24 @@ export function HomeScreen({
           </Animated.View>
 
           <View style={[styles.tallySection, { marginTop: tallyGap }]}>
-            <TallyCard sessionCount={7} />
+            <TallyCard
+              sessionCount={sessionCount}
+              revealIndex={revealIndex}
+              revealLitCount={revealLitCount}
+              revealArmed={revealArmed}
+              onRevealLayout={setPopupTarget}
+            />
           </View>
         </View>
       </ScrollView>
       <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
+      {popupTarget && !revealArmed ? (
+        <SessionCompletePopup
+          target={popupTarget}
+          litCount={revealLitCount}
+          onLanded={() => setRevealArmed(true)}
+        />
+      ) : null}
     </View>
   );
 }
