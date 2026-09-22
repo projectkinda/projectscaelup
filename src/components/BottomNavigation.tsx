@@ -21,18 +21,23 @@ const NAV_ITEMS: NavItem[] = [
 
 type BottomNavigationProps = {
   activeItem?: string;
+  backgroundColor?: string;
   bottomInset: number;
   onSelect?: (id: string) => void;
 };
 
 export function BottomNavigation({
   activeItem = 'home',
+  backgroundColor = colors.background,
   bottomInset,
   onSelect,
 }: BottomNavigationProps) {
   return (
     <View
-      style={[styles.bar, { height: layout.bottomNavHeight + bottomInset }]}
+      style={[
+        styles.bar,
+        { backgroundColor, height: layout.bottomNavHeight + bottomInset },
+      ]}
     >
       <View style={styles.content}>
         {NAV_ITEMS.map(({ id, label, Icon }) => {
@@ -45,7 +50,12 @@ export function BottomNavigation({
               onPress={() => onSelect?.(id)}
               style={({ pressed }) => [styles.item, pressed && styles.pressed]}
             >
-              <Icon width={24} height={24} opacity={active ? 1 : 0.72} />
+              <Icon
+                width={24}
+                height={24}
+                color={active ? colors.ink : colors.muted}
+                opacity={active ? 1 : 0.72}
+              />
               <Text style={[styles.label, active && styles.activeLabel]}>
                 {label}
               </Text>
@@ -64,7 +74,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: 'center',
-    backgroundColor: colors.background,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.divider,
   },

@@ -9,6 +9,8 @@ export const colors = {
   module: '#0D0D0D',
   white: '#F6F9FD',
   warmWhite: '#FDFBF6',
+  rewardAmber: '#C8912E',
+  mutedRust: '#A45F4B',
   divider: 'rgba(26, 26, 26, 0.10)',
 } as const;
 

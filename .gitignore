@@ -32,6 +32,7 @@ expo-restart*.log
 # local captures
 frames-*/
 expo-screen*.png
+history-screen*.png
 emulator-after-selector-fix.png
 selector-after-swipe.png
 vscode-launch.png

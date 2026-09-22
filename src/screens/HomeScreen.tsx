@@ -23,6 +23,7 @@ import { colors, layout } from '../theme/tokens';
 
 type HomeScreenProps = {
   sessionMessage?: string | null;
+  onNavigate: (screen: string) => void;
   onStartSession: (details: {
     modeId: string;
     modeName: string;
@@ -32,6 +33,7 @@ type HomeScreenProps = {
 
 export function HomeScreen({
   sessionMessage,
+  onNavigate,
   onStartSession,
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
@@ -202,7 +204,7 @@ export function HomeScreen({
             </Pressable>
           </View>
         </View>
-        <BottomNavigation bottomInset={insets.bottom} />
+        <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
       </View>
     );
   }
@@ -309,7 +311,7 @@ export function HomeScreen({
           </View>
         </View>
       </ScrollView>
-      <BottomNavigation bottomInset={insets.bottom} />
+      <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
     </View>
   );
 }
