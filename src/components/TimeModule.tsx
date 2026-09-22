@@ -202,6 +202,41 @@ export function TimeModule({
     return list;
   }, []);
 
+  // Build the animated transform graph for each row once per rowHeight, and
+  // reuse it across re-renders. Recreating these interpolated nodes on every
+  // value-changing render (as forceRender triggers) forces the native
+  // Animated graph to be torn down and rebuilt on Android, which can paint
+  // a stale, partially-faded row for a frame before the new graph attaches -
+  // visible as the previous digit briefly flashing back.
+  const rowAnimations = useMemo(
+    () =>
+      offsets.map(k => {
+        const distance = Animated.add(
+          Animated.multiply(translateY, 1 / rowHeight),
+          k,
+        );
+        return {
+          k,
+          rotateX: distance.interpolate({
+            inputRange: CURVE_RANGE,
+            outputRange: ROTATE_OUTPUT,
+            extrapolate: 'clamp',
+          }),
+          rowScale: distance.interpolate({
+            inputRange: CURVE_RANGE,
+            outputRange: SCALE_OUTPUT,
+            extrapolate: 'clamp',
+          }),
+          opacity: distance.interpolate({
+            inputRange: CURVE_RANGE,
+            outputRange: OPACITY_OUTPUT,
+            extrapolate: 'clamp',
+          }),
+        };
+      }),
+    [offsets, rowHeight, translateY],
+  );
+
   const digits = value.toString().padStart(2, '0').split('');
 
   return (
@@ -218,28 +253,9 @@ export function TimeModule({
         <Animated.View
           style={[styles.reel, { transform: [{ translateY }] }]}
         >
-          {offsets.map(k => {
+          {rowAnimations.map(({ k, rotateX, rowScale, opacity }) => {
             const rowValue = wrap(reelBase.current + k * step, max, step);
             const rowDigits = rowValue.toString().padStart(2, '0').split('');
-            const distance = Animated.add(
-              Animated.multiply(translateY, 1 / rowHeight),
-              k,
-            );
-            const rotateX = distance.interpolate({
-              inputRange: CURVE_RANGE,
-              outputRange: ROTATE_OUTPUT,
-              extrapolate: 'clamp',
-            });
-            const rowScale = distance.interpolate({
-              inputRange: CURVE_RANGE,
-              outputRange: SCALE_OUTPUT,
-              extrapolate: 'clamp',
-            });
-            const opacity = distance.interpolate({
-              inputRange: CURVE_RANGE,
-              outputRange: OPACITY_OUTPUT,
-              extrapolate: 'clamp',
-            });
 
             return (
               <Animated.View
