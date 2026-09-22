@@ -33,6 +33,7 @@ expo-restart*.log
 frames-*/
 expo-screen*.png
 history-screen*.png
+settings-screen*.png
 emulator-after-selector-fix.png
 selector-after-swipe.png
 vscode-launch.png
