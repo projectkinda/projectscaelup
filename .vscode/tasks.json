@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Expo: List Android targets",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\list-android-targets.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Expo: Run on Android target",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\run-expo-emulator.ps1",
+        "-Target",
+        "${input:androidTarget}"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "androidTarget",
+      "type": "pickString",
+      "description": "Choose an Android target",
+      "options": [
+        "RZCW3048QXL",
+        "Resizable_Experimental",
+        "S23_Ultra"
+      ],
+      "default": "RZCW3048QXL"
+    }
+  ]
+}
