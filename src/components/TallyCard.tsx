@@ -41,42 +41,46 @@ export function TallyCard({
 
   return (
     <View style={styles.section}>
-      <LinearGradient colors={['#333333', '#141414']} style={styles.card}>
-        {visibleGroupCount === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              Finish your first session to start your tally
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.grid}>
-            {Array.from({ length: visibleGroupCount }, (_, index) => {
-              if (index === revealIndex) {
+      <View style={styles.cardShell}>
+        <LinearGradient colors={['#333333', '#141414']} style={styles.card}>
+          {visibleGroupCount === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                Finish your first session to start your tally
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.grid}>
+              {Array.from({ length: visibleGroupCount }, (_, index) => {
+                if (index === revealIndex) {
+                  return (
+                    <RevealableMark
+                      key={index}
+                      targetLitCount={revealLitCount}
+                      armed={revealArmed}
+                      onMeasured={onRevealLayout}
+                    />
+                  );
+                }
+
+                const litCount =
+                  index < completeGroups
+                    ? TALLY_GROUP_SIZE
+                    : currentGroupProgress;
+
                 return (
-                  <RevealableMark
+                  <TallyGroupMark
                     key={index}
-                    targetLitCount={revealLitCount}
-                    armed={revealArmed}
-                    onMeasured={onRevealLayout}
+                    litCount={litCount}
+                    width={MARK_WIDTH}
+                    height={MARK_HEIGHT}
                   />
                 );
-              }
-
-              const litCount =
-                index < completeGroups ? TALLY_GROUP_SIZE : currentGroupProgress;
-
-              return (
-                <TallyGroupMark
-                  key={index}
-                  litCount={litCount}
-                  width={MARK_WIDTH}
-                  height={MARK_HEIGHT}
-                />
-              );
-            })}
-          </View>
-        )}
-      </LinearGradient>
+              })}
+            </View>
+          )}
+        </LinearGradient>
+      </View>
       <View style={styles.copy}>
         <Text testID="session-count" style={styles.sessionCount}>
           {sessionCount} sessions
@@ -142,10 +146,16 @@ function RevealableMark({
 
 const styles = StyleSheet.create({
   section: { width: '100%', alignItems: 'center', gap: 8 },
-  card: {
+  cardShell: {
     width: '100%',
     minHeight: 200,
     borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    overflow: 'hidden',
+  },
+  card: {
+    flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 24,
     justifyContent: 'center',

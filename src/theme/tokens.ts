@@ -1,8 +1,8 @@
 import { useWindowDimensions } from 'react-native';
 
 export const colors = {
-  background: '#F6F9FD',
-  ink: '#1A1A1A',
+  background: '#121212',
+  ink: '#EDEDED',
   muted: '#7E7E7E',
   panelTop: '#303030',
   panelBottom: '#171717',

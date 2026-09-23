@@ -13,6 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '../components/BottomNavigation';
@@ -40,6 +41,7 @@ type PermissionRow = {
 };
 
 const IS_PAID_USER = false;
+const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 
 function formatGracePeriod(seconds: number) {
   if (seconds < 60) {
@@ -180,10 +182,11 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     }
   };
 
+  const topInsetPadding = insets.top + 50;
   const contentMinHeight = Math.max(
     0,
     windowHeight -
-      (insets.top + 30) -
+      topInsetPadding -
       (layout.bottomNavHeight + insets.bottom + 24),
   );
 
@@ -196,7 +199,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           styles.scrollContent,
           {
             minHeight: contentMinHeight,
-            paddingTop: insets.top + 30,
+            paddingTop: topInsetPadding,
             paddingBottom: layout.bottomNavHeight + insets.bottom + 26,
           },
         ]}
@@ -212,95 +215,105 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
             <>
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Flagged apps</Text>
-                <View style={styles.list}>
-                  {flaggedApps.length > 0 ? (
-                    flaggedApps.map(app => (
-                      <View key={app.appIdentifier} style={styles.row}>
-                        <View style={styles.flaggedAppMain}>
-                          <View style={styles.appIconFallback}>
-                            <Text style={styles.appIconText}>
-                              {appInitial(app.displayName)}
-                            </Text>
-                          </View>
-                          <View style={styles.rowTextWrap}>
-                            <Text style={styles.rowTitle}>
-                              {app.displayName}
-                            </Text>
-                            <Text style={styles.rowDetail}>
-                              {app.appIdentifier}
-                            </Text>
-                          </View>
-                        </View>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Remove ${app.displayName}`}
-                          onPress={() => removeApp(app)}
-                          style={({ pressed }) => [
-                            styles.textAction,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Text style={styles.actionText}>Remove</Text>
-                        </Pressable>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.row}>
-                      <Text style={styles.emptyText}>
-                        No distracting apps selected yet.
-                      </Text>
-                    </View>
-                  )}
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={handleAddApp}
-                    style={({ pressed }) => [
-                      styles.row,
-                      styles.addRow,
-                      pressed && styles.pressed,
-                    ]}
+                <View style={styles.panelShell}>
+                  <LinearGradient
+                    colors={['#333333', '#141414']}
+                    style={styles.panel}
                   >
-                    <Text style={styles.addText}>Add app</Text>
-                  </Pressable>
+                    {flaggedApps.length > 0 ? (
+                      flaggedApps.map(app => (
+                        <View key={app.appIdentifier} style={styles.row}>
+                          <View style={styles.flaggedAppMain}>
+                            <View style={styles.appIconFallback}>
+                              <Text style={styles.appIconText}>
+                                {appInitial(app.displayName)}
+                              </Text>
+                            </View>
+                            <View style={styles.rowTextWrap}>
+                              <Text style={styles.rowTitle}>
+                                {app.displayName}
+                              </Text>
+                              <Text style={styles.rowDetail}>
+                                {app.appIdentifier}
+                              </Text>
+                            </View>
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove ${app.displayName}`}
+                            onPress={() => removeApp(app)}
+                            style={({ pressed }) => [
+                              styles.textAction,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Text style={styles.actionText}>Remove</Text>
+                          </Pressable>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.row}>
+                        <Text style={styles.emptyText}>
+                          No distracting apps selected yet.
+                        </Text>
+                      </View>
+                    )}
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={handleAddApp}
+                      style={({ pressed }) => [
+                        styles.row,
+                        styles.addRow,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text style={styles.addText}>Add app</Text>
+                    </Pressable>
+                  </LinearGradient>
                 </View>
               </View>
 
               {IS_PAID_USER ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Custom modes</Text>
-                  <View style={styles.list}>
-                    {customModes.map(mode => (
-                      <View key={mode.id} style={styles.row}>
-                        <View style={styles.rowTextWrap}>
-                          <Text style={styles.rowTitle}>{mode.name}</Text>
-                          <Text style={styles.rowDetail}>
-                            {formatGracePeriod(mode.gracePeriodSeconds)}
-                          </Text>
+                  <View style={styles.panelShell}>
+                    <LinearGradient
+                      colors={['#333333', '#141414']}
+                      style={styles.panel}
+                    >
+                      {customModes.map(mode => (
+                        <View key={mode.id} style={styles.row}>
+                          <View style={styles.rowTextWrap}>
+                            <Text style={styles.rowTitle}>{mode.name}</Text>
+                            <Text style={styles.rowDetail}>
+                              {formatGracePeriod(mode.gracePeriodSeconds)}
+                            </Text>
+                          </View>
+                          <View style={styles.actionGroup}>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={handleEditMode}
+                              style={({ pressed }) => [
+                                styles.textAction,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text style={styles.actionText}>Edit</Text>
+                            </Pressable>
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => deleteMode(mode)}
+                              style={({ pressed }) => [
+                                styles.textAction,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text style={styles.actionText}>Delete</Text>
+                            </Pressable>
+                          </View>
                         </View>
-                        <View style={styles.actionGroup}>
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={handleEditMode}
-                            style={({ pressed }) => [
-                              styles.textAction,
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Text style={styles.actionText}>Edit</Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => deleteMode(mode)}
-                            style={({ pressed }) => [
-                              styles.textAction,
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Text style={styles.actionText}>Delete</Text>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ))}
+                      ))}
+                    </LinearGradient>
                   </View>
                 </View>
               ) : null}
@@ -317,33 +330,40 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                       )}`}
                       onPress={permission.fix}
                       style={({ pressed }) => [
-                        styles.permissionCard,
+                        styles.permissionCardShell,
                         pressed && styles.pressed,
                       ]}
                     >
-                      <View style={styles.permissionTextWrap}>
-                        <Text style={styles.rowTitle}>{permission.label}</Text>
-                        <Text style={styles.rowDetail}>
-                          {permission.detail}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusPill,
-                          permission.state === 'revoked' &&
-                            styles.revokedPill,
-                        ]}
+                      <LinearGradient
+                        colors={['#333333', '#141414']}
+                        style={styles.permissionCard}
                       >
-                        <Text
+                        <View style={styles.permissionTextWrap}>
+                          <Text style={styles.rowTitle}>
+                            {permission.label}
+                          </Text>
+                          <Text style={styles.rowDetail}>
+                            {permission.detail}
+                          </Text>
+                        </View>
+                        <View
                           style={[
-                            styles.statusPillText,
+                            styles.statusPill,
                             permission.state === 'revoked' &&
-                              styles.revokedPillText,
+                              styles.revokedPill,
                           ]}
                         >
-                          {statusLabel(permission.state)}
-                        </Text>
-                      </View>
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              permission.state === 'revoked' &&
+                                styles.revokedPillText,
+                            ]}
+                          >
+                            {statusLabel(permission.state)}
+                          </Text>
+                        </View>
+                      </LinearGradient>
                     </Pressable>
                   ))}
                 </View>
@@ -351,46 +371,51 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Subscription</Text>
-                <View style={styles.list}>
-                  <View style={styles.row}>
-                    <View style={styles.rowTextWrap}>
-                      <Text style={styles.rowTitle}>Current tier</Text>
-                      <Text style={styles.rowDetail}>
-                        RevenueCat entitlement check pending.
+                <View style={styles.panelShell}>
+                  <LinearGradient
+                    colors={['#333333', '#141414']}
+                    style={styles.panel}
+                  >
+                    <View style={styles.row}>
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>Current tier</Text>
+                        <Text style={styles.rowDetail}>
+                          RevenueCat entitlement check pending.
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.tierText,
+                          IS_PAID_USER && styles.premiumText,
+                        ]}
+                      >
+                        {IS_PAID_USER ? 'Premium' : 'Free'}
                       </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.tierText,
-                        IS_PAID_USER && styles.premiumText,
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={openSubscriptionManagement}
+                      style={({ pressed }) => [
+                        styles.row,
+                        pressed && styles.pressed,
                       ]}
                     >
-                      {IS_PAID_USER ? 'Premium' : 'Free'}
-                    </Text>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={openSubscriptionManagement}
-                    style={({ pressed }) => [
-                      styles.row,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text style={styles.addText}>Manage Subscription</Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={handleRestore}
-                    style={({ pressed }) => [
-                      styles.row,
-                      pressed && styles.pressed,
-                    ]}
-                    disabled={isRestoring}
-                  >
-                    <Text style={styles.addText}>
-                      {isRestoring ? 'Restoring...' : 'Restore Purchases'}
-                    </Text>
-                  </Pressable>
+                      <Text style={styles.addText}>Manage Subscription</Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={handleRestore}
+                      style={({ pressed }) => [
+                        styles.row,
+                        pressed && styles.pressed,
+                      ]}
+                      disabled={isRestoring}
+                    >
+                      <Text style={styles.addText}>
+                        {isRestoring ? 'Restoring...' : 'Restore Purchases'}
+                      </Text>
+                    </Pressable>
+                  </LinearGradient>
                 </View>
               </View>
             </>
@@ -416,8 +441,8 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 31,
-    lineHeight: 38,
+    fontSize: 30,
+    lineHeight: 36,
     fontWeight: '700',
   },
   loadingWrap: {
@@ -425,20 +450,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  section: { marginTop: 30 },
+  section: { marginTop: 28 },
   sectionLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
+    color: colors.ink,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700',
-    textTransform: 'uppercase',
   },
-  list: { marginTop: 8 },
+  panelShell: {
+    width: '100%',
+    marginTop: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: 'hidden',
+  },
+  panel: {
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
   row: {
     minHeight: 62,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -458,10 +493,12 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.ink,
+    backgroundColor: colors.module,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
   appIconText: {
-    color: colors.background,
+    color: colors.ink,
     fontSize: 13,
     lineHeight: 16,
     fontWeight: '700',
@@ -506,17 +543,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   permissionList: {
-    marginTop: 10,
+    marginTop: 12,
     gap: 10,
+  },
+  permissionCardShell: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: 'hidden',
   },
   permissionCard: {
     minHeight: 76,
-    borderRadius: 8,
     paddingHorizontal: 14,
     paddingVertical: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.divider,
-    backgroundColor: colors.white,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -533,7 +572,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.divider,
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
   },
   statusPillText: {
     color: colors.ink,

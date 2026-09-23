@@ -18,6 +18,7 @@ import { colors } from '../theme/tokens';
 const MARK_ASPECT = 40 / 50.554;
 const POPUP_WIDTH = 120;
 const POPUP_HEIGHT = POPUP_WIDTH * MARK_ASPECT;
+const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 
 // Slowed down so the drawn stroke actually reads before the mark falls away.
 const STROKE_DELAY_MS = 260;
@@ -167,6 +168,8 @@ const styles = StyleSheet.create({
     paddingVertical: 28,
     gap: 20,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
   },
   title: {
     color: colors.warmWhite,
@@ -179,7 +182,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 48,
     borderRadius: 12,
-    backgroundColor: colors.warmWhite,
+    backgroundColor: 'rgba(237, 237, 237, 0.12)',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     alignItems: 'center',
     justifyContent: 'center',
   },

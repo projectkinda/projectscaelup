@@ -2,11 +2,32 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { colors } from '../theme/tokens';
 
 const CHIME_SOURCE = require('../assets/sounds/session-complete.wav');
 const ALARM_DURATION_MS = 5000;
+const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
+
+function ignoreRejectedAudioCall(result: unknown) {
+  if (
+    result &&
+    typeof result === 'object' &&
+    'catch' in result &&
+    typeof result.catch === 'function'
+  ) {
+    result.catch(() => {});
+  }
+}
+
+function stopAudioSafely(player: { pause: () => void }) {
+  try {
+    ignoreRejectedAudioCall(player.pause());
+  } catch {
+    // Expo can release the native audio object before a queued stop runs.
+  }
+}
 
 export function SessionEndChoiceModal({
   onAddTime,
@@ -18,12 +39,38 @@ export function SessionEndChoiceModal({
   const player = useAudioPlayer(CHIME_SOURCE);
   const scale = useRef(new Animated.Value(0.85)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const stoppedRef = useRef(false);
+
+  const safePause = () => {
+    if (stoppedRef.current) {
+      return;
+    }
+
+    stoppedRef.current = true;
+    stopAudioSafely(player);
+  };
 
   useEffect(() => {
-    player.loop = true;
-    player.seekTo(0);
-    player.play();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    let cancelled = false;
+    stoppedRef.current = false;
+
+    async function startAudio() {
+      try {
+        player.loop = true;
+        await player.seekTo(0);
+        if (!cancelled) {
+          player.play();
+        }
+      } catch {
+        // Keep the modal usable even if the chime cannot be started.
+      }
+    }
+
+    startAudio();
+
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
+      () => {},
+    );
 
     Animated.parallel([
       Animated.spring(scale, {
@@ -40,23 +87,23 @@ export function SessionEndChoiceModal({
     ]).start();
 
     const stopTimer = setTimeout(() => {
-      player.pause();
+      safePause();
     }, ALARM_DURATION_MS);
 
     return () => {
+      cancelled = true;
       clearTimeout(stopTimer);
-      player.pause();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddTime = () => {
-    player.pause();
+    safePause();
     onAddTime();
   };
 
   const handleEndSession = () => {
-    player.pause();
+    safePause();
     onEndSession();
   };
 
@@ -66,34 +113,36 @@ export function SessionEndChoiceModal({
         <Animated.View
           style={[styles.card, { opacity, transform: [{ scale }] }]}
         >
-          <Text style={styles.title}>Session complete</Text>
-          <Text style={styles.body}>
-            Time's up. Want to keep going, or end the session here?
-          </Text>
+          <LinearGradient colors={['#333333', '#141414']} style={styles.cardFill}>
+            <Text style={styles.title}>Session complete</Text>
+            <Text style={styles.body}>
+              Time's up. Want to keep going, or end the session here?
+            </Text>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add 5 more minutes"
-            onPress={handleAddTime}
-            style={({ pressed }) => [
-              styles.secondaryButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.secondaryButtonLabel}>+ 5 more minutes</Text>
-          </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Add 5 more minutes"
+              onPress={handleAddTime}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.secondaryButtonLabel}>+ 5 more minutes</Text>
+            </Pressable>
 
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="End session"
-            onPress={handleEndSession}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.primaryButtonLabel}>End session</Text>
-          </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="End session"
+              onPress={handleEndSession}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryButtonLabel}>End session</Text>
+            </Pressable>
+          </LinearGradient>
         </Animated.View>
       </View>
     </Modal>
@@ -112,7 +161,11 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 340,
     borderRadius: 20,
-    backgroundColor: colors.warmWhite,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: 'hidden',
+  },
+  cardFill: {
     paddingHorizontal: 24,
     paddingVertical: 28,
     gap: 12,
@@ -135,12 +188,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 52,
     borderRadius: 12,
-    backgroundColor: colors.ink,
+    backgroundColor: 'rgba(237, 237, 237, 0.12)',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryButtonLabel: {
-    color: colors.warmWhite,
+    color: colors.ink,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -149,7 +204,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.divider,
+    borderColor: CARD_BORDER,
     alignItems: 'center',
     justifyContent: 'center',
   },

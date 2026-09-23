@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { colors } from './src/theme/tokens';
 
 type AppScreen = 'home' | 'history' | 'settings';
 
@@ -21,7 +22,7 @@ function App(): React.JSX.Element {
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
         {activeScreen === 'history' ? (
           <HistoryScreen onNavigate={handleNavigate} />
         ) : activeScreen === 'settings' ? (
@@ -41,7 +42,7 @@ function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: colors.background },
 });
 
 export default App;

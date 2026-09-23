@@ -36,11 +36,11 @@ const INITIAL_VISIBLE_SESSIONS = 8;
 const SESSION_PAGE_SIZE = 8;
 const HISTORY_BACKGROUND = colors.background;
 const MODE_ACCENTS: Record<string, string> = {
-  'deep-work': colors.ink,
+  'deep-work': colors.white,
   'home-work': colors.rewardAmber,
   meditation: colors.mutedRust,
   'exam-prep': colors.muted,
-  'creative-work': colors.ink,
+  'creative-work': colors.white,
   'online-class': colors.rewardAmber,
 };
 
@@ -110,13 +110,13 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
     : 0;
   const calloutY = bestPlotted ? Math.max(6, bestPlotted.y - 36) : 0;
   const bestLabel = bestPoint
-    ? `Best session - ${bestPoint.distractionCount} ${
+    ? `Best - ${bestPoint.distractionCount} ${
         bestPoint.distractionCount === 1 ? 'distraction' : 'distractions'
       }`
     : '';
 
   return (
-    <View style={styles.chartWrap}>
+    <LinearGradient colors={['#333333', '#141414']} style={styles.chartPanel}>
       <Svg
         width="100%"
         height={CHART_HEIGHT}
@@ -127,7 +127,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
           y1={CHART_PADDING.top}
           x2={CHART_PADDING.left}
           y2={CHART_PADDING.top + plotHeight}
-          stroke={colors.divider}
+          stroke="rgba(246, 249, 253, 0.13)"
           strokeWidth={1}
         />
         <Line
@@ -135,7 +135,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
           y1={CHART_PADDING.top + plotHeight}
           x2={CHART_PADDING.left + plotWidth}
           y2={CHART_PADDING.top + plotHeight}
-          stroke={colors.divider}
+          stroke="rgba(246, 249, 253, 0.13)"
           strokeWidth={1}
         />
         {[0, 0.5, 1].map(step => {
@@ -147,7 +147,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
               y1={y}
               x2={CHART_PADDING.left + plotWidth}
               y2={y}
-              stroke={colors.divider}
+              stroke="rgba(246, 249, 253, 0.13)"
               strokeDasharray="3 7"
               strokeWidth={1}
             />
@@ -157,7 +157,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
           <Path
             d={buildPath(plotted)}
             fill="none"
-            stroke={colors.ink}
+            stroke={colors.white}
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={3}
@@ -173,7 +173,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
               width={isBest ? 10 : 8}
               height={isBest ? 10 : 8}
               rx={2}
-              fill={isBest ? colors.rewardAmber : colors.ink}
+              fill={isBest ? colors.rewardAmber : colors.white}
             />
           );
         })}
@@ -191,7 +191,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
               x={calloutX + 52}
               y={calloutY + 16}
               fill={colors.warmWhite}
-              fontSize={9}
+              fontSize={10}
               fontWeight="700"
               textAnchor="middle"
             >
@@ -202,7 +202,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
         <SvgText
           x={CHART_PADDING.left - 10}
           y={CHART_PADDING.top + 5}
-          fill={colors.muted}
+          fill="rgba(246, 249, 253, 0.58)"
           fontSize={10}
           textAnchor="end"
         >
@@ -211,7 +211,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
         <SvgText
           x={CHART_PADDING.left - 10}
           y={CHART_PADDING.top + plotHeight + 4}
-          fill={colors.muted}
+          fill="rgba(246, 249, 253, 0.58)"
           fontSize={10}
           textAnchor="end"
         >
@@ -222,7 +222,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
             <SvgText
               x={CHART_PADDING.left}
               y={CHART_HEIGHT - 8}
-              fill={colors.muted}
+              fill="rgba(246, 249, 253, 0.58)"
               fontSize={10}
             >
               {formatDate(points[0].startedAt)}
@@ -230,7 +230,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
             <SvgText
               x={CHART_PADDING.left + plotWidth}
               y={CHART_HEIGHT - 8}
-              fill={colors.muted}
+              fill="rgba(246, 249, 253, 0.58)"
               fontSize={10}
               textAnchor="end"
             >
@@ -239,7 +239,7 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
           </>
         ) : null}
       </Svg>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -250,22 +250,22 @@ function formatStatDays(value: number) {
 function StatRows({ history }: { history: HistoryData }) {
   return (
     <View style={styles.statRows}>
-      <View style={styles.statRow}>
-        <Text style={styles.statLabel}>Current streak</Text>
+      <LinearGradient colors={['#333333', '#141414']} style={styles.statCard}>
         <Text style={[styles.statValue, styles.rewardValue]}>
           {formatStatDays(history.currentStreak)}
         </Text>
-      </View>
-      <View style={styles.statRow}>
-        <Text style={styles.statLabel}>Total sessions</Text>
+        <Text style={styles.statLabel}>Current streak</Text>
+      </LinearGradient>
+      <LinearGradient colors={['#333333', '#141414']} style={styles.statCard}>
         <Text style={styles.statValue}>{history.totalSessionsCompleted}</Text>
-      </View>
-      <View style={styles.statRow}>
-        <Text style={styles.statLabel}>Best streak</Text>
+        <Text style={styles.statLabel}>Total sessions</Text>
+      </LinearGradient>
+      <LinearGradient colors={['#333333', '#141414']} style={styles.statCard}>
         <Text style={[styles.statValue, styles.rewardValue]}>
           {formatStatDays(history.bestStreak)}
         </Text>
-      </View>
+        <Text style={styles.statLabel}>Best streak</Text>
+      </LinearGradient>
     </View>
   );
 }
@@ -309,7 +309,7 @@ function SessionCard({ session }: { session: HistorySession }) {
       : `${session.distractionCount} distractions`;
 
   return (
-    <View style={styles.sessionCard}>
+    <LinearGradient colors={['#333333', '#141414']} style={styles.sessionCard}>
       <View style={styles.sessionCardMain}>
         <View style={styles.sessionTitleWrap}>
           <Text style={styles.sessionDate}>
@@ -347,13 +347,17 @@ function SessionCard({ session }: { session: HistorySession }) {
           {session.flaggedApps.join(', ')}
         </Text>
       ) : null}
-    </View>
+    </LinearGradient>
   );
 }
 
 function GhostTrendPreview() {
   return (
-    <View style={styles.ghostChartWrap} accessibilityElementsHidden>
+    <LinearGradient
+      colors={['#333333', '#141414']}
+      style={styles.ghostChartWrap}
+      accessibilityElementsHidden
+    >
       <Svg
         width="100%"
         height={CHART_HEIGHT}
@@ -362,12 +366,12 @@ function GhostTrendPreview() {
         <Path
           d="M 28 118 C 78 114, 104 106, 146 108 S 222 92, 268 96 S 316 82, 334 84"
           fill="none"
-          stroke="rgba(126, 126, 126, 0.24)"
+          stroke="rgba(246, 249, 253, 0.24)"
           strokeLinecap="round"
           strokeWidth={4}
         />
       </Svg>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -595,18 +599,27 @@ const styles = StyleSheet.create({
     lineHeight: 38,
     fontWeight: '700',
   },
-  section: { marginTop: 30 },
+  section: { marginTop: 28 },
   sectionLabel: {
     color: colors.ink,
     fontSize: 15,
     lineHeight: 20,
     fontWeight: '700',
   },
-  chartWrap: {
+  chartPanel: {
     width: '100%',
     height: CHART_HEIGHT,
     marginTop: 14,
     justifyContent: 'center',
+    borderRadius: 24,
+    paddingHorizontal: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 12,
   },
   firstRunState: {
     marginTop: 82,
@@ -616,9 +629,15 @@ const styles = StyleSheet.create({
     width: '100%',
     height: CHART_HEIGHT,
     justifyContent: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.divider,
+    borderRadius: 24,
+    paddingHorizontal: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 12,
   },
   firstRunCopy: {
     marginTop: 22,
@@ -629,9 +648,9 @@ const styles = StyleSheet.create({
     minHeight: CHART_HEIGHT,
     marginTop: 14,
     justifyContent: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.divider,
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    backgroundColor: colors.module,
   },
   emptyText: {
     color: colors.muted,
@@ -687,27 +706,40 @@ const styles = StyleSheet.create({
   startPressed: { opacity: 0.82, transform: [{ scale: 0.995 }] },
   statRows: {
     marginTop: 24,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.divider,
-  },
-  statRow: {
-    minHeight: 45,
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: 110,
+    minHeight: 82,
+    borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.divider,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 7,
   },
   statLabel: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '600',
+    textAlign: 'center',
   },
   statValue: {
-    color: colors.ink,
-    fontSize: 17,
-    lineHeight: 23,
+    color: colors.white,
+    fontSize: 20,
+    lineHeight: 25,
     fontWeight: '700',
+    textAlign: 'center',
   },
   rewardValue: { color: colors.rewardAmber },
   modeBreakdown: {
@@ -718,13 +750,14 @@ const styles = StyleSheet.create({
   },
   modePill: {
     minHeight: 32,
-    borderRadius: 7,
+    borderRadius: 16,
     paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.divider,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.module,
   },
   modeDot: {
     width: 7,
@@ -732,7 +765,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   modePillText: {
-    color: colors.ink,
+    color: colors.white,
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '600',
@@ -742,12 +775,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sessionCard: {
-    borderRadius: 8,
+    borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 13,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.divider,
-    backgroundColor: colors.white,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.13,
+    shadowRadius: 10,
+    elevation: 7,
   },
   sessionCardMain: {
     flexDirection: 'row',
@@ -757,7 +794,7 @@ const styles = StyleSheet.create({
   },
   sessionTitleWrap: { flex: 1, minWidth: 0 },
   sessionDate: {
-    color: colors.ink,
+    color: colors.white,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '700',
@@ -769,7 +806,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   distractionCount: {
-    color: colors.ink,
+    color: colors.white,
     fontSize: 26,
     lineHeight: 30,
     fontWeight: '700',
@@ -782,7 +819,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   metaText: {
-    color: colors.ink,
+    color: colors.muted,
     fontSize: 13,
     lineHeight: 18,
   },

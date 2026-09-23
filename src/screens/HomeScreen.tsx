@@ -10,6 +10,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -22,7 +23,13 @@ import { TallyCard, type TallyMarkPosition } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { HOME_MODES } from '../domain/sessionModes';
-import { getSessionCount, recordSessionCompleted } from '../domain/sessionHistory';
+import {
+  completeSession,
+  getSessionCount,
+  startSession,
+  voidSession,
+} from '../domain/sessionHistory';
+import { PreSessionReadinessScreen } from './PreSessionReadinessScreen';
 import { colors, layout } from '../theme/tokens';
 
 const TALLY_GRID_SIZE = 20;
@@ -48,7 +55,15 @@ export function HomeScreen({
   const [tabWidth, setTabWidth] = useState(0);
   const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(10);
+  const [pendingDurationSeconds, setPendingDurationSeconds] = useState<
+    number | null
+  >(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+  const [currentSessionDurationSeconds, setCurrentSessionDurationSeconds] =
+    useState(0);
+  const [currentSessionStartedAt, setCurrentSessionStartedAt] =
+    useState<Date | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
@@ -125,6 +140,27 @@ export function HomeScreen({
     return () => clearInterval(intervalId);
   }, [awaitingEndChoice, isPaused, remainingSeconds]);
 
+  const beginActiveSession = async (durationSeconds: number) => {
+    const startedAt = new Date();
+    const sessionId = await startSession({
+      modeId: activeMode.id,
+      durationSeconds,
+      startedAt,
+    });
+
+    onStartSession({
+      modeId: activeMode.id,
+      modeName: activeMode.name,
+      durationMinutes: Math.ceil(durationSeconds / 60),
+    });
+    setActiveSessionId(sessionId);
+    setRemainingSeconds(durationSeconds);
+    setCurrentSessionDurationSeconds(durationSeconds);
+    setCurrentSessionStartedAt(startedAt);
+    setIsPaused(false);
+    setPendingDurationSeconds(null);
+  };
+
   const handleStart = () => {
     const durationSeconds = hours * 60 + minutes;
     if (durationSeconds === 0) {
@@ -135,38 +171,56 @@ export function HomeScreen({
       return;
     }
 
-    onStartSession({
-      modeId: activeMode.id,
-      modeName: activeMode.name,
-      durationMinutes: Math.ceil(durationSeconds / 60),
-    });
-    setRemainingSeconds(durationSeconds);
-    setIsPaused(false);
+    setPendingDurationSeconds(durationSeconds);
   };
 
   const handleAddTime = () => {
     setAwaitingEndChoice(false);
     setRemainingSeconds(current => (current ?? 0) + 5 * 60);
+    setCurrentSessionDurationSeconds(current => current + 5 * 60);
     setIsPaused(false);
   };
 
   const handleEndFromAlarm = () => {
     setAwaitingEndChoice(false);
-    handleFinish();
+    handleCompleteSession();
   };
 
-  const handleFinish = async () => {
+  const resetActiveSessionState = () => {
     setRemainingSeconds(null);
+    setActiveSessionId(null);
+    setCurrentSessionDurationSeconds(0);
+    setCurrentSessionStartedAt(null);
     setIsPaused(false);
     setAwaitingEndChoice(false);
+  };
+
+  const handleCancelSession = async () => {
+    const sessionId = activeSessionId;
+    resetActiveSessionState();
+
+    if (sessionId !== null) {
+      await voidSession(sessionId);
+    }
+  };
+
+  const handleCompleteSession = async () => {
+    const sessionId = activeSessionId;
+
+    if (sessionId === null) {
+      resetActiveSessionState();
+      return;
+    }
+
+    resetActiveSessionState();
 
     const previousCount = sessionCount;
-    const newCount = await recordSessionCompleted();
-    setSessionCount(newCount);
+    const completed = await completeSession(sessionId);
+    setSessionCount(completed.sessionCount);
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
     if (groupIndex < TALLY_GRID_SIZE) {
-      const litCount = newCount - groupIndex * TALLY_GROUP_SIZE;
+      const litCount = completed.sessionCount - groupIndex * TALLY_GROUP_SIZE;
       setPopupTarget(null);
       setRevealArmed(false);
       setRevealLitCount(litCount);
@@ -191,6 +245,17 @@ export function HomeScreen({
     ],
   };
 
+  if (pendingDurationSeconds !== null && remainingSeconds === null) {
+    return (
+      <PreSessionReadinessScreen
+        durationSeconds={pendingDurationSeconds}
+        modeName={activeMode.tabLabel}
+        onCancel={() => setPendingDurationSeconds(null)}
+        onReady={() => beginActiveSession(pendingDurationSeconds)}
+      />
+    );
+  }
+
   if (remainingSeconds !== null) {
     return (
       <View style={styles.screen}>
@@ -206,7 +271,12 @@ export function HomeScreen({
           <View style={styles.runningHeader}>
             <Text style={styles.runningTitle}>{activeMode.tabLabel}</Text>
             <View style={styles.cameraPreview}>
-              <Text style={styles.cameraPreviewText}>Camera preview</Text>
+              <CameraView
+                active
+                facing="front"
+                mirror
+                style={styles.cameraPreviewFeed}
+              />
             </View>
           </View>
 
@@ -235,7 +305,7 @@ export function HomeScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Finish session"
-              onPress={handleFinish}
+              onPress={handleCancelSession}
               style={({ pressed }) => [
                 styles.startShell,
                 pressed && styles.pressed,
@@ -415,15 +485,14 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E1E1E1',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: colors.module,
   },
-  cameraPreviewText: {
-    width: 50,
-    color: '#000000',
-    fontSize: 12,
-    lineHeight: 15,
-    fontWeight: '500',
-    textAlign: 'center',
+  cameraPreviewFeed: {
+    width: '100%',
+    height: '100%',
   },
   runningTimerWrap: {
     flex: 1,
@@ -512,9 +581,9 @@ const styles = StyleSheet.create({
   pauseButton: {
     flex: 1,
     borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#333333',
-    backgroundColor: '#EAEDF1',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: colors.module,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
