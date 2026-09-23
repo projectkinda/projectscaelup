@@ -10,7 +10,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { CameraView } from 'expo-camera';
+import { Camera, CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -33,6 +33,43 @@ import { PreSessionReadinessScreen } from './PreSessionReadinessScreen';
 import { colors, layout } from '../theme/tokens';
 
 const TALLY_GRID_SIZE = 20;
+
+function ActiveSessionCameraPreview({
+  sessionId,
+}: {
+  sessionId: number | null;
+}) {
+  const [hasPermission, setHasPermission] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    Camera.getCameraPermissionsAsync().then(permission => {
+      if (!cancelled) {
+        setHasPermission(permission.status === 'granted');
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  return (
+    <View style={styles.cameraPreview}>
+      {hasPermission ? (
+        <CameraView
+          key={sessionId ?? 'active-camera'}
+          active
+          facing="front"
+          mirror
+          mode="video"
+          style={styles.cameraPreviewFeed}
+        />
+      ) : null}
+    </View>
+  );
+}
 
 type HomeScreenProps = {
   sessionMessage?: string | null;
@@ -162,7 +199,7 @@ export function HomeScreen({
   };
 
   const handleStart = () => {
-    const durationSeconds = hours * 60 + minutes;
+    const durationSeconds = hours * 3600 + minutes * 60;
     if (durationSeconds === 0) {
       Alert.alert(
         'Set a focus time',
@@ -270,14 +307,7 @@ export function HomeScreen({
         >
           <View style={styles.runningHeader}>
             <Text style={styles.runningTitle}>{activeMode.tabLabel}</Text>
-            <View style={styles.cameraPreview}>
-              <CameraView
-                active
-                facing="front"
-                mirror
-                style={styles.cameraPreviewFeed}
-              />
-            </View>
+            <ActiveSessionCameraPreview sessionId={activeSessionId} />
           </View>
 
           <View style={styles.runningTimerWrap}>
@@ -491,8 +521,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.module,
   },
   cameraPreviewFeed: {
-    width: '100%',
-    height: '100%',
+    ...StyleSheet.absoluteFill,
   },
   runningTimerWrap: {
     flex: 1,

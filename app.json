@@ -8,9 +8,15 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.projectscaleup.app"
+      "bundleIdentifier": "com.projectscaleup.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
+      }
     },
     "android": {
+      "permissions": [
+        "CAMERA"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -24,6 +30,12 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
+        }
+      ],
       "expo-sqlite",
       "expo-audio"
     ]
