@@ -31,8 +31,8 @@ function App(): React.JSX.Element {
           <HomeScreen
             sessionMessage={sessionMessage}
             onNavigate={handleNavigate}
-            onStartSession={({ modeName, durationMinutes }) => {
-              setSessionMessage(`${modeName} - ${durationMinutes} min`);
+            onStartSession={({ modeName, durationFormatted }) => {
+              setSessionMessage(`${modeName} - ${durationFormatted}`);
             }}
           />
         )}

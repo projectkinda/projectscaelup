@@ -5,7 +5,12 @@ const DATABASE_NAME = 'project-scaleup.db';
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
 export function getDatabase() {
-  databasePromise ??= SQLite.openDatabaseAsync(DATABASE_NAME);
+  if (!databasePromise) {
+    databasePromise = SQLite.openDatabaseAsync(DATABASE_NAME).catch(err => {
+      databasePromise = null;
+      throw err;
+    });
+  }
   return databasePromise;
 }
 

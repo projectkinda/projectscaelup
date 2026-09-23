@@ -6,10 +6,10 @@ import { TimeModule } from './TimeModule';
 import { colors, useScale } from '../theme/tokens';
 
 type TimerSelectorProps = {
-  hours: number;
   minutes: number;
-  onHoursChange: (value: number) => void;
+  seconds: number;
   onMinutesChange: (value: number) => void;
+  onSecondsChange: (value: number) => void;
 };
 
 const BASE_CHASSIS_HEIGHT = 204;
@@ -19,10 +19,10 @@ const BASE_COLON_HEIGHT = 76;
 const BASE_COLON_DOT = { width: 8, height: 9, gap: 13 };
 
 export function TimerSelector({
-  hours,
   minutes,
-  onHoursChange,
+  seconds,
   onMinutesChange,
+  onSecondsChange,
 }: TimerSelectorProps) {
   const scale = useScale();
 
@@ -40,11 +40,11 @@ export function TimerSelector({
         ]}
       >
         <TimeModule
-          label="Hours"
-          value={hours}
-          max={23}
+          label="Minutes"
+          value={minutes}
+          max={59}
           scale={scale}
-          onChange={onHoursChange}
+          onChange={onMinutesChange}
         />
         <View
           style={[
@@ -77,12 +77,11 @@ export function TimerSelector({
           />
         </View>
         <TimeModule
-          label="Minutes"
-          value={minutes}
-          max={55}
-          step={5}
+          label="Seconds"
+          value={seconds}
+          max={59}
           scale={scale}
-          onChange={onMinutesChange}
+          onChange={onSecondsChange}
         />
       </LinearGradient>
       <Text style={styles.hint}>Swipe to set time</Text>

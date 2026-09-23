@@ -32,6 +32,15 @@ type SettingsScreenProps = {
 
 type PermissionState = 'granted' | 'revoked' | 'unavailable';
 
+// expo-camera's permission check doesn't resolve on web (no camera module
+// there), which would otherwise hang this screen's initial load forever.
+async function getCameraPermissionAsync() {
+  if (Platform.OS === 'web') {
+    return { status: 'undetermined' as const };
+  }
+  return Camera.getCameraPermissionsAsync();
+}
+
 type PermissionRow = {
   id: string;
   label: string;
@@ -105,7 +114,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
     const [settingsData, cameraPermission] = await Promise.all([
       loadSettingsData({ isPaidUser: IS_PAID_USER }),
-      Camera.getCameraPermissionsAsync(),
+      getCameraPermissionAsync(),
     ]);
 
     setFlaggedApps(settingsData.flaggedApps);

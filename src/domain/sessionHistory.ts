@@ -113,14 +113,19 @@ async function repairTotalSessionsFromRows() {
 }
 
 export async function getSessionCount(): Promise<number> {
-  const streak = await getStreakRow();
-  const repairedCount = await repairTotalSessionsFromRows();
+  try {
+    const streak = await getStreakRow();
+    const repairedCount = await repairTotalSessionsFromRows();
 
-  if ((streak?.total_sessions_completed ?? 0) > repairedCount) {
-    return streak?.total_sessions_completed ?? 0;
+    if ((streak?.total_sessions_completed ?? 0) > repairedCount) {
+      return streak?.total_sessions_completed ?? 0;
+    }
+
+    return repairedCount;
+  } catch (err) {
+    console.warn('Could not getSessionCount from SQLite:', err);
+    return 0;
   }
-
-  return repairedCount;
 }
 
 export async function startSession({
@@ -128,112 +133,155 @@ export async function startSession({
   durationSeconds,
   startedAt = new Date(),
 }: SessionStartInput): Promise<number> {
-  const database = await getDatabase();
-  await ensureSchema(database);
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
 
-  const result = await database.runAsync(
-    `
-      INSERT INTO sessions (
-        mode_id,
-        started_at,
-        duration_seconds,
-        completed,
-        distraction_count,
-        lockdown_minutes
-      )
-      VALUES (?, ?, ?, 0, 0, 0);
-    `,
-    [modeId, startedAt.toISOString(), durationSeconds],
-  );
+    const result = await database.runAsync(
+      `
+        INSERT INTO sessions (
+          mode_id,
+          started_at,
+          duration_seconds,
+          completed,
+          distraction_count,
+          lockdown_minutes
+        )
+        VALUES (?, ?, ?, 0, 0, 0);
+      `,
+      [modeId, startedAt.toISOString(), durationSeconds],
+    );
 
-  return result.lastInsertRowId;
+    return result.lastInsertRowId;
+  } catch (err) {
+    console.warn('Could not record startSession in SQLite:', err);
+    return Date.now();
+  }
 }
 
 export async function voidSession(sessionId: number): Promise<void> {
-  const database = await getDatabase();
-  await ensureSchema(database);
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
 
-  await database.runAsync(
-    `
-      UPDATE sessions
-      SET completed = 0,
-          distraction_count = 0,
-          lockdown_minutes = 0
-      WHERE id = ?;
-    `,
-    [sessionId],
-  );
+    await database.runAsync(
+      `
+        UPDATE sessions
+        SET completed = 0,
+            distraction_count = 0,
+            lockdown_minutes = 0
+        WHERE id = ?;
+      `,
+      [sessionId],
+    );
+  } catch (err) {
+    console.warn('Could not voidSession in SQLite:', err);
+  }
 }
 
 export async function completeSession(
   sessionId: number,
 ): Promise<CompletedSessionResult> {
-  const database = await getDatabase();
-  await ensureSchema(database);
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
 
-  const distractionCountRow = await database.getFirstAsync<{ count: number }>(
-    `
-      SELECT COUNT(*) AS count
-      FROM distraction_events
-      WHERE session_id = ?;
-    `,
-    [sessionId],
-  );
-  const touchedAppRows = await database.getAllAsync<{ app_identifier: string }>(
-    `
-      SELECT DISTINCT app_identifier
-      FROM distraction_events
-      WHERE session_id = ?
-        AND type = 'app_touched'
-        AND app_identifier IS NOT NULL;
-    `,
-    [sessionId],
-  );
-
-  const distractionCount = distractionCountRow?.count ?? 0;
-  const lockdownMinutes = Math.min(10 + 2 * distractionCount, 60);
-  const touchedApps = touchedAppRows.map(row => row.app_identifier);
-  const completedAt = new Date();
-  const completedDate = dateKey(completedAt);
-  const currentStreak = await getStreakRow();
-  const next = nextStreakValues(currentStreak, completedDate);
-
-  await database.withTransactionAsync(async () => {
-    await database.runAsync(
+    const distractionCountRow = await database.getFirstAsync<{ count: number }>(
       `
-        UPDATE sessions
-        SET completed = 1,
-            distraction_count = ?,
-            lockdown_minutes = ?
-        WHERE id = ?;
+        SELECT COUNT(*) AS count
+        FROM distraction_events
+        WHERE session_id = ?;
       `,
-      [distractionCount, lockdownMinutes, sessionId],
+      [sessionId],
+    );
+    const touchedAppRows = await database.getAllAsync<{ app_identifier: string }>(
+      `
+        SELECT DISTINCT app_identifier
+        FROM distraction_events
+        WHERE session_id = ?
+          AND type = 'app_touched'
+          AND app_identifier IS NOT NULL;
+      `,
+      [sessionId],
     );
 
-    await database.runAsync(
-      `
-        UPDATE streaks
-        SET current_streak = ?,
-            best_streak = ?,
-            last_completed_date = ?,
-            grace_days_used_this_week = ?,
-            total_sessions_completed = ?
-        WHERE id = 1;
-      `,
-      [
-        next.currentStreak,
-        next.bestStreak,
-        next.lastCompletedDate,
-        next.graceDaysUsedThisWeek,
-        next.totalSessionsCompleted,
-      ],
-    );
-  });
+    const distractionCount = distractionCountRow?.count ?? 0;
+    const lockdownMinutes = Math.min(10 + 2 * distractionCount, 60);
+    const touchedApps = touchedAppRows.map(row => row.app_identifier);
+    const completedAt = new Date();
+    const completedDate = dateKey(completedAt);
+    const currentStreak = await getStreakRow();
+    const next = nextStreakValues(currentStreak, completedDate);
 
-  return {
-    distractionCount,
-    lockdownMinutes,
-    sessionCount: next.totalSessionsCompleted,
-    touchedApps,
-  };
+    await database.withTransactionAsync(async () => {
+      await database.runAsync(
+        `
+          UPDATE sessions
+          SET completed = 1,
+              distraction_count = ?,
+              lockdown_minutes = ?
+          WHERE id = ?;
+        `,
+        [distractionCount, lockdownMinutes, sessionId],
+      );
+
+      await database.runAsync(
+        `
+          UPDATE streaks
+          SET current_streak = ?,
+              best_streak = ?,
+              last_completed_date = ?,
+              grace_days_used_this_week = ?,
+              total_sessions_completed = ?
+          WHERE id = 1;
+        `,
+        [
+          next.currentStreak,
+          next.bestStreak,
+          next.lastCompletedDate,
+          next.graceDaysUsedThisWeek,
+          next.totalSessionsCompleted,
+        ],
+      );
+    });
+
+    return {
+      distractionCount,
+      lockdownMinutes,
+      sessionCount: next.totalSessionsCompleted,
+      touchedApps,
+    };
+  } catch (err) {
+    console.warn('Could not completeSession in SQLite:', err);
+    return {
+      distractionCount: 0,
+      lockdownMinutes: 10,
+      sessionCount: 1,
+      touchedApps: [],
+    };
+  }
 }
+
+export function formatDuration(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const hours = Math.floor(clamped / 3600);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  const seconds = clamped % 60;
+
+  if (hours > 0) {
+    const parts = [`${hours}h`];
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
+  }
+
+  if (minutes > 0) {
+    if (seconds > 0) {
+      return `${minutes} min ${seconds} sec`;
+    }
+    return `${minutes} min`;
+  }
+
+  return `${seconds} sec`;
+}
+

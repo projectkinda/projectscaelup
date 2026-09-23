@@ -23,6 +23,7 @@ import {
   loadHistoryData,
 } from '../data/historyRepository';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
+import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
 
 type HistoryScreenProps = {
@@ -46,17 +47,6 @@ const MODE_ACCENTS: Record<string, string> = {
 
 function getModeAccent(modeId: string) {
   return MODE_ACCENTS[modeId] ?? colors.ink;
-}
-
-function formatDuration(seconds: number) {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes} min`;
-  }
-
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
 function formatDate(value: string) {

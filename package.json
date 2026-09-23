@@ -29,7 +29,7 @@
     "android": "expo start --android",
     "android:emulator": "bash scripts/run-expo-emulator.sh",
     "ios": "expo start --ios",
-    "web": "expo start --web --port ${PORT:-8081}"
+    "web": "node scripts/start-web-with-coi.js"
   },
   "private": true
 }

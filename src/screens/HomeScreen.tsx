@@ -25,6 +25,7 @@ import { TimerSelector } from '../components/TimerSelector';
 import { HOME_MODES } from '../domain/sessionModes';
 import {
   completeSession,
+  formatDuration,
   getSessionCount,
   startSession,
   voidSession,
@@ -78,6 +79,8 @@ type HomeScreenProps = {
     modeId: string;
     modeName: string;
     durationMinutes: number;
+    durationSeconds: number;
+    durationFormatted: string;
   }) => void;
 };
 
@@ -90,8 +93,8 @@ export function HomeScreen({
   const { height: windowHeight } = useWindowDimensions();
   const [activeModeId, setActiveModeId] = useState(HOME_MODES[0].id);
   const [tabWidth, setTabWidth] = useState(0);
-  const [hours, setHours] = useState(0);
   const [minutes, setMinutes] = useState(10);
+  const [seconds, setSeconds] = useState(0);
   const [pendingDurationSeconds, setPendingDurationSeconds] = useState<
     number | null
   >(null);
@@ -179,17 +182,30 @@ export function HomeScreen({
 
   const beginActiveSession = async (durationSeconds: number) => {
     const startedAt = new Date();
-    const sessionId = await startSession({
-      modeId: activeMode.id,
-      durationSeconds,
-      startedAt,
-    });
+    let sessionId: number | null = null;
+    try {
+      sessionId = await startSession({
+        modeId: activeMode.id,
+        durationSeconds,
+        startedAt,
+      });
+    } catch (error) {
+      console.warn('Failed to start session in database:', error);
+      sessionId = Date.now();
+    }
 
-    onStartSession({
-      modeId: activeMode.id,
-      modeName: activeMode.name,
-      durationMinutes: Math.ceil(durationSeconds / 60),
-    });
+    try {
+      onStartSession({
+        modeId: activeMode.id,
+        modeName: activeMode.name,
+        durationMinutes: Math.ceil(durationSeconds / 60),
+        durationSeconds,
+        durationFormatted: formatDuration(durationSeconds),
+      });
+    } catch (error) {
+      console.warn('onStartSession handler error:', error);
+    }
+
     setActiveSessionId(sessionId);
     setRemainingSeconds(durationSeconds);
     setCurrentSessionDurationSeconds(durationSeconds);
@@ -199,7 +215,7 @@ export function HomeScreen({
   };
 
   const handleStart = () => {
-    const durationSeconds = hours * 3600 + minutes * 60;
+    const durationSeconds = minutes * 60 + seconds;
     if (durationSeconds === 0) {
       Alert.alert(
         'Set a focus time',
@@ -237,7 +253,11 @@ export function HomeScreen({
     resetActiveSessionState();
 
     if (sessionId !== null) {
-      await voidSession(sessionId);
+      try {
+        await voidSession(sessionId);
+      } catch (error) {
+        console.warn('Failed to void session in database:', error);
+      }
     }
   };
 
@@ -252,12 +272,18 @@ export function HomeScreen({
     resetActiveSessionState();
 
     const previousCount = sessionCount;
-    const completed = await completeSession(sessionId);
-    setSessionCount(completed.sessionCount);
+    let nextCount = previousCount + 1;
+    try {
+      const completed = await completeSession(sessionId);
+      nextCount = completed.sessionCount;
+    } catch (error) {
+      console.warn('Failed to complete session in database:', error);
+    }
+    setSessionCount(nextCount);
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
     if (groupIndex < TALLY_GRID_SIZE) {
-      const litCount = completed.sessionCount - groupIndex * TALLY_GROUP_SIZE;
+      const litCount = nextCount - groupIndex * TALLY_GROUP_SIZE;
       setPopupTarget(null);
       setRevealArmed(false);
       setRevealLitCount(litCount);
@@ -426,10 +452,10 @@ export function HomeScreen({
             ]}
           >
             <TimerSelector
-              hours={hours}
               minutes={minutes}
-              onHoursChange={setHours}
+              seconds={seconds}
               onMinutesChange={setMinutes}
+              onSecondsChange={setSeconds}
             />
             <Pressable
               accessibilityRole="button"

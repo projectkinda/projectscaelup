@@ -15,6 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SevenSegmentDigit } from '../components/SevenSegmentDigit';
+import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
 
 type ReadinessState =
@@ -134,14 +135,23 @@ export function PreSessionReadinessScreen({
       }
 
       hasCompleted.current = true;
+      let triggered = false;
+      const triggerReady = () => {
+        if (!triggered) {
+          triggered = true;
+          onReady();
+        }
+      };
+
+      const fallbackTimer = setTimeout(triggerReady, 520);
+
       Animated.timing(previewMotion, {
         toValue: 1,
         duration: 480,
-        useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) {
-          onReady();
-        }
+        useNativeDriver: false,
+      }).start(() => {
+        clearTimeout(fallbackTimer);
+        triggerReady();
       });
       return;
     }
@@ -289,7 +299,7 @@ export function PreSessionReadinessScreen({
                 style={styles.countdownModule}
               >
                 <SevenSegmentDigit
-                  value={String(Math.max(1, countdown))}
+                  value={String(Math.max(0, countdown))}
                   scale={1.35}
                 />
               </LinearGradient>
@@ -301,7 +311,7 @@ export function PreSessionReadinessScreen({
           <View style={styles.modeBlock}>
             <Text style={styles.modeLabel}>{modeName}</Text>
             <Text style={styles.durationLabel}>
-              {Math.ceil(durationSeconds / 60)} min
+              {formatDuration(durationSeconds)}
             </Text>
           </View>
 
