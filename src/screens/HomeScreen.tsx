@@ -26,6 +26,7 @@ import {
   completeSession,
   formatDuration,
   getSessionCount,
+  getShowingUpDayCount,
   startSession,
   voidSession,
 } from '../domain/sessionHistory';
@@ -113,6 +114,7 @@ export function HomeScreen({
   const [isPaused, setIsPaused] = useState(false);
   const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
+  const [showingUpDays, setShowingUpDays] = useState(0);
   const [revealIndex, setRevealIndex] = useState<number | null>(null);
   const [revealLitCount, setRevealLitCount] = useState(0);
   const [revealArmed, setRevealArmed] = useState(false);
@@ -123,6 +125,7 @@ export function HomeScreen({
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
+    getShowingUpDayCount().then(setShowingUpDays);
   }, []);
 
   const activeMode =
@@ -281,14 +284,17 @@ export function HomeScreen({
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;
     let distractionCount = 0;
+    let nextShowingUpDays = showingUpDays || 1;
     try {
       const completed = await completeSession(sessionId);
       nextCount = completed.sessionCount;
       distractionCount = completed.distractionCount;
+      nextShowingUpDays = completed.showingUpDays;
     } catch (error) {
       console.warn('Failed to complete session in database:', error);
     }
     setSessionCount(nextCount);
+    setShowingUpDays(nextShowingUpDays);
     setCompletionSummary({
       previousSessionCount: previousCount,
       sessionCount: nextCount,
@@ -516,6 +522,7 @@ export function HomeScreen({
           <View style={[styles.tallySection, { marginTop: tallyGap }]}>
             <TallyCard
               sessionCount={sessionCount}
+              showingUpDays={showingUpDays}
               revealIndex={revealIndex}
               revealLitCount={revealLitCount}
               revealArmed={revealArmed}

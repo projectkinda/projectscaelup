@@ -17,6 +17,7 @@ export type TallyMarkPosition = {
 
 type TallyCardProps = {
   sessionCount: number;
+  showingUpDays: number;
   /** Index (0-based) of the group cell currently receiving a new stroke. */
   revealIndex?: number | null;
   /** How many strokes that cell should show once the reveal lands (1-5). */
@@ -28,6 +29,7 @@ type TallyCardProps = {
 
 export function TallyCard({
   sessionCount,
+  showingUpDays,
   revealIndex = null,
   revealLitCount = 0,
   revealArmed = false,
@@ -85,7 +87,11 @@ export function TallyCard({
         <Text testID="session-count" style={styles.sessionCount}>
           {sessionCount} sessions
         </Text>
-        <Text style={styles.streak}>1 week of showing up</Text>
+        <Text style={styles.streak}>
+          {showingUpDays === 1
+            ? '1 day of showing up'
+            : `${showingUpDays} days of showing up`}
+        </Text>
       </View>
     </View>
   );
@@ -158,13 +164,15 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingVertical: 24,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignContent: 'flex-start',
+    alignItems: 'flex-start',
     rowGap: 20,
-    columnGap: 24,
+    columnGap: 20,
   },
   emptyState: {
     alignItems: 'center',

@@ -24,7 +24,6 @@ import { colors, layout } from '../theme/tokens';
 
 const GROUP_MARK_WIDTH = 50.554;
 const GROUP_MARK_HEIGHT = 39.654;
-const STRIP_GROUP_COUNT = 6;
 
 type PostSessionSummaryScreenProps = {
   previousSessionCount: number;
@@ -70,13 +69,12 @@ export function PostSessionSummaryScreen({
   }, [introProgress, revealProgress]);
 
   const stripGroups = useMemo(() => {
-    const firstGroup = Math.max(
-      0,
-      currentGroupIndex - Math.floor(STRIP_GROUP_COUNT / 2),
-    );
+    const completeGroups = Math.floor(sessionCount / TALLY_GROUP_SIZE);
+    const currentGroupProgress = sessionCount % TALLY_GROUP_SIZE;
+    const visibleGroupCount =
+      completeGroups + (currentGroupProgress > 0 ? 1 : 0);
 
-    return Array.from({ length: STRIP_GROUP_COUNT }, (_, index) => {
-      const groupIndex = firstGroup + index;
+    return Array.from({ length: visibleGroupCount }, (_, groupIndex) => {
       const startCount = groupIndex * TALLY_GROUP_SIZE;
       const previousProgress = Math.max(
         0,
@@ -88,13 +86,13 @@ export function PostSessionSummaryScreen({
       );
 
       return {
-        key: `${groupIndex}-${index}`,
+        key: `${groupIndex}`,
         groupIndex,
         previousProgress,
         currentProgress,
       };
     });
-  }, [currentGroupIndex, previousSessionCount, sessionCount]);
+  }, [previousSessionCount, sessionCount]);
 
   const introStyle = {
     opacity: introProgress,
@@ -156,7 +154,6 @@ export function PostSessionSummaryScreen({
                   width={GROUP_MARK_WIDTH}
                   height={GROUP_MARK_HEIGHT}
                   litColor={colors.white}
-                  unlitColor="rgba(0, 0, 0, 0.62)"
                 />
               ) : (
                 <TallyGroupMark
@@ -165,7 +162,6 @@ export function PostSessionSummaryScreen({
                   width={GROUP_MARK_WIDTH}
                   height={GROUP_MARK_HEIGHT}
                   litColor={colors.white}
-                  unlitColor="rgba(0, 0, 0, 0.62)"
                 />
               ),
             )}
@@ -304,13 +300,18 @@ const styles = StyleSheet.create({
     minHeight: 88,
     borderRadius: 24,
     paddingHorizontal: 16,
-    paddingVertical: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    columnGap: 20,
+    rowGap: 20,
   },
   distractionPanel: {
     width: '100%',

@@ -18,6 +18,7 @@ type CompletedSessionResult = {
   distractionCount: number;
   lockdownMinutes: number;
   sessionCount: number;
+  showingUpDays: number;
   touchedApps: string[];
 };
 
@@ -124,6 +125,26 @@ export async function getSessionCount(): Promise<number> {
     return repairedCount;
   } catch (err) {
     console.warn('Could not getSessionCount from SQLite:', err);
+    return 0;
+  }
+}
+
+export async function getShowingUpDayCount(): Promise<number> {
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
+
+    const result = await database.getFirstAsync<{ count: number }>(
+      `
+        SELECT COUNT(DISTINCT substr(started_at, 1, 10)) AS count
+        FROM sessions
+        WHERE completed = 1;
+      `,
+    );
+
+    return result?.count ?? 0;
+  } catch (err) {
+    console.warn('Could not getShowingUpDayCount from SQLite:', err);
     return 0;
   }
 }
@@ -245,10 +266,19 @@ export async function completeSession(
       );
     });
 
+    const showingUpDayCountRow = await database.getFirstAsync<{ count: number }>(
+      `
+        SELECT COUNT(DISTINCT substr(started_at, 1, 10)) AS count
+        FROM sessions
+        WHERE completed = 1;
+      `,
+    );
+
     return {
       distractionCount,
       lockdownMinutes,
       sessionCount: next.totalSessionsCompleted,
+      showingUpDays: showingUpDayCountRow?.count ?? 0,
       touchedApps,
     };
   } catch (err) {
@@ -257,6 +287,7 @@ export async function completeSession(
       distractionCount: 0,
       lockdownMinutes: 10,
       sessionCount: 1,
+      showingUpDays: 1,
       touchedApps: [],
     };
   }
