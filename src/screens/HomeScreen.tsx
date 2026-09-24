@@ -122,6 +122,7 @@ export function HomeScreen({
     useState<CompletionSummary | null>(null);
   const tabProgress = useRef(new Animated.Value(0)).current;
   const contentProgress = useRef(new Animated.Value(1)).current;
+  const sessionEndTimeMs = useRef<number | null>(null);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -148,6 +149,7 @@ export function HomeScreen({
     34,
     Math.min(58, Math.round(availableContentHeight * 0.07)),
   );
+  const hasActiveSession = remainingSeconds !== null;
 
   useEffect(() => {
     Animated.spring(tabProgress, {
@@ -167,28 +169,36 @@ export function HomeScreen({
   }, [activeModeIndex, contentProgress, tabProgress]);
 
   useEffect(() => {
-    if (remainingSeconds === null || isPaused || awaitingEndChoice) {
+    if (!hasActiveSession || isPaused || awaitingEndChoice) {
       return;
     }
 
-    if (remainingSeconds <= 0) {
-      setAwaitingEndChoice(true);
-      setIsPaused(true);
-      return;
-    }
+    const syncRemainingTime = () => {
+      const endTime = sessionEndTimeMs.current;
+      if (endTime === null) {
+        return;
+      }
 
-    const intervalId = setInterval(() => {
-      setRemainingSeconds(current => {
-        if (current === null) {
-          return current;
-        }
+      const nextRemainingSeconds = Math.max(
+        0,
+        Math.ceil((endTime - Date.now()) / 1000),
+      );
 
-        return Math.max(0, current - 1);
-      });
-    }, 1000);
+      setRemainingSeconds(current =>
+        current === nextRemainingSeconds ? current : nextRemainingSeconds,
+      );
+
+      if (nextRemainingSeconds <= 0) {
+        setAwaitingEndChoice(true);
+        setIsPaused(true);
+      }
+    };
+
+    syncRemainingTime();
+    const intervalId = setInterval(syncRemainingTime, 250);
 
     return () => clearInterval(intervalId);
-  }, [awaitingEndChoice, isPaused, remainingSeconds]);
+  }, [awaitingEndChoice, hasActiveSession, isPaused]);
 
   const beginActiveSession = async (durationSeconds: number) => {
     const startedAt = new Date();
@@ -217,6 +227,7 @@ export function HomeScreen({
     }
 
     setActiveSessionId(sessionId);
+    sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
     setRemainingSeconds(durationSeconds);
     setCurrentSessionDurationSeconds(durationSeconds);
     setCurrentSessionStartedAt(startedAt);
@@ -239,9 +250,27 @@ export function HomeScreen({
 
   const handleAddTime = () => {
     setAwaitingEndChoice(false);
-    setRemainingSeconds(current => (current ?? 0) + 5 * 60);
+    setRemainingSeconds(current => {
+      const nextRemainingSeconds = (current ?? 0) + 5 * 60;
+      sessionEndTimeMs.current = Date.now() + nextRemainingSeconds * 1000;
+      return nextRemainingSeconds;
+    });
     setCurrentSessionDurationSeconds(current => current + 5 * 60);
     setIsPaused(false);
+  };
+
+  const handlePauseToggle = () => {
+    if (remainingSeconds === null) {
+      return;
+    }
+
+    if (isPaused) {
+      sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
+      setIsPaused(false);
+      return;
+    }
+
+    setIsPaused(true);
   };
 
   const handleEndFromAlarm = () => {
@@ -251,6 +280,7 @@ export function HomeScreen({
 
   const resetActiveSessionState = () => {
     setRemainingSeconds(null);
+    sessionEndTimeMs.current = null;
     setActiveSessionId(null);
     setCurrentSessionDurationSeconds(0);
     setCurrentSessionStartedAt(null);
@@ -378,7 +408,7 @@ export function HomeScreen({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={isPaused ? 'Resume session' : 'Pause session'}
-              onPress={() => setIsPaused(current => !current)}
+              onPress={handlePauseToggle}
               style={({ pressed }) => [
                 styles.pauseShell,
                 pressed && styles.pressed,

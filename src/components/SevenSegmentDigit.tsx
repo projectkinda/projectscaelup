@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import Svg, { Rect } from 'react-native-svg';
 
 type SegmentName = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g';
 
@@ -16,8 +16,6 @@ const ACTIVE_SEGMENTS: Record<string, SegmentName[]> = {
   '9': ['a', 'b', 'c', 'd', 'f', 'g'],
 };
 
-// Base dimensions this glyph was drawn at; `scale` resizes every segment
-// proportionally so the digit reads cleanly from small phones to tablets.
 const BASE = {
   width: 39,
   height: 64,
@@ -26,76 +24,99 @@ const BASE = {
   verticalLength: 26,
 };
 
+const SEGMENTS: Record<
+  SegmentName,
+  { x: number; y: number; width: number; height: number }
+> = {
+  a: { x: 6, y: 0, width: BASE.horizontalLength, height: BASE.segmentThickness },
+  g: {
+    x: 6,
+    y: 29,
+    width: BASE.horizontalLength,
+    height: BASE.segmentThickness,
+  },
+  d: {
+    x: 6,
+    y: BASE.height - BASE.segmentThickness,
+    width: BASE.horizontalLength,
+    height: BASE.segmentThickness,
+  },
+  f: { x: 0, y: 6, width: BASE.segmentThickness, height: BASE.verticalLength },
+  b: {
+    x: BASE.width - BASE.segmentThickness,
+    y: 6,
+    width: BASE.segmentThickness,
+    height: BASE.verticalLength,
+  },
+  e: {
+    x: 0,
+    y: BASE.height - BASE.verticalLength - 6,
+    width: BASE.segmentThickness,
+    height: BASE.verticalLength,
+  },
+  c: {
+    x: BASE.width - BASE.segmentThickness,
+    y: BASE.height - BASE.verticalLength - 6,
+    width: BASE.segmentThickness,
+    height: BASE.verticalLength,
+  },
+};
+
+const HORIZONTAL_SEGMENTS: SegmentName[] = ['a', 'g', 'd'];
+const VERTICAL_SEGMENTS: SegmentName[] = ['f', 'b', 'e', 'c'];
+const ALL_SEGMENTS = [...HORIZONTAL_SEGMENTS, ...VERTICAL_SEGMENTS];
+
 export function SevenSegmentDigit({
   value,
   scale = 1,
+  glow = true,
 }: {
   value: string;
   scale?: number;
+  glow?: boolean;
 }) {
   const active = ACTIVE_SEGMENTS[value] ?? [];
-
-  const width = BASE.width * scale;
-  const height = BASE.height * scale;
-  const thickness = BASE.segmentThickness * scale;
-  const hLength = BASE.horizontalLength * scale;
-  const vLength = BASE.verticalLength * scale;
-  const inset = 6 * scale;
-  const gTop = 29 * scale;
-
-  const segmentBase = {
-    position: 'absolute' as const,
-    backgroundColor: 'rgba(246, 249, 253, 0.045)',
-    borderRadius: 2 * scale,
-  };
-  const activeStyle = {
-    backgroundColor: '#F6F9FD',
-    shadowColor: '#F6F9FD',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 7,
-    elevation: 4,
-  };
-
-  const horizontalPositions: Record<string, object> = {
-    a: { top: 0 },
-    g: { top: gTop },
-    d: { bottom: 0 },
-  };
-  const verticalPositions: Record<string, object> = {
-    f: { left: 0, top: inset },
-    b: { right: 0, top: inset },
-    e: { left: 0, bottom: inset },
-    c: { right: 0, bottom: inset },
-  };
+  const activeSet = new Set(active);
 
   return (
-    <View
-      style={{ width, height }}
-      importantForAccessibility="no-hide-descendants"
+    <Svg
+      width={BASE.width * scale}
+      height={BASE.height * scale}
+      viewBox={`0 0 ${BASE.width} ${BASE.height}`}
     >
-      {(['a', 'g', 'd'] as SegmentName[]).map(segment => (
-        <View
-          key={segment}
-          style={[
-            segmentBase,
-            { width: hLength, height: thickness, left: inset },
-            horizontalPositions[segment],
-            active.includes(segment) && activeStyle,
-          ]}
-        />
-      ))}
-      {(['f', 'b', 'e', 'c'] as SegmentName[]).map(segment => (
-        <View
-          key={segment}
-          style={[
-            segmentBase,
-            { width: thickness, height: vLength },
-            verticalPositions[segment],
-            active.includes(segment) && activeStyle,
-          ]}
-        />
-      ))}
-    </View>
+      {glow
+        ? active.map(segment => {
+            const rect = SEGMENTS[segment];
+            return (
+              <Rect
+                key={`glow-${segment}`}
+                x={rect.x - 2}
+                y={rect.y - 2}
+                width={rect.width + 4}
+                height={rect.height + 4}
+                rx={4}
+                fill="#F6F9FD"
+                opacity={0.22}
+              />
+            );
+          })
+        : null}
+      {ALL_SEGMENTS.map(segment => {
+        const rect = SEGMENTS[segment];
+        const isActive = activeSet.has(segment);
+
+        return (
+          <Rect
+            key={segment}
+            x={rect.x}
+            y={rect.y}
+            width={rect.width}
+            height={rect.height}
+            rx={2}
+            fill={isActive ? '#F6F9FD' : 'rgba(246, 249, 253, 0.045)'}
+          />
+        );
+      })}
+    </Svg>
   );
 }

@@ -35,11 +35,24 @@ function formatRemaining(totalSeconds: number) {
   };
 }
 
-function ModuleValue({ value, scale }: { value: string; scale: number }) {
+function ModuleValue({
+  value,
+  scale,
+  glow = true,
+}: {
+  value: string;
+  scale: number;
+  glow?: boolean;
+}) {
   return (
     <View style={[styles.valueRow, { gap: BASE_DIGIT_GAP * scale }]}>
       {value.split('').map((digit, index) => (
-        <SevenSegmentDigit key={index} value={digit} scale={scale} />
+        <SevenSegmentDigit
+          key={`${value}-${index}`}
+          value={digit}
+          scale={scale}
+          glow={glow}
+        />
       ))}
     </View>
   );
@@ -51,12 +64,14 @@ function ModuleHalf({
   half,
   width,
   height,
+  glow = true,
 }: {
   value: string;
   scale: number;
   half: 'top' | 'bottom';
   width: number;
   height: number;
+  glow?: boolean;
 }) {
   const halfHeight = height / 2;
   const isTop = half === 'top';
@@ -96,7 +111,7 @@ function ModuleHalf({
           ]}
         >
           <View style={[styles.moduleValueFull, { width, height }]}>
-            <ModuleValue value={value} scale={scale} />
+            <ModuleValue value={value} scale={scale} glow={glow} />
           </View>
         </View>
       </View>
@@ -117,24 +132,33 @@ function FlippingValueModule({
   const [isFlipping, setIsFlipping] = useState(false);
   const [layout, setLayout] = useState({ width: 0, height: 0 });
   const progress = useRef(new Animated.Value(1)).current;
+  const displayValueRef = useRef(value);
+  const animationRunId = useRef(0);
+  const activeAnimation = useRef<Animated.CompositeAnimation | null>(null);
 
   useEffect(() => {
-    if (value === displayValue) {
+    if (value === displayValueRef.current) {
       return;
     }
 
+    const runId = animationRunId.current + 1;
+    animationRunId.current = runId;
+    activeAnimation.current?.stop();
     setNextValue(value);
     setIsPreparing(true);
     progress.setValue(0);
     const frameId = requestAnimationFrame(() => {
       setIsFlipping(true);
-      Animated.timing(progress, {
+      const animation = Animated.timing(progress, {
         toValue: 1,
         duration: FLIP_DURATION_MS,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }).start(({ finished }) => {
-        if (finished) {
+      });
+      activeAnimation.current = animation;
+      animation.start(({ finished }) => {
+        if (finished && runId === animationRunId.current) {
+          displayValueRef.current = value;
           setDisplayValue(value);
           setIsFlipping(false);
           setIsPreparing(false);
@@ -142,8 +166,14 @@ function FlippingValueModule({
       });
     });
 
-    return () => cancelAnimationFrame(frameId);
-  }, [displayValue, progress, value]);
+    return () => {
+      cancelAnimationFrame(frameId);
+      if (runId === animationRunId.current) {
+        activeAnimation.current?.stop();
+        activeAnimation.current = null;
+      }
+    };
+  }, [progress, value]);
 
   const handleLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
@@ -202,7 +232,7 @@ function FlippingValueModule({
       {(isPreparing || isFlipping) && canFlip ? (
         <>
           <View style={styles.moduleValueFull}>
-            <ModuleValue value={nextValue} scale={scale} />
+            <ModuleValue value={nextValue} scale={scale} glow={false} />
           </View>
           <Animated.View style={[styles.flipLayer, oldBottomStyle]}>
             <ModuleHalf
@@ -211,6 +241,7 @@ function FlippingValueModule({
               half="bottom"
               width={layout.width}
               height={layout.height}
+              glow={false}
             />
           </Animated.View>
           <Animated.View style={[styles.flipLayer, oldTopFlipStyle]}>
@@ -220,6 +251,7 @@ function FlippingValueModule({
               half="top"
               width={layout.width}
               height={layout.height}
+              glow={false}
             />
             <Animated.View
               pointerEvents="none"
@@ -366,11 +398,6 @@ const styles = StyleSheet.create({
     left: 0,
     overflow: 'hidden',
     backfaceVisibility: 'hidden',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.42,
-    shadowRadius: 5,
-    elevation: 7,
   },
   moduleHalfSurface: {
     overflow: 'hidden',

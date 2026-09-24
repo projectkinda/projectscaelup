@@ -1,4 +1,4 @@
-import React, { useMemo, useReducer, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -20,18 +20,12 @@ type TimeModuleProps = {
   onChange: (value: number) => void;
 };
 
-// Base (unscaled) dimensions the digit reel geometry was tuned against.
 const BASE_MODULE_HEIGHT = 132;
 const BASE_ROW_HEIGHT = 64;
 const BASE_DIGIT_GAP = 8;
 const WINDOW_RADIUS = 6;
 const PERSPECTIVE = 420;
 
-// Rows are fully hidden at rest (|distance| >= 1) and only curl into view,
-// like the surface of a barrel, as they approach the centre while dragging.
-// The opacity/scale curves fall off steeply near the centre so only one
-// row ever reads as "in focus" at a time, instead of two overlapping
-// equally-visible digits mid-drag.
 const CURVE_RANGE = [-1, -0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1];
 const ROTATE_OUTPUT = [
   '68deg',
@@ -48,6 +42,7 @@ const SCALE_OUTPUT = [0.5, 0.58, 0.68, 0.85, 1, 0.85, 0.68, 0.58, 0.5];
 const OPACITY_OUTPUT = [0, 0.03, 0.14, 0.5, 1, 0.5, 0.14, 0.03, 0];
 const SETTLE_STEP_THRESHOLD = 0.18;
 const SETTLE_VELOCITY_THRESHOLD = 220;
+const MIN_RAW_STEPS_FOR_FLING = 0.03;
 
 function wrap(value: number, max: number, step: number) {
   const optionCount = Math.floor(max / step) + 1;
@@ -62,14 +57,16 @@ function getSettledSteps(rawSteps: number, velocityY: number) {
 
   if (
     rawSteps >= SETTLE_STEP_THRESHOLD ||
-    velocityY <= -SETTLE_VELOCITY_THRESHOLD
+    (rawSteps > MIN_RAW_STEPS_FOR_FLING &&
+      velocityY <= -SETTLE_VELOCITY_THRESHOLD)
   ) {
     return 1;
   }
 
   if (
     rawSteps <= -SETTLE_STEP_THRESHOLD ||
-    velocityY >= SETTLE_VELOCITY_THRESHOLD
+    (rawSteps < -MIN_RAW_STEPS_FOR_FLING &&
+      velocityY >= SETTLE_VELOCITY_THRESHOLD)
   ) {
     return -1;
   }
@@ -91,38 +88,24 @@ export function TimeModule({
   const centerOffset = (moduleHeight - rowHeight) / 2;
   const maxTranslate = WINDOW_RADIUS * rowHeight;
 
-  const reelBase = useRef(value);
-  const settling = useRef(false);
+  const [displayValue, setDisplayValue] = useState(value);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragBase = useRef(value);
   const pendingValue = useRef<number | null>(null);
-  const settleRunId = useRef(0);
   const translateY = useRef(new Animated.Value(0)).current;
-  const [, forceRender] = useReducer(n => n + 1, 0);
 
-  // Keep the reel's rest state in sync with externally driven value changes
-  // (e.g. accessibility increment/decrement), but not while a release
-  // animation is settling the reel onto its own final value.
-  if (!settling.current) {
+  useEffect(() => {
     if (pendingValue.current !== null) {
       if (Object.is(value, pendingValue.current)) {
         pendingValue.current = null;
       }
-    } else if (!Object.is(reelBase.current, value)) {
-      reelBase.current = value;
-      translateY.setValue(0);
+      return;
     }
-  }
 
-  const adjust = (direction: number) => {
-    const nextValue = wrap(value + direction * step, max, step);
-    settleRunId.current += 1;
-    settling.current = false;
-    pendingValue.current = nextValue;
-    reelBase.current = nextValue;
-    translateY.stopAnimation();
-    translateY.setValue(0);
-    forceRender();
-    onChange(nextValue);
-  };
+    if (!isDragging && !Object.is(displayValue, value)) {
+      setDisplayValue(value);
+    }
+  }, [displayValue, isDragging, value]);
 
   const panGesture = useMemo(
     () =>
@@ -130,11 +113,10 @@ export function TimeModule({
         .minDistance(4)
         .runOnJS(true)
         .onBegin(() => {
-          settleRunId.current += 1;
-          settling.current = false;
-          pendingValue.current = null;
+          dragBase.current = displayValue;
           translateY.stopAnimation();
           translateY.setValue(0);
+          setIsDragging(true);
         })
         .onUpdate(event => {
           const clamped = Math.max(
@@ -149,49 +131,39 @@ export function TimeModule({
             Math.min(maxTranslate, event.translationY),
           );
           const nearest = getSettledSteps(-clamped / rowHeight, event.velocityY);
-          const finalValue = wrap(
-            reelBase.current + nearest * step,
-            max,
-            step,
-          );
-          const runId = settleRunId.current + 1;
-          settleRunId.current = runId;
-          pendingValue.current = nearest === 0 ? null : finalValue;
+          const finalValue = wrap(dragBase.current + nearest * step, max, step);
 
-          if (nearest !== 0) {
-            settling.current = false;
-            reelBase.current = finalValue;
-            translateY.stopAnimation();
-            translateY.setValue(0);
-            forceRender();
-            onChange(finalValue);
-            return;
-          }
+          translateY.stopAnimation();
+          setDisplayValue(finalValue);
+          setIsDragging(false);
 
-          settling.current = true;
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: false,
-            friction: 10,
-            tension: 120,
-          }).start(() => {
-            if (runId !== settleRunId.current) {
-              return;
-            }
-            translateY.setValue(0);
-            settling.current = false;
-            forceRender();
-          });
-
-          if (nearest === 0) {
+          if (!Object.is(finalValue, value)) {
+            pendingValue.current = finalValue;
             onChange(finalValue);
           }
+        })
+        .onFinalize(() => {
+          translateY.stopAnimation();
+          setIsDragging(false);
         }),
-    [max, maxTranslate, onChange, rowHeight, step],
+    [
+      displayValue,
+      max,
+      maxTranslate,
+      onChange,
+      rowHeight,
+      step,
+      translateY,
+      value,
+    ],
   );
 
   const handleAccessibilityAction = (event: AccessibilityActionEvent) => {
-    adjust(event.nativeEvent.actionName === 'increment' ? 1 : -1);
+    const direction = event.nativeEvent.actionName === 'increment' ? 1 : -1;
+    const nextValue = wrap(displayValue + direction * step, max, step);
+    setDisplayValue(nextValue);
+    pendingValue.current = nextValue;
+    onChange(nextValue);
   };
 
   const offsets = useMemo(() => {
@@ -202,12 +174,6 @@ export function TimeModule({
     return list;
   }, []);
 
-  // Build the animated transform graph for each row once per rowHeight, and
-  // reuse it across re-renders. Recreating these interpolated nodes on every
-  // value-changing render (as forceRender triggers) forces the native
-  // Animated graph to be torn down and rebuilt on Android, which can paint
-  // a stale, partially-faded row for a frame before the new graph attaches -
-  // visible as the previous digit briefly flashing back.
   const rowAnimations = useMemo(
     () =>
       offsets.map(k => {
@@ -237,7 +203,7 @@ export function TimeModule({
     [offsets, rowHeight, translateY],
   );
 
-  const digits = value.toString().padStart(2, '0').split('');
+  const digits = displayValue.toString().padStart(2, '0').split('');
 
   return (
     <GestureDetector gesture={panGesture}>
@@ -251,10 +217,18 @@ export function TimeModule({
         style={[styles.module, { height: moduleHeight }]}
       >
         <Animated.View
-          style={[styles.reel, { transform: [{ translateY }] }]}
+          pointerEvents={isDragging ? 'auto' : 'none'}
+          style={[
+            styles.reel,
+            styles.reelLayer,
+            {
+              opacity: isDragging ? 1 : 0,
+              transform: [{ translateY }],
+            },
+          ]}
         >
           {rowAnimations.map(({ k, rotateX, rowScale, opacity }) => {
-            const rowValue = wrap(reelBase.current + k * step, max, step);
+            const rowValue = wrap(dragBase.current + k * step, max, step);
             const rowDigits = rowValue.toString().padStart(2, '0').split('');
 
             return (
@@ -275,12 +249,35 @@ export function TimeModule({
                   },
                 ]}
               >
-                <SevenSegmentDigit value={rowDigits[0]} scale={scale} />
-                <SevenSegmentDigit value={rowDigits[1]} scale={scale} />
+                <SevenSegmentDigit
+                  value={rowDigits[0]}
+                  scale={scale}
+                  glow={false}
+                />
+                <SevenSegmentDigit
+                  value={rowDigits[1]}
+                  scale={scale}
+                  glow={false}
+                />
               </Animated.View>
             );
           })}
         </Animated.View>
+
+        {!isDragging ? (
+          <View style={[styles.staticValue, { gap: digitGap }]}>
+            <SevenSegmentDigit
+              key={`${displayValue}-tens`}
+              value={digits[0]}
+              scale={scale}
+            />
+            <SevenSegmentDigit
+              key={`${displayValue}-ones`}
+              value={digits[1]}
+              scale={scale}
+            />
+          </View>
+        ) : null}
         <Text style={styles.hiddenValue}>{digits.join('')}</Text>
       </View>
     </GestureDetector>
@@ -309,10 +306,25 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
+  reelLayer: {
+    zIndex: 1,
+  },
   row: {
     position: 'absolute',
     left: 0,
     right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  staticValue: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 2,
+    backgroundColor: colors.module,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
