@@ -17,9 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PlayIcon from '../assets/icons/play.svg';
 import { BottomNavigation } from '../components/BottomNavigation';
 import { RunningTimerDisplay } from '../components/RunningTimerDisplay';
-import { SessionCompletePopup } from '../components/SessionCompletePopup';
 import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
-import { TallyCard, type TallyMarkPosition } from '../components/TallyCard';
+import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { HOME_MODES } from '../domain/sessionModes';
@@ -31,9 +30,16 @@ import {
   voidSession,
 } from '../domain/sessionHistory';
 import { PreSessionReadinessScreen } from './PreSessionReadinessScreen';
+import { PostSessionSummaryScreen } from './PostSessionSummaryScreen';
 import { colors, layout } from '../theme/tokens';
 
 const TALLY_GRID_SIZE = 20;
+
+type CompletionSummary = {
+  previousSessionCount: number;
+  sessionCount: number;
+  distractionCount: number;
+};
 
 function ActiveSessionCameraPreview({
   sessionId,
@@ -110,7 +116,8 @@ export function HomeScreen({
   const [revealIndex, setRevealIndex] = useState<number | null>(null);
   const [revealLitCount, setRevealLitCount] = useState(0);
   const [revealArmed, setRevealArmed] = useState(false);
-  const [popupTarget, setPopupTarget] = useState<TallyMarkPosition | null>(null);
+  const [completionSummary, setCompletionSummary] =
+    useState<CompletionSummary | null>(null);
   const tabProgress = useRef(new Animated.Value(0)).current;
   const contentProgress = useRef(new Animated.Value(1)).current;
 
@@ -273,18 +280,24 @@ export function HomeScreen({
 
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;
+    let distractionCount = 0;
     try {
       const completed = await completeSession(sessionId);
       nextCount = completed.sessionCount;
+      distractionCount = completed.distractionCount;
     } catch (error) {
       console.warn('Failed to complete session in database:', error);
     }
     setSessionCount(nextCount);
+    setCompletionSummary({
+      previousSessionCount: previousCount,
+      sessionCount: nextCount,
+      distractionCount,
+    });
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
     if (groupIndex < TALLY_GRID_SIZE) {
       const litCount = nextCount - groupIndex * TALLY_GROUP_SIZE;
-      setPopupTarget(null);
       setRevealArmed(false);
       setRevealLitCount(litCount);
       setRevealIndex(groupIndex);
@@ -307,6 +320,21 @@ export function HomeScreen({
       },
     ],
   };
+
+  if (completionSummary) {
+    return (
+      <PostSessionSummaryScreen
+        previousSessionCount={completionSummary.previousSessionCount}
+        sessionCount={completionSummary.sessionCount}
+        distractionCount={completionSummary.distractionCount}
+        onContinue={() => {
+          setCompletionSummary(null);
+          setRevealArmed(false);
+          setRevealIndex(null);
+        }}
+      />
+    );
+  }
 
   if (pendingDurationSeconds !== null && remainingSeconds === null) {
     return (
@@ -491,19 +519,11 @@ export function HomeScreen({
               revealIndex={revealIndex}
               revealLitCount={revealLitCount}
               revealArmed={revealArmed}
-              onRevealLayout={setPopupTarget}
             />
           </View>
         </View>
       </ScrollView>
       <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
-      {popupTarget && !revealArmed ? (
-        <SessionCompletePopup
-          target={popupTarget}
-          litCount={revealLitCount}
-          onLanded={() => setRevealArmed(true)}
-        />
-      ) : null}
     </View>
   );
 }

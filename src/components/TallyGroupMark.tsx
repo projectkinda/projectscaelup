@@ -13,13 +13,26 @@ type TallyGroupMarkProps = {
   litCount: number;
   width: number;
   height: number;
+  litColor?: string;
+  unlitColor?: string;
 };
 
-export function TallyGroupMark({ litCount, width, height }: TallyGroupMarkProps) {
+export function TallyGroupMark({
+  litCount,
+  width,
+  height,
+  litColor = LIT_COLOR,
+  unlitColor,
+}: TallyGroupMarkProps) {
   return (
     <Svg width={width} height={height} viewBox={TALLY_STROKE_VIEWBOX}>
+      {unlitColor
+        ? TALLY_STROKE_PATHS.slice(litCount).map((d, index) => (
+            <Path key={`unlit-${index}`} d={d} fill={unlitColor} />
+          ))
+        : null}
       {TALLY_STROKE_PATHS.slice(0, litCount).map((d, index) => (
-        <Path key={index} d={d} fill={LIT_COLOR} />
+        <Path key={`lit-${index}`} d={d} fill={litColor} />
       ))}
     </Svg>
   );
@@ -39,18 +52,34 @@ export function TallyGroupMarkTransition({
   progress,
   width,
   height,
+  litColor,
+  unlitColor,
 }: {
   fromLitCount: number;
   toLitCount: number;
   progress: Animated.Value;
   width: number;
   height: number;
+  litColor?: string;
+  unlitColor?: string;
 }) {
   return (
     <Animated.View style={{ width, height }}>
-      <TallyGroupMark litCount={fromLitCount} width={width} height={height} />
+      <TallyGroupMark
+        litCount={fromLitCount}
+        width={width}
+        height={height}
+        litColor={litColor}
+        unlitColor={unlitColor}
+      />
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: progress }]}>
-        <TallyGroupMark litCount={toLitCount} width={width} height={height} />
+        <TallyGroupMark
+          litCount={toLitCount}
+          width={width}
+          height={height}
+          litColor={litColor}
+          unlitColor={unlitColor}
+        />
       </Animated.View>
     </Animated.View>
   );
