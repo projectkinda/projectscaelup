@@ -317,11 +317,20 @@ export function HomeScreen({
     }
 
     if (isPaused) {
+      if (activeSessionId !== null) {
+        sessionMonitorUnsubscribe.current?.();
+        sessionMonitorUnsubscribe.current = startSessionMonitor(
+          activeSessionId,
+          activeMode,
+        );
+      }
       sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
       setIsPaused(false);
       return;
     }
 
+    sessionMonitorUnsubscribe.current?.();
+    sessionMonitorUnsubscribe.current = null;
     setIsPaused(true);
   };
 
