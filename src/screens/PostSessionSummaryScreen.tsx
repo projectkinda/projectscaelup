@@ -29,6 +29,8 @@ type PostSessionSummaryScreenProps = {
   previousSessionCount: number;
   sessionCount: number;
   distractionCount: number;
+  lockdownMinutes: number;
+  touchedApps: string[];
   onContinue: () => void;
 };
 
@@ -36,6 +38,8 @@ export function PostSessionSummaryScreen({
   previousSessionCount,
   sessionCount,
   distractionCount,
+  lockdownMinutes,
+  touchedApps,
   onContinue,
 }: PostSessionSummaryScreenProps) {
   const insets = useSafeAreaInsets();
@@ -177,6 +181,20 @@ export function PostSessionSummaryScreen({
                 : `${distractionCount} distractions logged`}
             </Text>
           </LinearGradient>
+
+          {touchedApps.length > 0 ? (
+            <LinearGradient
+              colors={['#333333', '#141414']}
+              style={styles.lockdownPanel}
+            >
+              <Text style={styles.lockdownTitle}>
+                {lockdownMinutes} min lockdown
+              </Text>
+              <Text style={styles.flaggedAppsText} numberOfLines={2}>
+                {touchedApps.join(', ')}
+              </Text>
+            </LinearGradient>
+          ) : null}
         </View>
 
         <Pressable
@@ -328,6 +346,32 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 16,
     lineHeight: 22,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  lockdownPanel: {
+    width: '100%',
+    minHeight: 92,
+    borderRadius: 24,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  lockdownTitle: {
+    color: colors.mutedRust,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  flaggedAppsText: {
+    marginTop: 7,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '500',
     textAlign: 'center',
   },

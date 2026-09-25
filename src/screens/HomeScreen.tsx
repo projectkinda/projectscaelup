@@ -24,6 +24,7 @@ import { TimerSelector } from '../components/TimerSelector';
 import { loadAvailableModes } from '../data/modesRepository';
 import { isPaidUser } from '../domain/paywall';
 import { PresenceModule } from '../domain/presenceModule';
+import { startSessionMonitor } from '../domain/sessionMonitor';
 import { getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
@@ -43,6 +44,8 @@ type CompletionSummary = {
   previousSessionCount: number;
   sessionCount: number;
   distractionCount: number;
+  lockdownMinutes: number;
+  touchedApps: string[];
 };
 
 function ActiveSessionCameraPreview({
@@ -131,6 +134,7 @@ export function HomeScreen({
   const tabProgress = useRef(new Animated.Value(0)).current;
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
+  const sessionMonitorUnsubscribe = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -255,6 +259,11 @@ export function HomeScreen({
     }
 
     setActiveSessionId(sessionId);
+    sessionMonitorUnsubscribe.current?.();
+    sessionMonitorUnsubscribe.current = startSessionMonitor(
+      sessionId,
+      activeMode,
+    );
     sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
     setRemainingSeconds(durationSeconds);
     setCurrentSessionDurationSeconds(durationSeconds);
@@ -322,6 +331,8 @@ export function HomeScreen({
   };
 
   const resetActiveSessionState = async () => {
+    sessionMonitorUnsubscribe.current?.();
+    sessionMonitorUnsubscribe.current = null;
     await PresenceModule.stop();
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;
@@ -359,11 +370,15 @@ export function HomeScreen({
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;
     let distractionCount = 0;
+    let lockdownMinutes = 0;
+    let touchedApps: string[] = [];
     let nextShowingUpDays = showingUpDays || 1;
     try {
       const completed = await completeSession(sessionId);
       nextCount = completed.sessionCount;
       distractionCount = completed.distractionCount;
+      lockdownMinutes = completed.lockdownMinutes;
+      touchedApps = completed.touchedApps;
       nextShowingUpDays = completed.showingUpDays;
     } catch (error) {
       console.warn('Failed to complete session in database:', error);
@@ -374,6 +389,8 @@ export function HomeScreen({
       previousSessionCount: previousCount,
       sessionCount: nextCount,
       distractionCount,
+      lockdownMinutes,
+      touchedApps,
     });
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
@@ -412,6 +429,8 @@ export function HomeScreen({
         previousSessionCount={completionSummary.previousSessionCount}
         sessionCount={completionSummary.sessionCount}
         distractionCount={completionSummary.distractionCount}
+        lockdownMinutes={completionSummary.lockdownMinutes}
+        touchedApps={completionSummary.touchedApps}
         onContinue={() => {
           setCompletionSummary(null);
           setRevealArmed(false);
