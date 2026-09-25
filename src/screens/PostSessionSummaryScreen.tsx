@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -112,96 +113,97 @@ export function PostSessionSummaryScreen({
 
   return (
     <View style={styles.screen}>
-      <Animated.View
-        style={[
-          styles.content,
-          introStyle,
-          {
-            paddingTop: contentTop,
-            paddingBottom: insets.bottom + 36,
-          },
-        ]}
-      >
-        <View style={styles.centerStack}>
-          <View style={styles.heroMark}>
-            <HeroRevealMark
-              revealProgress={revealProgress}
-              fromLitCount={fromLitCount}
-              toLitCount={toLitCount}
-            />
+      <Animated.View style={[styles.content, introStyle]}>
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingTop: contentTop }]}
+          alwaysBounceVertical={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.centerStack}>
+            <View style={styles.heroMark}>
+              <HeroRevealMark
+                revealProgress={revealProgress}
+                fromLitCount={fromLitCount}
+                toLitCount={toLitCount}
+              />
+            </View>
+
+            <View style={styles.copy}>
+              <Text style={styles.summaryLine}>
+                {completedSet ? 'Five sessions, marked.' : 'Session marked.'}
+              </Text>
+              <Text style={styles.summaryLine}>
+                {completedSet
+                  ? "This week's set is complete."
+                  : `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} total.`}
+              </Text>
+            </View>
           </View>
 
-          <View style={styles.copy}>
-            <Text style={styles.summaryLine}>
-              {completedSet ? 'Five sessions, marked.' : 'Session marked.'}
-            </Text>
-            <Text style={styles.summaryLine}>
-              {completedSet
-                ? "This week's set is complete."
-                : `${sessionCount} sessions total.`}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.panelStack}>
-          <LinearGradient
-            colors={['#333333', '#141414']}
-            style={styles.tallyStrip}
-          >
-            {stripGroups.map(group =>
-              group.groupIndex === currentGroupIndex ? (
-                <TallyGroupMarkTransition
-                  key={group.key}
-                  fromLitCount={group.previousProgress}
-                  toLitCount={group.currentProgress}
-                  progress={revealProgress}
-                  width={GROUP_MARK_WIDTH}
-                  height={GROUP_MARK_HEIGHT}
-                  litColor={colors.white}
-                />
-              ) : (
-                <TallyGroupMark
-                  key={group.key}
-                  litCount={group.currentProgress}
-                  width={GROUP_MARK_WIDTH}
-                  height={GROUP_MARK_HEIGHT}
-                  litColor={colors.white}
-                />
-              ),
-            )}
-          </LinearGradient>
-
-          <LinearGradient
-            colors={['#333333', '#141414']}
-            style={styles.distractionPanel}
-          >
-            <Text style={styles.distractionText}>
-              {distractionCount === 0
-                ? 'No distractions logged'
-                : `${distractionCount} distractions logged`}
-            </Text>
-          </LinearGradient>
-
-          {touchedApps.length > 0 ? (
+          <View style={styles.panelStack}>
             <LinearGradient
               colors={['#333333', '#141414']}
-              style={styles.lockdownPanel}
+              style={styles.tallyStrip}
             >
-              <Text style={styles.lockdownTitle}>
-                {lockdownMinutes} min lockdown
-              </Text>
-              <Text style={styles.flaggedAppsText} numberOfLines={2}>
-                {touchedApps.join(', ')}
+              {stripGroups.map(group =>
+                group.groupIndex === currentGroupIndex ? (
+                  <TallyGroupMarkTransition
+                    key={group.key}
+                    fromLitCount={group.previousProgress}
+                    toLitCount={group.currentProgress}
+                    progress={revealProgress}
+                    width={GROUP_MARK_WIDTH}
+                    height={GROUP_MARK_HEIGHT}
+                    litColor={colors.white}
+                  />
+                ) : (
+                  <TallyGroupMark
+                    key={group.key}
+                    litCount={group.currentProgress}
+                    width={GROUP_MARK_WIDTH}
+                    height={GROUP_MARK_HEIGHT}
+                    litColor={colors.white}
+                  />
+                ),
+              )}
+            </LinearGradient>
+
+            <LinearGradient
+              colors={['#333333', '#141414']}
+              style={styles.distractionPanel}
+            >
+              <Text style={styles.distractionText}>
+                {distractionCount === 0
+                  ? 'No distractions logged'
+                  : `${distractionCount} ${distractionCount === 1 ? 'distraction' : 'distractions'} logged`}
               </Text>
             </LinearGradient>
-          ) : null}
-        </View>
+
+            {touchedApps.length > 0 ? (
+              <LinearGradient
+                colors={['#333333', '#141414']}
+                style={styles.lockdownPanel}
+              >
+                <Text style={styles.lockdownTitle}>
+                  {lockdownMinutes} min lockdown
+                </Text>
+                <Text style={styles.flaggedAppsText} numberOfLines={2}>
+                  {touchedApps.join(', ')}
+                </Text>
+              </LinearGradient>
+            ) : null}
+          </View>
+        </ScrollView>
 
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Continue"
           onPress={onContinue}
-          style={({ pressed }) => [styles.continueShell, pressed && styles.pressed]}
+          style={({ pressed }) => [
+            styles.continueShell,
+            { marginBottom: insets.bottom + 36 },
+            pressed && styles.pressed,
+          ]}
         >
           <LinearGradient
             colors={['#333333', '#141414']}
@@ -274,7 +276,12 @@ const styles = StyleSheet.create({
     maxWidth: layout.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: layout.horizontalPadding,
-    justifyContent: 'space-between',
+  },
+  // The summary scrolls on short screens (iPhone SE) while Continue stays
+  // pinned below it; on taller screens nothing scrolls.
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 28,
   },
   centerStack: {
     alignItems: 'center',
@@ -310,6 +317,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   panelStack: {
+    // Auto margins centre the panels in the space left under the hero.
+    marginVertical: 'auto',
+    paddingTop: 28,
     width: '100%',
     gap: 16,
   },

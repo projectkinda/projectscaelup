@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -77,6 +77,7 @@ function ActiveSessionCameraPreview({
           facing="front"
           mirror
           mode="video"
+          mute
           style={styles.cameraPreviewFeed}
         />
       ) : null}
@@ -85,6 +86,8 @@ function ActiveSessionCameraPreview({
 }
 
 type HomeScreenProps = {
+  /** False while another tab is shown; Home stays mounted so a running session survives. */
+  isActive: boolean;
   sessionMessage?: string | null;
   onNavigate: (screen: string) => void;
   onStartSession: (details: {
@@ -97,6 +100,7 @@ type HomeScreenProps = {
 };
 
 export function HomeScreen({
+  isActive,
   sessionMessage,
   onNavigate,
   onStartSession,
@@ -114,10 +118,6 @@ export function HomeScreen({
   >(null);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
-  const [currentSessionDurationSeconds, setCurrentSessionDurationSeconds] =
-    useState(0);
-  const [currentSessionStartedAt, setCurrentSessionStartedAt] =
-    useState<Date | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
   const [isPreparingPresence, setIsPreparingPresence] = useState(false);
@@ -138,7 +138,12 @@ export function HomeScreen({
     getShowingUpDayCount().then(setShowingUpDays);
   }, []);
 
+  // Reload whenever Home comes back into view so modes edited in Settings show up.
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     let cancelled = false;
 
     loadAvailableModes(paidUser).then(modes => {
@@ -150,7 +155,7 @@ export function HomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [fallbackModes, paidUser]);
+  }, [fallbackModes, isActive, paidUser]);
 
   useEffect(() => {
     if (!homeModes.some(mode => mode.id === activeModeId)) {
@@ -217,6 +222,14 @@ export function HomeScreen({
     return () => clearInterval(intervalId);
   }, [awaitingEndChoice, hasActiveSession, isPaused]);
 
+  // The end-of-session choice lives on Home, so bring the user back if the
+  // timer runs out while they are on another tab.
+  useEffect(() => {
+    if (awaitingEndChoice && !isActive) {
+      onNavigate('home');
+    }
+  }, [awaitingEndChoice, isActive, onNavigate]);
+
   const beginActiveSession = async (durationSeconds: number) => {
     const startedAt = new Date();
     let sessionId: number | null = null;
@@ -251,8 +264,6 @@ export function HomeScreen({
     );
     sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
     setRemainingSeconds(durationSeconds);
-    setCurrentSessionDurationSeconds(durationSeconds);
-    setCurrentSessionStartedAt(startedAt);
     setIsPaused(false);
     setPendingDurationSeconds(null);
   };
@@ -292,7 +303,6 @@ export function HomeScreen({
       sessionEndTimeMs.current = Date.now() + nextRemainingSeconds * 1000;
       return nextRemainingSeconds;
     });
-    setCurrentSessionDurationSeconds(current => current + 5 * 60);
     setIsPaused(false);
   };
 
@@ -331,8 +341,6 @@ export function HomeScreen({
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;
     setActiveSessionId(null);
-    setCurrentSessionDurationSeconds(0);
-    setCurrentSessionStartedAt(null);
     setIsPaused(false);
     setAwaitingEndChoice(false);
     setPreparedModeName(null);
@@ -476,7 +484,7 @@ export function HomeScreen({
               ]}
             >
               <View style={styles.pauseButton}>
-                <PauseGlyph />
+                {isPaused ? <PlayIcon width={13} height={13} /> : <PauseGlyph />}
                 <Text style={styles.pauseLabel}>
                   {isPaused ? 'Resume' : 'Pause'}
                 </Text>

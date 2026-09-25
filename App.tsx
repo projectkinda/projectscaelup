@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StatusBar, StyleSheet } from 'react-native';
+import { StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -36,6 +36,17 @@ function App(): React.JSX.Element {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+        {/* Home stays mounted (hidden) so an active session keeps running across tabs. */}
+        <View style={[styles.root, activeScreen !== 'home' && styles.hidden]}>
+          <HomeScreen
+            isActive={activeScreen === 'home'}
+            sessionMessage={sessionMessage}
+            onNavigate={handleNavigate}
+            onStartSession={({ modeName, durationFormatted }) => {
+              setSessionMessage(`${modeName} - ${durationFormatted}`);
+            }}
+          />
+        </View>
         {activeScreen === 'paywall' ? (
           <PaywallStubScreen
             onDismiss={() => setActiveScreen(paywallReturnScreen)}
@@ -44,15 +55,7 @@ function App(): React.JSX.Element {
           <HistoryScreen onNavigate={handleNavigate} />
         ) : activeScreen === 'settings' ? (
           <SettingsScreen onNavigate={handleNavigate} />
-        ) : (
-          <HomeScreen
-            sessionMessage={sessionMessage}
-            onNavigate={handleNavigate}
-            onStartSession={({ modeName, durationFormatted }) => {
-              setSessionMessage(`${modeName} - ${durationFormatted}`);
-            }}
-          />
-        )}
+        ) : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -60,6 +63,7 @@ function App(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  hidden: { display: 'none' },
 });
 
 export default App;

@@ -1,6 +1,6 @@
 import { Camera, CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -10,7 +10,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -71,7 +70,7 @@ export function PreSessionReadinessScreen({
   onReady,
 }: PreSessionReadinessScreenProps) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const [previewHeight, setPreviewHeight] = useState(0);
   const [state, setState] = useState<ReadinessState>('checking-permission');
   const [canAskForPermission, setCanAskForPermission] = useState(true);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
@@ -222,10 +221,6 @@ export function PreSessionReadinessScreen({
     Linking.openSettings();
   };
 
-  const previewHeight = Math.max(
-    430,
-    Math.min(620, Math.round(windowHeight * 0.52)),
-  );
   const previewAnimatedStyle = {
     opacity: previewMotion.interpolate({
       inputRange: [0, 1],
@@ -275,11 +270,8 @@ export function PreSessionReadinessScreen({
         ]}
       >
         <Animated.View
-          style={[
-            styles.previewShell,
-            { height: previewHeight },
-            previewAnimatedStyle,
-          ]}
+          onLayout={event => setPreviewHeight(event.nativeEvent.layout.height)}
+          style={[styles.previewShell, previewAnimatedStyle]}
         >
           {showCamera ? (
             <CameraView
@@ -391,7 +383,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.horizontalPadding,
     justifyContent: 'flex-start',
   },
+  // Fills the space left above the details block so the Cancel action stays
+  // on screen on short devices (iPhone SE), capped for tall ones.
   previewShell: {
+    flex: 1,
+    maxHeight: 620,
     width: '100%',
     borderRadius: 28,
     borderWidth: 1,
