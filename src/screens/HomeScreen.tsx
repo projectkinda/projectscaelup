@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -108,7 +107,6 @@ export function HomeScreen({
   const fallbackModes = useMemo(() => getHomeModes(paidUser), [paidUser]);
   const [homeModes, setHomeModes] = useState(fallbackModes);
   const [activeModeId, setActiveModeId] = useState(fallbackModes[0].id);
-  const [tabWidth, setTabWidth] = useState(0);
   const [minutes, setMinutes] = useState(10);
   const [seconds, setSeconds] = useState(0);
   const [pendingDurationSeconds, setPendingDurationSeconds] = useState<
@@ -131,7 +129,6 @@ export function HomeScreen({
   const [revealArmed, setRevealArmed] = useState(false);
   const [completionSummary, setCompletionSummary] =
     useState<CompletionSummary | null>(null);
-  const tabProgress = useRef(new Animated.Value(0)).current;
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
   const sessionMonitorUnsubscribe = useRef<(() => void) | null>(null);
@@ -163,10 +160,6 @@ export function HomeScreen({
 
   const activeMode =
     homeModes.find(mode => mode.id === activeModeId) ?? homeModes[0];
-  const activeModeIndex = Math.max(
-    0,
-    homeModes.findIndex(mode => mode.id === activeMode.id),
-  );
   const topInsetPadding = insets.top + 27;
   const bottomInsetPadding = layout.bottomNavHeight + insets.bottom + 24;
   const availableContentHeight = Math.max(
@@ -184,21 +177,13 @@ export function HomeScreen({
   const hasActiveSession = remainingSeconds !== null;
 
   useEffect(() => {
-    Animated.spring(tabProgress, {
-      toValue: activeModeIndex,
-      useNativeDriver: true,
-      damping: 18,
-      stiffness: 220,
-      mass: 0.7,
-    }).start();
-
     contentProgress.setValue(0);
     Animated.timing(contentProgress, {
       toValue: 1,
       duration: 220,
       useNativeDriver: true,
     }).start();
-  }, [activeModeIndex, contentProgress, tabProgress]);
+  }, [activeMode.id, contentProgress]);
 
   useEffect(() => {
     if (!hasActiveSession || isPaused || awaitingEndChoice) {
@@ -411,15 +396,10 @@ export function HomeScreen({
     }
   };
 
-  const handleTabsLayout = (event: LayoutChangeEvent) => {
-    setTabWidth(event.nativeEvent.layout.width / homeModes.length);
-  };
-
   const handleMoreModes = () => {
     onNavigate('paywall');
   };
 
-  const tabTranslateX = Animated.multiply(tabProgress, tabWidth);
   const modeContentStyle = {
     opacity: contentProgress,
     transform: [
@@ -550,57 +530,52 @@ export function HomeScreen({
         <View
           style={[styles.content, { minHeight: availableContentHeight }]}
         >
-          <View
-            accessibilityRole="tablist"
-            onLayout={handleTabsLayout}
-            style={styles.tabs}
-          >
-            {homeModes.map(mode => {
-              const active = mode.id === activeModeId;
-              return (
-                <Pressable
-                  key={mode.id}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => setActiveModeId(mode.id)}
-                  style={styles.tab}
-                >
-                  <Text
-                    style={[styles.tabLabel, active && styles.activeTabLabel]}
-                  >
-                    {mode.tabLabel}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {tabWidth > 0 ? (
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  styles.activeIndicatorTrack,
-                  {
-                    width: tabWidth,
-                    transform: [{ translateX: tabTranslateX }],
-                  },
+          <View accessibilityRole="tablist" style={styles.modeBar}>
+            {!paidUser ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="More modes available"
+                onPress={handleMoreModes}
+                style={({ pressed }) => [
+                  styles.moreModesButton,
+                  pressed && styles.textPressed,
                 ]}
               >
-                <View style={styles.activeIndicator} />
-              </Animated.View>
+                <Text style={styles.moreModesIcon}>+</Text>
+              </Pressable>
             ) : null}
-          </View>
-          {!paidUser ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="More modes available"
-              onPress={handleMoreModes}
-              style={({ pressed }) => [
-                styles.moreModesLink,
-                pressed && styles.textPressed,
-              ]}
+            <ScrollView
+              horizontal
+              bounces={false}
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabsContent}
+              style={styles.tabsScroller}
             >
-              <Text style={styles.moreModesText}>More modes available</Text>
-            </Pressable>
-          ) : null}
+              {homeModes.map(mode => {
+                const active = mode.id === activeModeId;
+                return (
+                  <Pressable
+                    key={mode.id}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: active }}
+                    onPress={() => setActiveModeId(mode.id)}
+                    style={styles.tab}
+                  >
+                    <Text
+                      style={[
+                        styles.tabLabel,
+                        active && styles.activeTabLabel,
+                      ]}
+                    >
+                      {mode.tabLabel}
+                    </Text>
+                    {active ? <View style={styles.activeIndicator} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
 
           <Animated.View
             style={[
@@ -713,18 +688,42 @@ const styles = StyleSheet.create({
     gap: 16,
     marginBottom: 4,
   },
-  tabs: {
+  modeBar: {
     width: '100%',
-    height: 44,
+    height: 52,
     flexDirection: 'row',
-    position: 'relative',
+    alignItems: 'center',
   },
-  tab: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: 12,
+  moreModesButton: {
+    width: 40,
+    height: 44,
+    flexShrink: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 4,
+  },
+  moreModesIcon: {
+    color: colors.ink,
+    fontSize: 29,
+    lineHeight: 32,
+    fontWeight: '500',
+  },
+  tabsScroller: {
+    flex: 1,
+    minWidth: 0,
+  },
+  tabsContent: {
+    minHeight: 52,
+    alignItems: 'center',
+    paddingRight: 8,
+  },
+  tab: {
+    minWidth: 108,
+    height: 52,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
   },
   tabLabel: {
     color: colors.muted,
@@ -733,28 +732,13 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   activeTabLabel: { color: colors.ink, fontWeight: '700' },
-  activeIndicatorTrack: {
-    position: 'absolute',
-    left: 0,
-    bottom: 1,
-    alignItems: 'center',
-  },
   activeIndicator: {
+    position: 'absolute',
+    bottom: 5,
     width: 28,
     height: 3,
     borderRadius: 2,
     backgroundColor: colors.ink,
-  },
-  moreModesLink: {
-    alignSelf: 'flex-end',
-    marginTop: 6,
-    paddingVertical: 4,
-  },
-  moreModesText: {
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '600',
   },
   adaptiveContent: {
     width: '100%',
