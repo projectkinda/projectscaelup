@@ -227,8 +227,9 @@ export async function completeSession(
     );
 
     const distractionCount = distractionCountRow?.count ?? 0;
-    const lockdownMinutes = Math.min(10 + 2 * distractionCount, 60);
     const touchedApps = touchedAppRows.map(row => row.app_identifier);
+    const lockdownMinutes =
+      touchedApps.length > 0 ? Math.min(10 + 2 * distractionCount, 60) : 0;
     const completedAt = new Date();
     const completedDate = dateKey(completedAt);
     const currentStreak = await getStreakRow();
@@ -285,7 +286,7 @@ export async function completeSession(
     console.warn('Could not completeSession in SQLite:', err);
     return {
       distractionCount: 0,
-      lockdownMinutes: 10,
+      lockdownMinutes: 0,
       sessionCount: 1,
       showingUpDays: 1,
       touchedApps: [],

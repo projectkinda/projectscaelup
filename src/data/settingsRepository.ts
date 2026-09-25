@@ -9,6 +9,7 @@ export type CustomMode = {
   id: string;
   name: string;
   gracePeriodSeconds: number;
+  frameWidthRange: [number, number];
 };
 
 type FlaggedAppRow = {
@@ -20,12 +21,22 @@ type CustomModeRow = {
   id: string;
   name: string;
   grace_period_seconds: number;
+  frame_width_min: number;
+  frame_width_max: number;
+};
+
+export type SaveCustomModeInput = {
+  id?: string;
+  name: string;
+  gracePeriodSeconds: number;
 };
 
 export type SettingsData = {
   flaggedApps: FlaggedApp[];
   customModes: CustomMode[];
 };
+
+export const FREE_TIER_APP_CAP = 3;
 
 export async function loadSettingsData({
   isPaidUser = false,
@@ -47,6 +58,7 @@ export async function loadSettingsData({
     ? await database.getAllAsync<CustomModeRow>(
         `
           SELECT id, name, grace_period_seconds
+               , frame_width_min, frame_width_max
           FROM custom_modes
           ORDER BY name ASC;
         `,
@@ -62,7 +74,89 @@ export async function loadSettingsData({
       id: row.id,
       name: row.name,
       gracePeriodSeconds: row.grace_period_seconds,
+      frameWidthRange: [row.frame_width_min, row.frame_width_max],
     })),
+  };
+}
+
+export async function canAddAnotherFlaggedApp(
+  paidUser: boolean,
+): Promise<boolean> {
+  if (paidUser) {
+    return true;
+  }
+
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  const countRow = await database.getFirstAsync<{ count: number }>(
+    `
+      SELECT COUNT(*) AS count
+      FROM flagged_apps;
+    `,
+  );
+
+  return (countRow?.count ?? 0) < FREE_TIER_APP_CAP;
+}
+
+function slugify(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32);
+
+  return slug || 'custom-mode';
+}
+
+function getFrameWidthRange(gracePeriodSeconds: number): [number, number] {
+  return gracePeriodSeconds >= 30 ? [5, 20] : [15, 40];
+}
+
+export async function saveCustomMode({
+  id,
+  name,
+  gracePeriodSeconds,
+}: SaveCustomModeInput): Promise<CustomMode> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  const trimmedName = name.trim().slice(0, 20);
+  const boundedGracePeriod = Math.max(3, Math.min(90, gracePeriodSeconds));
+  const frameWidthRange = getFrameWidthRange(boundedGracePeriod);
+  const modeId = id ?? `${slugify(trimmedName)}-${Date.now().toString(36)}`;
+
+  await database.runAsync(
+    `
+      INSERT INTO custom_modes (
+        id,
+        name,
+        grace_period_seconds,
+        frame_width_min,
+        frame_width_max
+      )
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        grace_period_seconds = excluded.grace_period_seconds,
+        frame_width_min = excluded.frame_width_min,
+        frame_width_max = excluded.frame_width_max;
+    `,
+    [
+      modeId,
+      trimmedName,
+      boundedGracePeriod,
+      frameWidthRange[0],
+      frameWidthRange[1],
+    ],
+  );
+
+  return {
+    id: modeId,
+    name: trimmedName,
+    gracePeriodSeconds: boundedGracePeriod,
+    frameWidthRange,
   };
 }
 

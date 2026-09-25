@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -21,7 +21,10 @@ import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
 import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
-import { HOME_MODES } from '../domain/sessionModes';
+import { loadAvailableModes } from '../data/modesRepository';
+import { isPaidUser } from '../domain/paywall';
+import { PresenceModule } from '../domain/presenceModule';
+import { getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
   formatDuration,
@@ -98,7 +101,10 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const [activeModeId, setActiveModeId] = useState(HOME_MODES[0].id);
+  const paidUser = isPaidUser();
+  const fallbackModes = useMemo(() => getHomeModes(paidUser), [paidUser]);
+  const [homeModes, setHomeModes] = useState(fallbackModes);
+  const [activeModeId, setActiveModeId] = useState(fallbackModes[0].id);
   const [tabWidth, setTabWidth] = useState(0);
   const [minutes, setMinutes] = useState(10);
   const [seconds, setSeconds] = useState(0);
@@ -113,6 +119,8 @@ export function HomeScreen({
     useState<Date | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
+  const [isPreparingPresence, setIsPreparingPresence] = useState(false);
+  const [preparedModeName, setPreparedModeName] = useState<string | null>(null);
   const [sessionCount, setSessionCount] = useState(0);
   const [showingUpDays, setShowingUpDays] = useState(0);
   const [revealIndex, setRevealIndex] = useState<number | null>(null);
@@ -129,11 +137,31 @@ export function HomeScreen({
     getShowingUpDayCount().then(setShowingUpDays);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    loadAvailableModes(paidUser).then(modes => {
+      if (!cancelled) {
+        setHomeModes(modes.length > 0 ? modes : fallbackModes);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackModes, paidUser]);
+
+  useEffect(() => {
+    if (!homeModes.some(mode => mode.id === activeModeId)) {
+      setActiveModeId(homeModes[0].id);
+    }
+  }, [activeModeId, homeModes]);
+
   const activeMode =
-    HOME_MODES.find(mode => mode.id === activeModeId) ?? HOME_MODES[0];
+    homeModes.find(mode => mode.id === activeModeId) ?? homeModes[0];
   const activeModeIndex = Math.max(
     0,
-    HOME_MODES.findIndex(mode => mode.id === activeMode.id),
+    homeModes.findIndex(mode => mode.id === activeMode.id),
   );
   const topInsetPadding = insets.top + 27;
   const bottomInsetPadding = layout.bottomNavHeight + insets.bottom + 24;
@@ -235,7 +263,7 @@ export function HomeScreen({
     setPendingDurationSeconds(null);
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
     const durationSeconds = minutes * 60 + seconds;
     if (durationSeconds === 0) {
       Alert.alert(
@@ -243,6 +271,21 @@ export function HomeScreen({
         'Swipe either timer module before starting.',
       );
       return;
+    }
+
+    setIsPreparingPresence(true);
+    try {
+      await PresenceModule.start(activeMode);
+      setPreparedModeName(activeMode.tabLabel);
+    } catch (error) {
+      console.warn('Failed to start presence module:', error);
+      Alert.alert(
+        'Camera setup failed',
+        'Unable to prepare the camera detector for this session.',
+      );
+      return;
+    } finally {
+      setIsPreparingPresence(false);
     }
 
     setPendingDurationSeconds(durationSeconds);
@@ -278,7 +321,8 @@ export function HomeScreen({
     handleCompleteSession();
   };
 
-  const resetActiveSessionState = () => {
+  const resetActiveSessionState = async () => {
+    await PresenceModule.stop();
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;
     setActiveSessionId(null);
@@ -286,11 +330,12 @@ export function HomeScreen({
     setCurrentSessionStartedAt(null);
     setIsPaused(false);
     setAwaitingEndChoice(false);
+    setPreparedModeName(null);
   };
 
   const handleCancelSession = async () => {
     const sessionId = activeSessionId;
-    resetActiveSessionState();
+    await resetActiveSessionState();
 
     if (sessionId !== null) {
       try {
@@ -305,11 +350,11 @@ export function HomeScreen({
     const sessionId = activeSessionId;
 
     if (sessionId === null) {
-      resetActiveSessionState();
+      await resetActiveSessionState();
       return;
     }
 
-    resetActiveSessionState();
+    await resetActiveSessionState();
 
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;
@@ -341,7 +386,11 @@ export function HomeScreen({
   };
 
   const handleTabsLayout = (event: LayoutChangeEvent) => {
-    setTabWidth(event.nativeEvent.layout.width / HOME_MODES.length);
+    setTabWidth(event.nativeEvent.layout.width / homeModes.length);
+  };
+
+  const handleMoreModes = () => {
+    onNavigate('paywall');
   };
 
   const tabTranslateX = Animated.multiply(tabProgress, tabWidth);
@@ -376,8 +425,12 @@ export function HomeScreen({
     return (
       <PreSessionReadinessScreen
         durationSeconds={pendingDurationSeconds}
-        modeName={activeMode.tabLabel}
-        onCancel={() => setPendingDurationSeconds(null)}
+        modeName={preparedModeName ?? activeMode.tabLabel}
+        onCancel={async () => {
+          await PresenceModule.stop();
+          setPreparedModeName(null);
+          setPendingDurationSeconds(null);
+        }}
         onReady={() => beginActiveSession(pendingDurationSeconds)}
       />
     );
@@ -474,7 +527,7 @@ export function HomeScreen({
             onLayout={handleTabsLayout}
             style={styles.tabs}
           >
-            {HOME_MODES.map(mode => {
+            {homeModes.map(mode => {
               const active = mode.id === activeModeId;
               return (
                 <Pressable
@@ -507,6 +560,19 @@ export function HomeScreen({
               </Animated.View>
             ) : null}
           </View>
+          {!paidUser ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="More modes available"
+              onPress={handleMoreModes}
+              style={({ pressed }) => [
+                styles.moreModesLink,
+                pressed && styles.textPressed,
+              ]}
+            >
+              <Text style={styles.moreModesText}>More modes available</Text>
+            </Pressable>
+          ) : null}
 
           <Animated.View
             style={[
@@ -525,6 +591,7 @@ export function HomeScreen({
               accessibilityRole="button"
               accessibilityLabel={`Start ${activeMode.name} session`}
               onPress={handleStart}
+              disabled={isPreparingPresence}
               style={({ pressed }) => [
                 styles.startShell,
                 pressed && styles.pressed,
@@ -536,7 +603,9 @@ export function HomeScreen({
                 style={styles.startButton}
               >
                 <PlayIcon width={16} height={16} />
-                <Text style={styles.startLabel}>Start</Text>
+                <Text style={styles.startLabel}>
+                  {isPreparingPresence ? 'Preparing...' : 'Start'}
+                </Text>
               </LinearGradient>
             </Pressable>
             {sessionMessage ? (
@@ -648,6 +717,17 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.ink,
   },
+  moreModesLink: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    paddingVertical: 4,
+  },
+  moreModesText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '600',
+  },
   adaptiveContent: {
     width: '100%',
     gap: 24,
@@ -721,6 +801,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
   },
   pressed: { opacity: 0.82, transform: [{ scale: 0.995 }] },
+  textPressed: { opacity: 0.55 },
   sessionMessage: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });
 

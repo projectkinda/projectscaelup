@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,7 +21,7 @@ import {
   type HistoryTrendPoint,
   loadHistoryData,
 } from '../data/historyRepository';
-import { BUILT_IN_MODES } from '../domain/sessionModes';
+import { isPaidUser } from '../domain/paywall';
 import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
 
@@ -38,15 +37,22 @@ const SESSION_PAGE_SIZE = 8;
 const HISTORY_BACKGROUND = colors.background;
 const MODE_ACCENTS: Record<string, string> = {
   'deep-work': colors.white,
-  'home-work': colors.rewardAmber,
+  study: colors.rewardAmber,
+  'creative-work': colors.muted,
   meditation: colors.mutedRust,
-  'exam-prep': colors.muted,
-  'creative-work': colors.white,
+  'exam-prep': colors.white,
   'online-class': colors.rewardAmber,
+  exercise: colors.mutedRust,
 };
+const CUSTOM_MODE_ACCENTS = [
+  colors.white,
+  colors.rewardAmber,
+  colors.mutedRust,
+  colors.muted,
+];
 
-function getModeAccent(modeId: string) {
-  return MODE_ACCENTS[modeId] ?? colors.ink;
+function getModeAccent(modeId: string, index = 0) {
+  return MODE_ACCENTS[modeId] ?? CUSTOM_MODE_ACCENTS[index % CUSTOM_MODE_ACCENTS.length];
 }
 
 function formatDate(value: string) {
@@ -265,28 +271,21 @@ function ModeBreakdown({
 }: {
   breakdown: HistoryModeBreakdown[];
 }) {
-  const countsByMode = new Map(
-    breakdown.map(item => [item.modeId, item.sessionCount]),
-  );
-
   return (
     <View style={styles.modeBreakdown}>
-      {BUILT_IN_MODES.map(mode => {
-        const sessionCount = countsByMode.get(mode.id) ?? 0;
-        return (
-          <View key={mode.id} style={styles.modePill}>
-            <View
-              style={[
-                styles.modeDot,
-                { backgroundColor: getModeAccent(mode.id) },
-              ]}
-            />
-            <Text style={styles.modePillText}>
-              {mode.name} - {sessionCount > 0 ? sessionCount : 'No data'}
-            </Text>
-          </View>
-        );
-      })}
+      {breakdown.map((item, index) => (
+        <View key={item.modeId} style={styles.modePill}>
+          <View
+            style={[
+              styles.modeDot,
+              { backgroundColor: getModeAccent(item.modeId, index) },
+            ]}
+          />
+          <Text style={styles.modePillText}>
+            {item.modeName} - {item.sessionCount > 0 ? item.sessionCount : 'No data'}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -421,7 +420,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
       setErrorMessage(null);
 
       try {
-        const data = await loadHistoryData({ isPaidUser: false });
+        const data = await loadHistoryData({ isPaidUser: isPaidUser() });
         if (!cancelled) {
           setHistory(data);
         }
@@ -458,11 +457,8 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
       return;
     }
 
-    if (history.hasHiddenHistory) {
-      Alert.alert(
-        'Upgrade to see your full history',
-        'Free history is limited to the last 14 days.',
-      );
+    if (!isPaidUser() && history.hasHiddenHistory) {
+      onNavigate('paywall');
       return;
     }
 

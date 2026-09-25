@@ -60,7 +60,14 @@ type ModeBreakdownRow = {
   session_count: number;
 };
 
-const modeNameById = new Map(BUILT_IN_MODES.map(mode => [mode.id, mode.name]));
+type CustomModeNameRow = {
+  id: string;
+  name: string;
+};
+
+const builtInModeNameById = new Map(
+  BUILT_IN_MODES.map(mode => [mode.id, mode.name]),
+);
 
 function subtractDays(date: Date, days: number) {
   const copy = new Date(date);
@@ -69,7 +76,10 @@ function subtractDays(date: Date, days: number) {
   return copy.toISOString();
 }
 
-function mapSession(row: SessionRow): HistorySession {
+function mapSession(
+  row: SessionRow,
+  modeNameById: Map<string, string>,
+): HistorySession {
   const flaggedApps = row.flagged_apps
     ? row.flagged_apps.split(',').filter(Boolean)
     : [];
@@ -81,7 +91,7 @@ function mapSession(row: SessionRow): HistorySession {
     modeName: modeNameById.get(row.mode_id) ?? row.mode_id,
     durationSeconds: row.duration_seconds,
     distractionCount: row.distraction_count,
-    lockdownMinutes: row.lockdown_minutes,
+    lockdownMinutes: flaggedApps.length > 0 ? row.lockdown_minutes : 0,
     flaggedApps,
   };
 }
@@ -122,6 +132,28 @@ export async function loadHistoryData({
     `,
     cutoffParams,
   );
+
+  const customModeRows = isPaidUser
+    ? await database.getAllAsync<CustomModeNameRow>(
+        `
+          SELECT id, name
+          FROM custom_modes
+          ORDER BY name ASC;
+        `,
+      )
+    : [];
+
+  const allModes = [
+    ...BUILT_IN_MODES,
+    ...customModeRows.map(row => ({
+      id: row.id,
+      name: row.name,
+    })),
+  ];
+  const modeNameById = new Map<string, string>([
+    ...builtInModeNameById,
+    ...customModeRows.map(row => [row.id, row.name] as [string, string]),
+  ]);
 
   const sessionRows = await database.getAllAsync<SessionRow>(
     `
@@ -185,11 +217,13 @@ export async function loadHistoryData({
       durationSeconds: row.duration_seconds,
       distractionCount: row.distraction_count,
     })),
-    sessions: sessionRows.map(mapSession),
-    modeBreakdown: modeBreakdownRows.map(row => ({
-      modeId: row.mode_id,
-      modeName: modeNameById.get(row.mode_id) ?? row.mode_id,
-      sessionCount: row.session_count,
+    sessions: sessionRows.map(row => mapSession(row, modeNameById)),
+    modeBreakdown: allModes.map(mode => ({
+      modeId: mode.id,
+      modeName: mode.name,
+      sessionCount:
+        modeBreakdownRows.find(row => row.mode_id === mode.id)
+          ?.session_count ?? 0,
     })),
     currentStreak: streak?.current_streak ?? 0,
     bestStreak: streak?.best_streak ?? 0,

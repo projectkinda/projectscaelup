@@ -46,7 +46,9 @@ export async function ensureSchema(database: SQLite.SQLiteDatabase) {
     CREATE TABLE IF NOT EXISTS custom_modes (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
-      grace_period_seconds INTEGER NOT NULL
+      grace_period_seconds INTEGER NOT NULL,
+      frame_width_min INTEGER NOT NULL DEFAULT 15,
+      frame_width_max INTEGER NOT NULL DEFAULT 40
     );
 
     CREATE TABLE IF NOT EXISTS flagged_apps (
@@ -57,4 +59,23 @@ export async function ensureSchema(database: SQLite.SQLiteDatabase) {
     INSERT OR IGNORE INTO streaks (id, current_streak, best_streak)
     VALUES (1, 0, 0);
   `);
+
+  const customModeColumns = await database.getAllAsync<{ name: string }>(
+    'PRAGMA table_info(custom_modes);',
+  );
+  const customModeColumnNames = new Set(
+    customModeColumns.map(column => column.name),
+  );
+
+  if (!customModeColumnNames.has('frame_width_min')) {
+    await database.execAsync(
+      'ALTER TABLE custom_modes ADD COLUMN frame_width_min INTEGER NOT NULL DEFAULT 15;',
+    );
+  }
+
+  if (!customModeColumnNames.has('frame_width_max')) {
+    await database.execAsync(
+      'ALTER TABLE custom_modes ADD COLUMN frame_width_max INTEGER NOT NULL DEFAULT 40;',
+    );
+  }
 }

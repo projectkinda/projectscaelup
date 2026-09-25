@@ -5,11 +5,13 @@ import {
   Alert,
   AppState,
   Linking,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -20,10 +22,13 @@ import { BottomNavigation } from '../components/BottomNavigation';
 import {
   type CustomMode,
   type FlaggedApp,
+  canAddAnotherFlaggedApp,
   loadSettingsData,
   removeCustomMode,
   removeFlaggedApp,
+  saveCustomMode,
 } from '../data/settingsRepository';
+import { isPaidUser } from '../domain/paywall';
 import { colors, layout } from '../theme/tokens';
 
 type SettingsScreenProps = {
@@ -49,8 +54,9 @@ type PermissionRow = {
   fix: () => void;
 };
 
-const IS_PAID_USER = false;
 const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
+const MIN_GRACE_SECONDS = 3;
+const MAX_GRACE_SECONDS = 90;
 
 function formatGracePeriod(seconds: number) {
   if (seconds < 60) {
@@ -76,6 +82,10 @@ function statusLabel(state: PermissionState) {
 function appInitial(name: string) {
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed[0].toUpperCase() : '?';
+}
+
+function inferFrameWidthRange(gracePeriodSeconds: number) {
+  return gracePeriodSeconds >= 30 ? '5-20%' : '15-40%';
 }
 
 async function openAccessibilitySettings() {
@@ -108,12 +118,15 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
+  const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
+  const paidUser = isPaidUser();
 
   const load = useCallback(async () => {
     setIsLoading(true);
 
     const [settingsData, cameraPermission] = await Promise.all([
-      loadSettingsData({ isPaidUser: IS_PAID_USER }),
+      loadSettingsData({ isPaidUser: isPaidUser() }),
       getCameraPermissionAsync(),
     ]);
 
@@ -165,18 +178,53 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setCustomModes(current => current.filter(item => item.id !== mode.id));
   };
 
-  const handleAddApp = () => {
+  const openCreateMode = () => {
+    setEditingMode(null);
+    setIsModeEditorVisible(true);
+  };
+
+  const openEditMode = (mode: CustomMode) => {
+    setEditingMode(mode);
+    setIsModeEditorVisible(true);
+  };
+
+  const handleAddApp = async () => {
+    const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
+    if (!canAdd) {
+      onNavigate('paywall');
+      return;
+    }
+
     Alert.alert(
       'Add app',
       'This will use the onboarding app picker once the native usage-tracking picker is connected.',
     );
   };
 
-  const handleEditMode = () => {
-    Alert.alert(
-      'Edit mode',
-      'Custom mode editing will be enabled with the paid custom-mode builder.',
-    );
+  const handleSaveMode = async ({
+    id,
+    name,
+    gracePeriodSeconds,
+  }: {
+    id?: string;
+    name: string;
+    gracePeriodSeconds: number;
+  }) => {
+    const savedMode = await saveCustomMode({ id, name, gracePeriodSeconds });
+    setCustomModes(current => {
+      const existingIndex = current.findIndex(mode => mode.id === savedMode.id);
+      if (existingIndex === -1) {
+        return [...current, savedMode].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+      }
+
+      return current
+        .map(mode => (mode.id === savedMode.id ? savedMode : mode))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+    setIsModeEditorVisible(false);
+    setEditingMode(null);
   };
 
   const handleRestore = async () => {
@@ -282,7 +330,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                 </View>
               </View>
 
-              {IS_PAID_USER ? (
+              {paidUser ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Custom modes</Text>
                   <View style={styles.panelShell}>
@@ -295,13 +343,15 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                           <View style={styles.rowTextWrap}>
                             <Text style={styles.rowTitle}>{mode.name}</Text>
                             <Text style={styles.rowDetail}>
-                              {formatGracePeriod(mode.gracePeriodSeconds)}
+                              {formatGracePeriod(mode.gracePeriodSeconds)} ·{' '}
+                              {mode.frameWidthRange[0]}-{mode.frameWidthRange[1]}%
+                              frame
                             </Text>
                           </View>
                           <View style={styles.actionGroup}>
                             <Pressable
                               accessibilityRole="button"
-                              onPress={handleEditMode}
+                              onPress={() => openEditMode(mode)}
                               style={({ pressed }) => [
                                 styles.textAction,
                                 pressed && styles.pressed,
@@ -322,6 +372,24 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                           </View>
                         </View>
                       ))}
+                      {customModes.length === 0 ? (
+                        <View style={styles.row}>
+                          <Text style={styles.emptyText}>
+                            No custom modes created yet.
+                          </Text>
+                        </View>
+                      ) : null}
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={openCreateMode}
+                        style={({ pressed }) => [
+                          styles.row,
+                          styles.addRow,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.addText}>Create custom mode</Text>
+                      </Pressable>
                     </LinearGradient>
                   </View>
                 </View>
@@ -395,10 +463,10 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                       <Text
                         style={[
                           styles.tierText,
-                          IS_PAID_USER && styles.premiumText,
+                          paidUser && styles.premiumText,
                         ]}
                       >
-                        {IS_PAID_USER ? 'Premium' : 'Free'}
+                        {paidUser ? 'Premium' : 'Free'}
                       </Text>
                     </View>
                     <Pressable
@@ -436,7 +504,176 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         bottomInset={insets.bottom}
         onSelect={onNavigate}
       />
+      <CustomModeEditorModal
+        visible={isModeEditorVisible}
+        mode={editingMode}
+        onCancel={() => {
+          setIsModeEditorVisible(false);
+          setEditingMode(null);
+        }}
+        onSave={handleSaveMode}
+      />
     </View>
+  );
+}
+
+function CustomModeEditorModal({
+  visible,
+  mode,
+  onCancel,
+  onSave,
+}: {
+  visible: boolean;
+  mode: CustomMode | null;
+  onCancel: () => void;
+  onSave: (input: {
+    id?: string;
+    name: string;
+    gracePeriodSeconds: number;
+  }) => Promise<void>;
+}) {
+  const [name, setName] = useState('');
+  const [gracePeriodSeconds, setGracePeriodSeconds] = useState(12);
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    setName(mode?.name ?? '');
+    setGracePeriodSeconds(mode?.gracePeriodSeconds ?? 12);
+    setIsSaving(false);
+  }, [mode, visible]);
+
+  const clampedName = name.trim().slice(0, 20);
+  const progress =
+    (gracePeriodSeconds - MIN_GRACE_SECONDS) /
+    (MAX_GRACE_SECONDS - MIN_GRACE_SECONDS);
+
+  const setGraceFromPosition = (locationX: number) => {
+    if (trackWidth <= 0) {
+      return;
+    }
+
+    const rawProgress = Math.max(0, Math.min(1, locationX / trackWidth));
+    const nextValue = Math.round(
+      MIN_GRACE_SECONDS +
+        rawProgress * (MAX_GRACE_SECONDS - MIN_GRACE_SECONDS),
+    );
+    setGracePeriodSeconds(nextValue);
+  };
+
+  const submit = async () => {
+    if (clampedName.length === 0) {
+      Alert.alert('Name required', 'Add a name for this custom mode.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave({
+        id: mode?.id,
+        name: clampedName,
+        gracePeriodSeconds,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent
+      visible={visible}
+      onRequestClose={onCancel}
+    >
+      <View style={styles.modalBackdrop}>
+        <LinearGradient
+          colors={['#333333', '#141414']}
+          style={styles.modeEditorCard}
+        >
+          <Text style={styles.modeEditorTitle}>
+            {mode ? 'Edit custom mode' : 'Create custom mode'}
+          </Text>
+
+          <View style={styles.fieldGroup}>
+            <Text style={styles.fieldLabel}>Name</Text>
+            <TextInput
+              value={name}
+              onChangeText={value => setName(value.slice(0, 20))}
+              placeholder="Focus mode"
+              placeholderTextColor={colors.muted}
+              maxLength={20}
+              style={styles.textInput}
+            />
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <View style={styles.sliderHeader}>
+              <Text style={styles.fieldLabel}>Grace period</Text>
+              <Text style={styles.sliderValue}>
+                {formatGracePeriod(gracePeriodSeconds)}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="adjustable"
+              accessibilityLabel="Grace period"
+              accessibilityValue={{ text: `${gracePeriodSeconds} seconds` }}
+              onPress={event =>
+                setGraceFromPosition(event.nativeEvent.locationX)
+              }
+              onLayout={event => setTrackWidth(event.nativeEvent.layout.width)}
+              style={styles.sliderTrack}
+            >
+              <View
+                style={[
+                  styles.sliderFill,
+                  { width: `${Math.round(progress * 100)}%` },
+                ]}
+              />
+              <View
+                style={[
+                  styles.sliderThumb,
+                  { left: `${Math.round(progress * 100)}%` },
+                ]}
+              />
+            </Pressable>
+            <Text style={styles.rowDetail}>
+              Frame default: {inferFrameWidthRange(gracePeriodSeconds)}
+            </Text>
+          </View>
+
+          <View style={styles.modalActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.secondaryAction,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.secondaryActionText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={submit}
+              disabled={isSaving}
+              style={({ pressed }) => [
+                styles.primaryAction,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.primaryActionText}>
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </Pressable>
+          </View>
+        </LinearGradient>
+      </View>
+    </Modal>
   );
 }
 
@@ -601,4 +838,119 @@ const styles = StyleSheet.create({
   },
   premiumText: { color: colors.rewardAmber },
   pressed: { opacity: 0.55 },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  modeEditorCard: {
+    width: '100%',
+    maxWidth: 370,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: 18,
+    gap: 18,
+  },
+  modeEditorTitle: {
+    color: colors.ink,
+    fontSize: 20,
+    lineHeight: 26,
+    fontWeight: '700',
+  },
+  fieldGroup: {
+    gap: 8,
+  },
+  fieldLabel: {
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  textInput: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    backgroundColor: colors.module,
+    color: colors.ink,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  sliderHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sliderValue: {
+    color: colors.rewardAmber,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  sliderTrack: {
+    height: 36,
+    justifyContent: 'center',
+    borderRadius: 18,
+    backgroundColor: colors.module,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: 'hidden',
+  },
+  sliderFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(200, 145, 46, 0.34)',
+  },
+  sliderThumb: {
+    position: 'absolute',
+    width: 18,
+    height: 18,
+    marginLeft: -9,
+    borderRadius: 9,
+    backgroundColor: colors.rewardAmber,
+    borderWidth: 2,
+    borderColor: colors.warmWhite,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  secondaryAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    backgroundColor: colors.module,
+  },
+  secondaryActionText: {
+    color: colors.ink,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  primaryAction: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink,
+  },
+  primaryActionText: {
+    color: colors.background,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
 });

@@ -15,6 +15,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SevenSegmentDigit } from '../components/SevenSegmentDigit';
+import {
+  PresenceModule,
+  type PresenceResult,
+} from '../domain/presenceModule';
 import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
 
@@ -22,7 +26,7 @@ type ReadinessState =
   | 'checking-permission'
   | 'permission-revoked'
   | 'camera-loading'
-  | 'no-face'
+  | 'no-presence'
   | 'too-far'
   | 'too-close'
   | 'off-center'
@@ -42,7 +46,7 @@ const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 
 function statusCopy(state: ReadinessState) {
   switch (state) {
-    case 'no-face':
+    case 'no-presence':
     case 'camera-loading':
       return 'Move into frame';
     case 'too-far':
@@ -71,6 +75,9 @@ export function PreSessionReadinessScreen({
   const [state, setState] = useState<ReadinessState>('checking-permission');
   const [canAskForPermission, setCanAskForPermission] = useState(true);
   const [countdown, setCountdown] = useState(COUNTDOWN_START);
+  const [presenceResult, setPresenceResult] = useState<PresenceResult | null>(
+    null,
+  );
   const previewMotion = useRef(new Animated.Value(0)).current;
   const hasCompleted = useRef(false);
   const criteriaMet = useRef(false);
@@ -96,6 +103,32 @@ export function PreSessionReadinessScreen({
     };
   }, [syncCameraPermission]);
 
+  useEffect(
+    () =>
+      PresenceModule.onTick(result => {
+        setPresenceResult(result);
+        criteriaMet.current = result.presenceDetected;
+        setState(current => {
+          if (
+            result.presenceDetected &&
+            (current === 'camera-loading' || current === 'no-presence')
+          ) {
+            return 'holding';
+          }
+
+          if (
+            !result.presenceDetected &&
+            (current === 'holding' || current === 'countdown')
+          ) {
+            return 'no-presence';
+          }
+
+          return current;
+        });
+      }),
+    [],
+  );
+
   useEffect(() => {
     if (state !== 'holding') {
       return;
@@ -105,7 +138,7 @@ export function PreSessionReadinessScreen({
     const holdId = setInterval(() => {
       if (!criteriaMet.current) {
         setCountdown(COUNTDOWN_START);
-        setState('no-face');
+        setState('no-presence');
         return;
       }
 
@@ -125,7 +158,7 @@ export function PreSessionReadinessScreen({
 
     if (!criteriaMet.current) {
       setCountdown(COUNTDOWN_START);
-      setState('no-face');
+      setState('no-presence');
       return;
     }
 
@@ -164,8 +197,13 @@ export function PreSessionReadinessScreen({
   }, [countdown, onReady, previewMotion, state]);
 
   const handleCameraReady = () => {
-    criteriaMet.current = true;
-    setState(current => (current === 'camera-loading' || current === 'no-face' ? 'holding' : current));
+    if (criteriaMet.current) {
+      setState(current =>
+        current === 'camera-loading' || current === 'no-presence'
+          ? 'holding'
+          : current,
+      );
+    }
   };
 
   const handleRequestPermission = async () => {
@@ -218,6 +256,12 @@ export function PreSessionReadinessScreen({
   const showCamera =
     state !== 'checking-permission' && state !== 'permission-revoked';
   const isCountdown = state === 'countdown';
+  const showFaceGuide =
+    showCamera && presenceResult?.faceWidthPercent !== null;
+  const statusText =
+    showCamera && presenceResult?.faceWidthPercent === null
+      ? 'Make sure your camera can see you'
+      : statusCopy(state);
 
   return (
     <View style={styles.screen}>
@@ -288,7 +332,9 @@ export function PreSessionReadinessScreen({
               )}
             </LinearGradient>
           )}
-          {showCamera ? <View pointerEvents="none" style={styles.guide} /> : null}
+          {showFaceGuide ? (
+            <View pointerEvents="none" style={styles.guide} />
+          ) : null}
         </Animated.View>
 
         <View style={styles.details}>
@@ -304,7 +350,7 @@ export function PreSessionReadinessScreen({
                 />
               </LinearGradient>
             ) : (
-              <Text style={styles.statusText}>{statusCopy(state)}</Text>
+              <Text style={styles.statusText}>{statusText}</Text>
             )}
           </View>
 
