@@ -41,7 +41,7 @@ export const FREE_TIER_APP_CAP = 3;
 
 const DEFAULT_APPS_SEEDED_KEY = 'defaultAppsSeeded';
 
-const DEFAULT_FLAGGED_PACKAGES: FlaggedApp[] = [
+export const DEFAULT_FLAGGED_PACKAGES: FlaggedApp[] = [
   { appIdentifier: 'com.instagram.android', displayName: 'Instagram' },
   { appIdentifier: 'com.zhiliaoapp.musically', displayName: 'TikTok' },
   { appIdentifier: 'com.snapchat.android', displayName: 'Snapchat' },
