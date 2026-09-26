@@ -1,6 +1,5 @@
 package com.projectscaleup.app
 
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -8,7 +7,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
-import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -17,47 +15,8 @@ import com.facebook.react.bridge.WritableMap
 import java.io.ByteArrayOutputStream
 
 class AppPickerBridge(
-  private val reactContext: ReactApplicationContext,
+  reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
-  private var pickAppPromise: Promise? = null
-
-  private val activityEventListener = object : BaseActivityEventListener() {
-    override fun onActivityResult(
-      activity: Activity,
-      requestCode: Int,
-      resultCode: Int,
-      data: Intent?,
-    ) {
-      if (requestCode != PICK_APP_REQUEST_CODE) {
-        return
-      }
-
-      val promise = pickAppPromise ?: return
-      pickAppPromise = null
-
-      if (resultCode != Activity.RESULT_OK) {
-        promise.resolve(null)
-        return
-      }
-
-      val packageName = data?.component?.packageName
-      if (packageName.isNullOrBlank()) {
-        promise.resolve(null)
-        return
-      }
-
-      try {
-        promise.resolve(buildAppMap(packageName))
-      } catch (error: Exception) {
-        promise.reject("APP_PICKER_RESULT_ERROR", error)
-      }
-    }
-  }
-
-  init {
-    reactContext.addActivityEventListener(activityEventListener)
-  }
-
   override fun getName() = "AppPickerBridge"
 
   @ReactMethod
@@ -72,36 +31,6 @@ class AppPickerBridge(
       promise.resolve(result)
     } catch (error: Exception) {
       promise.reject("APP_PICKER_ERROR", error)
-    }
-  }
-
-  @ReactMethod
-  fun pickInstalledApp(promise: Promise) {
-    val activity = reactContext.currentActivity
-    if (activity == null) {
-      promise.reject("APP_PICKER_NO_ACTIVITY", "No active Android activity.")
-      return
-    }
-
-    if (pickAppPromise != null) {
-      promise.reject("APP_PICKER_IN_PROGRESS", "An app picker is already open.")
-      return
-    }
-
-    val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
-      addCategory(Intent.CATEGORY_LAUNCHER)
-    }
-    val pickIntent = Intent(Intent.ACTION_PICK_ACTIVITY).apply {
-      putExtra(Intent.EXTRA_INTENT, launcherIntent)
-      putExtra(Intent.EXTRA_TITLE, "Add app")
-    }
-
-    try {
-      pickAppPromise = promise
-      activity.startActivityForResult(pickIntent, PICK_APP_REQUEST_CODE)
-    } catch (error: Exception) {
-      pickAppPromise = null
-      promise.reject("APP_PICKER_OPEN_ERROR", error)
     }
   }
 
@@ -149,9 +78,5 @@ class AppPickerBridge(
     val stream = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
     return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
-  }
-
-  companion object {
-    private const val PICK_APP_REQUEST_CODE = 9317
   }
 }

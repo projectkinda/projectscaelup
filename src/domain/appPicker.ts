@@ -8,7 +8,6 @@ export type InstalledApp = {
 
 type NativeAppPickerBridge = {
   getInstalledApps: () => Promise<InstalledApp[]>;
-  pickInstalledApp: () => Promise<InstalledApp | null>;
 };
 
 const AppPickerBridge = NativeModules.AppPickerBridge as
@@ -22,12 +21,4 @@ export async function getInstalledApps(): Promise<InstalledApp[]> {
 
   const apps = await AppPickerBridge.getInstalledApps();
   return apps.sort((a, b) => a.displayName.localeCompare(b.displayName));
-}
-
-export async function pickInstalledApp(): Promise<InstalledApp | null> {
-  if (Platform.OS !== 'android' || !AppPickerBridge) {
-    return null;
-  }
-
-  return AppPickerBridge.pickInstalledApp();
 }

@@ -1,5 +1,5 @@
 import { Camera } from 'expo-camera';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,7 @@ import { BottomNavigation } from '../components/BottomNavigation';
 import {
   type CustomMode,
   type FlaggedApp,
+  FREE_TIER_APP_CAP,
   canAddAnotherFlaggedApp,
   loadSettingsData,
   removeCustomMode,
@@ -30,7 +31,7 @@ import {
   saveFlaggedApp,
   saveCustomMode,
 } from '../data/settingsRepository';
-import { pickInstalledApp } from '../domain/appPicker';
+import { getInstalledApps, type InstalledApp } from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
@@ -130,6 +131,12 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
   const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
+  const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [appPickerQuery, setAppPickerQuery] = useState('');
+  const [selectedAppIdentifiers, setSelectedAppIdentifiers] = useState<
+    string[]
+  >([]);
   const [isPickingApp, setIsPickingApp] = useState(false);
   const paidUser = isPaidUser();
 
@@ -227,6 +234,32 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setIsModeEditorVisible(true);
   };
 
+  const remainingFreeAppSlots = paidUser
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, FREE_TIER_APP_CAP - flaggedApps.length);
+
+  const availableInstalledApps = useMemo(() => {
+    const flaggedAppIdentifiers = new Set(
+      flaggedApps.map(app => app.appIdentifier),
+    );
+    const normalizedQuery = appPickerQuery.trim().toLowerCase();
+
+    return installedApps.filter(app => {
+      if (flaggedAppIdentifiers.has(app.packageName)) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      return (
+        app.displayName.toLowerCase().includes(normalizedQuery) ||
+        app.packageName.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [appPickerQuery, flaggedApps, installedApps]);
+
   const handleAddApp = async () => {
     const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
     if (!canAdd) {
@@ -236,30 +269,108 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
     setIsPickingApp(true);
     try {
-      const pickedApp = await pickInstalledApp();
-      if (!pickedApp) {
-        return;
+      setAppPickerQuery('');
+      setSelectedAppIdentifiers([]);
+      setIsAppPickerVisible(true);
+      setInstalledApps(await getInstalledApps());
+    } catch (error) {
+      console.warn('Failed to load apps:', error);
+      Alert.alert('Unable to load apps', 'Try again in a moment.');
+      setIsAppPickerVisible(false);
+    } finally {
+      setIsPickingApp(false);
+    }
+  };
+
+  const closeAppPicker = () => {
+    setIsAppPickerVisible(false);
+    setSelectedAppIdentifiers([]);
+    setAppPickerQuery('');
+  };
+
+  const toggleSelectedApp = (app: InstalledApp) => {
+    setSelectedAppIdentifiers(current => {
+      if (current.includes(app.packageName)) {
+        return current.filter(packageName => packageName !== app.packageName);
       }
 
-      if (
-        flaggedApps.some(app => app.appIdentifier === pickedApp.packageName)
-      ) {
-        return;
+      if (current.length >= remainingFreeAppSlots) {
+        return current;
       }
 
-      const savedApp = await saveFlaggedApp({
-        appIdentifier: pickedApp.packageName,
-        displayName: pickedApp.displayName,
-        iconBase64: pickedApp.iconBase64,
-      });
-      setFlaggedApps(current =>
-        [...current, savedApp].sort((a, b) =>
-          a.displayName.localeCompare(b.displayName),
+      return [...current, app.packageName];
+    });
+  };
+
+  const toggleAllVisibleApps = (apps: InstalledApp[]) => {
+    setSelectedAppIdentifiers(current => {
+      const visibleAppIdentifiers = apps.map(app => app.packageName);
+      const allVisibleSelected =
+        visibleAppIdentifiers.length > 0 &&
+        visibleAppIdentifiers.every(packageName =>
+          current.includes(packageName),
+        );
+
+      if (allVisibleSelected) {
+        return current.filter(
+          packageName => !visibleAppIdentifiers.includes(packageName),
+        );
+      }
+
+      const next = [...current];
+      for (const packageName of visibleAppIdentifiers) {
+        if (next.includes(packageName)) {
+          continue;
+        }
+
+        if (next.length >= remainingFreeAppSlots) {
+          break;
+        }
+
+        next.push(packageName);
+      }
+
+      return next;
+    });
+  };
+
+  const saveSelectedApps = async () => {
+    if (selectedAppIdentifiers.length === 0) {
+      return;
+    }
+
+    const selectedAppSet = new Set(selectedAppIdentifiers);
+    const appsToSave = installedApps.filter(app =>
+      selectedAppSet.has(app.packageName),
+    );
+
+    setIsPickingApp(true);
+    try {
+      const savedApps = await Promise.all(
+        appsToSave.map(app =>
+          saveFlaggedApp({
+            appIdentifier: app.packageName,
+            displayName: app.displayName,
+            iconBase64: app.iconBase64,
+          }),
         ),
       );
+      setFlaggedApps(current => {
+        const appsByIdentifier = new Map(
+          current.map(app => [app.appIdentifier, app]),
+        );
+        savedApps.forEach(app => {
+          appsByIdentifier.set(app.appIdentifier, app);
+        });
+
+        return Array.from(appsByIdentifier.values()).sort((a, b) =>
+          a.displayName.localeCompare(b.displayName),
+        );
+      });
+      closeAppPicker();
     } catch (error) {
-      console.warn('Failed to pick app:', error);
-      Alert.alert('Unable to add app', 'Try again in a moment.');
+      console.warn('Failed to save selected apps:', error);
+      Alert.alert('Unable to add apps', 'Try again in a moment.');
     } finally {
       setIsPickingApp(false);
     }
@@ -585,7 +696,206 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         }}
         onSave={handleSaveMode}
       />
+      <AppPickerModal
+        apps={availableInstalledApps}
+        isSaving={isPickingApp}
+        query={appPickerQuery}
+        remainingSlots={remainingFreeAppSlots}
+        selectedAppIdentifiers={selectedAppIdentifiers}
+        visible={isAppPickerVisible}
+        onCancel={closeAppPicker}
+        onChangeQuery={setAppPickerQuery}
+        onSave={saveSelectedApps}
+        onToggleAllVisible={toggleAllVisibleApps}
+        onToggleApp={toggleSelectedApp}
+      />
     </View>
+  );
+}
+
+function AppPickerModal({
+  apps,
+  isSaving,
+  query,
+  remainingSlots,
+  selectedAppIdentifiers,
+  visible,
+  onCancel,
+  onChangeQuery,
+  onSave,
+  onToggleAllVisible,
+  onToggleApp,
+}: {
+  apps: InstalledApp[];
+  isSaving: boolean;
+  query: string;
+  remainingSlots: number;
+  selectedAppIdentifiers: string[];
+  visible: boolean;
+  onCancel: () => void;
+  onChangeQuery: (value: string) => void;
+  onSave: () => void;
+  onToggleAllVisible: (apps: InstalledApp[]) => void;
+  onToggleApp: (app: InstalledApp) => void;
+}) {
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const insets = useSafeAreaInsets();
+  const selectedAppSet = new Set(selectedAppIdentifiers);
+  const selectedCount = selectedAppIdentifiers.length;
+  const allVisibleSelected =
+    apps.length > 0 && apps.every(app => selectedAppSet.has(app.packageName));
+  const canSelectMore = selectedCount < remainingSlots;
+
+  return (
+    <Modal
+      animationType="slide"
+      visible={visible}
+      onRequestClose={onCancel}
+    >
+      <View
+        style={[
+          styles.appPickerScreen,
+          { paddingTop: insets.top + 22, paddingBottom: insets.bottom },
+        ]}
+      >
+        <View style={styles.appPickerHeader}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={allVisibleSelected ? 'Clear all' : 'Select all'}
+            onPress={() => onToggleAllVisible(apps)}
+            style={({ pressed }) => [
+              styles.selectAllButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View
+              style={[
+                styles.selectionCircle,
+                allVisibleSelected && styles.selectionCircleSelected,
+              ]}
+            />
+            <Text style={styles.selectAllText}>All</Text>
+          </Pressable>
+          <Text style={styles.appPickerTitle}>Add apps</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add selected apps"
+            disabled={selectedCount === 0 || isSaving}
+            onPress={onSave}
+            style={({ pressed }) => [
+              styles.appPickerAddButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={colors.ink} />
+            ) : (
+              <Text
+                style={[
+                  styles.appPickerAddText,
+                  selectedCount > 0 && styles.appPickerAddTextReady,
+                ]}
+              >
+                Add
+              </Text>
+            )}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Search apps"
+            onPress={() => setIsSearchVisible(current => !current)}
+            style={({ pressed }) => [
+              styles.appPickerSearchButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.searchLens} />
+            <View style={styles.searchHandle} />
+          </Pressable>
+        </View>
+
+        {isSearchVisible ? (
+          <View style={styles.appPickerSearchWrap}>
+            <TextInput
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              placeholder="Search"
+              placeholderTextColor="rgba(255, 255, 255, 0.42)"
+              value={query}
+              onChangeText={onChangeQuery}
+              style={styles.appPickerSearch}
+            />
+          </View>
+        ) : (
+          <View style={styles.appPickerStoreWrap}>
+            <View style={styles.appPickerStorePill}>
+              <View style={[styles.storeIcon, styles.playStoreIcon]}>
+                <Text style={styles.storeIconText}>P</Text>
+              </View>
+              <Text style={styles.storePillText}>Download from Play Store</Text>
+            </View>
+            <View style={styles.appPickerStorePill}>
+              <View style={[styles.storeIcon, styles.galaxyStoreIcon]}>
+                <Text style={styles.storeIconText}>G</Text>
+              </View>
+              <Text style={styles.storePillText}>
+                Download from Galaxy Store
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <Text style={styles.appPickerSectionLabel}>Add apps from phone</Text>
+        <View style={styles.appPickerListShell}>
+          <ScrollView
+            bounces={false}
+            showsVerticalScrollIndicator
+            contentContainerStyle={styles.appPickerList}
+          >
+            {apps.map(app => {
+              const selected = selectedAppSet.has(app.packageName);
+              const disabled = !selected && !canSelectMore;
+
+              return (
+                <Pressable
+                  key={app.packageName}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected, disabled }}
+                  accessibilityLabel={app.displayName}
+                  disabled={disabled}
+                  onPress={() => onToggleApp(app)}
+                  style={({ pressed }) => [
+                    styles.appPickerRow,
+                    pressed && styles.pressed,
+                    disabled && styles.appPickerRowDisabled,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.selectionCircle,
+                      selected && styles.selectionCircleSelected,
+                    ]}
+                  />
+                  <Image
+                    source={{ uri: `data:image/png;base64,${app.iconBase64}` }}
+                    style={styles.appPickerIcon}
+                  />
+                  <Text style={styles.appPickerAppName} numberOfLines={1}>
+                    {app.displayName}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {apps.length === 0 ? (
+              <View style={styles.appPickerEmpty}>
+                <Text style={styles.emptyText}>No apps found.</Text>
+              </View>
+            ) : null}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -893,6 +1203,188 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '700',
+  },
+  appPickerScreen: {
+    flex: 1,
+    backgroundColor: '#000000',
+    paddingHorizontal: 24,
+  },
+  appPickerHeader: {
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+  },
+  selectAllButton: {
+    width: 54,
+    alignItems: 'center',
+    paddingTop: 2,
+  },
+  selectionCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#6f6f7b',
+    backgroundColor: 'transparent',
+  },
+  selectionCircleSelected: {
+    borderColor: colors.ink,
+    backgroundColor: colors.ink,
+  },
+  selectAllText: {
+    marginTop: 5,
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  appPickerTitle: {
+    flex: 1,
+    color: colors.ink,
+    fontSize: 30,
+    lineHeight: 38,
+    fontWeight: '800',
+  },
+  appPickerAddButton: {
+    minWidth: 54,
+    minHeight: 42,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
+  appPickerAddText: {
+    color: 'rgba(255, 255, 255, 0.36)',
+    fontSize: 21,
+    lineHeight: 28,
+    fontWeight: '800',
+  },
+  appPickerAddTextReady: {
+    color: colors.ink,
+  },
+  appPickerSearchButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  searchLens: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 3,
+    borderColor: colors.ink,
+  },
+  searchHandle: {
+    position: 'absolute',
+    width: 13,
+    height: 3,
+    right: 5,
+    bottom: 8,
+    borderRadius: 2,
+    backgroundColor: colors.ink,
+    transform: [{ rotate: '45deg' }],
+  },
+  appPickerSearchWrap: {
+    minHeight: 50,
+    marginTop: 8,
+    marginLeft: 88,
+    marginRight: 0,
+    borderRadius: 25,
+    backgroundColor: '#2d2d2d',
+    justifyContent: 'center',
+  },
+  appPickerSearch: {
+    minHeight: 50,
+    paddingHorizontal: 22,
+    color: colors.ink,
+    fontSize: 18,
+    lineHeight: 24,
+  },
+  appPickerStoreWrap: {
+    marginTop: 8,
+    marginLeft: 88,
+    gap: 20,
+  },
+  appPickerStorePill: {
+    minHeight: 50,
+    borderRadius: 25,
+    backgroundColor: '#2d2d2d',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 28,
+  },
+  storeIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  playStoreIcon: {
+    backgroundColor: '#ffffff',
+  },
+  galaxyStoreIcon: {
+    backgroundColor: '#f62467',
+  },
+  storeIconText: {
+    color: '#111111',
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '800',
+  },
+  storePillText: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.ink,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '800',
+  },
+  appPickerSectionLabel: {
+    marginTop: 60,
+    marginBottom: 14,
+    color: 'rgba(255, 255, 255, 0.62)',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  appPickerListShell: {
+    flex: 1,
+    borderRadius: 26,
+    backgroundColor: '#111111',
+    overflow: 'hidden',
+  },
+  appPickerList: {
+    paddingVertical: 16,
+  },
+  appPickerRow: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingLeft: 16,
+    paddingRight: 26,
+  },
+  appPickerRowDisabled: {
+    opacity: 0.45,
+  },
+  appPickerIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+  },
+  appPickerAppName: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.ink,
+    fontSize: 21,
+    lineHeight: 28,
+  },
+  appPickerEmpty: {
+    minHeight: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   permissionList: {
     marginTop: 12,
