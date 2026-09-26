@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PlayIcon from '../assets/icons/play.svg';
 import { BottomNavigation } from '../components/BottomNavigation';
+import { LivePresenceCamera } from '../components/LivePresenceCamera';
 import { RunningTimerDisplay } from '../components/RunningTimerDisplay';
 import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
 import { TallyCard } from '../components/TallyCard';
@@ -83,7 +85,12 @@ function ActiveSessionCameraPreview({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!hasPermission || !isCameraReady || !samplingActive) {
+    if (
+      !PresenceModule.analyzesStillFrames ||
+      !hasPermission ||
+      !isCameraReady ||
+      !samplingActive
+    ) {
       return;
     }
 
@@ -118,7 +125,15 @@ function ActiveSessionCameraPreview({
 
   return (
     <View style={styles.cameraPreview}>
-      {hasPermission ? (
+      {hasPermission && Platform.OS === 'ios' ? (
+        <LivePresenceCamera
+          key={sessionId ?? 'active-camera'}
+          active={samplingActive}
+          analysisIntervalMs={1000}
+          style={styles.cameraPreviewFeed}
+        />
+      ) : null}
+      {hasPermission && Platform.OS !== 'ios' ? (
         <CameraView
           key={sessionId ?? 'active-camera'}
           ref={cameraRef}
