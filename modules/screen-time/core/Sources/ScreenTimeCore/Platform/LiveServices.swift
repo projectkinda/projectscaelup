@@ -111,6 +111,9 @@ final class DeviceActivityWakeScheduler: WakeScheduling {
     )
     do {
       try center.startMonitoring(Self.activity, during: schedule)
+    } catch DeviceActivityCenter.MonitoringError.unauthorized {
+      // Expected until the user grants Screen Time access; the app reconciles once they do.
+      screenTimeLog.debug("Skipped a wake-up: Screen Time isn't authorized")
     } catch {
       screenTimeLog.error("Scheduling a wake-up failed: \(error)")
     }
