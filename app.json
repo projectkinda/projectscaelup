@@ -8,6 +8,7 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": false,
+      "deploymentTarget": "18.0",
       "bundleIdentifier": "com.projectscaleup.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
