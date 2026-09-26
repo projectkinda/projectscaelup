@@ -55,6 +55,12 @@
       ],
       "expo-asset",
       "./plugins/withIosSceneLifecycle",
+      [
+        "./plugins/withIosLaunchScreen",
+        {
+          "backgroundColor": "#121212"
+        }
+      ],
       "@bacons/apple-targets"
     ]
   }
