@@ -160,6 +160,23 @@ export async function saveCustomMode({
   };
 }
 
+export async function saveFlaggedApp(app: FlaggedApp): Promise<FlaggedApp> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  await database.runAsync(
+    `
+      INSERT INTO flagged_apps (app_identifier, display_name)
+      VALUES (?, ?)
+      ON CONFLICT(app_identifier) DO UPDATE SET
+        display_name = excluded.display_name;
+    `,
+    [app.appIdentifier, app.displayName],
+  );
+
+  return app;
+}
+
 export async function removeFlaggedApp(appIdentifier: string) {
   const database = await getDatabase();
   await ensureSchema(database);

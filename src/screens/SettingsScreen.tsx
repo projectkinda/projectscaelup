@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -26,8 +27,10 @@ import {
   loadSettingsData,
   removeCustomMode,
   removeFlaggedApp,
+  saveFlaggedApp,
   saveCustomMode,
 } from '../data/settingsRepository';
+import { getInstalledApps, type InstalledApp } from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
@@ -127,6 +130,9 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
   const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
+  const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
+  const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
+  const [isLoadingInstalledApps, setIsLoadingInstalledApps] = useState(false);
   const paidUser = isPaidUser();
 
   const load = useCallback(async () => {
@@ -230,10 +236,38 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       return;
     }
 
-    Alert.alert(
-      'Add app',
-      'This will use the onboarding app picker once the native usage-tracking picker is connected.',
+    setIsAppPickerVisible(true);
+    setIsLoadingInstalledApps(true);
+    try {
+      const apps = await getInstalledApps();
+      setInstalledApps(
+        apps.filter(
+          app =>
+            !flaggedApps.some(
+              flaggedApp => flaggedApp.appIdentifier === app.packageName,
+            ),
+        ),
+      );
+    } catch (error) {
+      console.warn('Failed to load installed apps:', error);
+      Alert.alert('Unable to load apps', 'Try again in a moment.');
+      setIsAppPickerVisible(false);
+    } finally {
+      setIsLoadingInstalledApps(false);
+    }
+  };
+
+  const handleSelectInstalledApp = async (app: InstalledApp) => {
+    const savedApp = await saveFlaggedApp({
+      appIdentifier: app.packageName,
+      displayName: app.displayName,
+    });
+    setFlaggedApps(current =>
+      [...current, savedApp].sort((a, b) =>
+        a.displayName.localeCompare(b.displayName),
+      ),
     );
+    setIsAppPickerVisible(false);
   };
 
   const handleSaveMode = async ({
@@ -548,7 +582,123 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         }}
         onSave={handleSaveMode}
       />
+      <AppPickerModal
+        apps={installedApps}
+        isLoading={isLoadingInstalledApps}
+        visible={isAppPickerVisible}
+        onCancel={() => setIsAppPickerVisible(false)}
+        onSelect={handleSelectInstalledApp}
+      />
     </View>
+  );
+}
+
+function AppPickerModal({
+  apps,
+  isLoading,
+  visible,
+  onCancel,
+  onSelect,
+}: {
+  apps: InstalledApp[];
+  isLoading: boolean;
+  visible: boolean;
+  onCancel: () => void;
+  onSelect: (app: InstalledApp) => Promise<void>;
+}) {
+  const [selectedPackageName, setSelectedPackageName] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      setSelectedPackageName(null);
+    }
+  }, [visible]);
+
+  const selectApp = async (app: InstalledApp) => {
+    setSelectedPackageName(app.packageName);
+    try {
+      await onSelect(app);
+    } finally {
+      setSelectedPackageName(null);
+    }
+  };
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent
+      visible={visible}
+      onRequestClose={onCancel}
+    >
+      <View style={styles.modalBackdrop}>
+        <LinearGradient
+          colors={['#333333', '#141414']}
+          style={styles.appPickerCard}
+        >
+          <View style={styles.appPickerHeader}>
+            <Text style={styles.modeEditorTitle}>Add app</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close app picker"
+              onPress={onCancel}
+              style={({ pressed }) => [
+                styles.textAction,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.actionText}>Cancel</Text>
+            </Pressable>
+          </View>
+
+          {isLoading ? (
+            <View style={styles.appPickerLoading}>
+              <ActivityIndicator color={colors.ink} />
+            </View>
+          ) : apps.length > 0 ? (
+            <ScrollView
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              style={styles.appPickerList}
+            >
+              {apps.map(app => {
+                const selected = selectedPackageName === app.packageName;
+                return (
+                  <Pressable
+                    key={app.packageName}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${app.displayName}`}
+                    disabled={selected}
+                    onPress={() => selectApp(app)}
+                    style={({ pressed }) => [
+                      styles.appPickerRow,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Image
+                      source={{
+                        uri: `data:image/png;base64,${app.iconBase64}`,
+                      }}
+                      style={styles.appPickerIcon}
+                    />
+                    <View style={styles.rowTextWrap}>
+                      <Text style={styles.rowTitle}>{app.displayName}</Text>
+                      <Text style={styles.rowDetail}>{app.packageName}</Text>
+                    </View>
+                    {selected ? <ActivityIndicator color={colors.ink} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <View style={styles.appPickerLoading}>
+              <Text style={styles.emptyText}>No apps available to add.</Text>
+            </View>
+          )}
+        </LinearGradient>
+      </View>
+    </Modal>
   );
 }
 
@@ -888,6 +1038,45 @@ const styles = StyleSheet.create({
     borderColor: CARD_BORDER,
     padding: 18,
     gap: 18,
+  },
+  appPickerCard: {
+    width: '100%',
+    maxWidth: 370,
+    maxHeight: '82%',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    padding: 18,
+  },
+  appPickerHeader: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  appPickerLoading: {
+    minHeight: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appPickerList: {
+    marginTop: 14,
+  },
+  appPickerRow: {
+    minHeight: 66,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 11,
+  },
+  appPickerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.module,
   },
   modeEditorTitle: {
     color: colors.ink,
