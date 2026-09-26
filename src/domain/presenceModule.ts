@@ -39,19 +39,31 @@ async function unloadPoseModel() {
 }
 
 function buildResult(detector: ActiveDetector): PresenceResult {
+  let result: PresenceResult;
+
   if (detector.type === 'pose') {
-    return {
+    result = {
       presenceDetected: true,
       faceWidthPercent: null,
       faceHorizontalOffset: null,
     };
+    console.log(
+      '[presence-debug] tick fired, presenceDetected:',
+      result.presenceDetected,
+    );
+    return result;
   }
 
-  return {
+  result = {
     presenceDetected: true,
     faceWidthPercent: 28,
     faceHorizontalOffset: 0,
   };
+  console.log(
+    '[presence-debug] tick fired, presenceDetected:',
+    result.presenceDetected,
+  );
+  return result;
 }
 
 function emit(result: PresenceResult) {
