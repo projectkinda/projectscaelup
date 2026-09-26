@@ -77,15 +77,24 @@ export function PreSessionReadinessScreen({
   const [presenceResult, setPresenceResult] = useState<PresenceResult | null>(
     null,
   );
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const previewMotion = useRef(new Animated.Value(0)).current;
+  const cameraRef = useRef<CameraView>(null);
+  const captureInFlight = useRef(false);
   const hasCompleted = useRef(false);
   const criteriaMet = useRef(false);
+  const showCamera =
+    state !== 'checking-permission' && state !== 'permission-revoked';
 
   const syncCameraPermission = useCallback(async () => {
     const permission = await Camera.getCameraPermissionsAsync();
 
     setCanAskForPermission(permission.canAskAgain);
-    setState(permission.status === 'granted' ? 'camera-loading' : 'permission-revoked');
+    setState(
+      permission.status === 'granted'
+        ? 'camera-loading'
+        : 'permission-revoked',
+    );
   }, []);
 
   useEffect(() => {
@@ -127,6 +136,51 @@ export function PreSessionReadinessScreen({
       }),
     [],
   );
+
+  useEffect(() => {
+    const canSample =
+      showCamera &&
+      isCameraReady &&
+      !hasCompleted.current;
+
+    if (!canSample) {
+      return;
+    }
+
+    const capturePresenceFrame = async () => {
+      if (captureInFlight.current) {
+        return;
+      }
+
+      captureInFlight.current = true;
+      try {
+        const photo = await cameraRef.current?.takePictureAsync({
+          base64: true,
+          quality: 0.3,
+          shutterSound: false,
+        });
+
+        if (photo?.base64) {
+          await PresenceModule.reportFrame(photo.base64);
+        }
+      } catch (error) {
+        console.warn('Failed to capture readiness presence frame:', error);
+      } finally {
+        captureInFlight.current = false;
+      }
+    };
+
+    capturePresenceFrame();
+    const intervalId = setInterval(capturePresenceFrame, 1500);
+
+    return () => clearInterval(intervalId);
+  }, [isCameraReady, showCamera, state]);
+
+  useEffect(() => {
+    if (!showCamera) {
+      setIsCameraReady(false);
+    }
+  }, [showCamera]);
 
   useEffect(() => {
     if (state !== 'holding') {
@@ -196,6 +250,7 @@ export function PreSessionReadinessScreen({
   }, [countdown, onReady, previewMotion, state]);
 
   const handleCameraReady = () => {
+    setIsCameraReady(true);
     if (criteriaMet.current) {
       setState(current =>
         current === 'camera-loading' || current === 'no-presence'
@@ -214,7 +269,11 @@ export function PreSessionReadinessScreen({
     setState('checking-permission');
     const permission = await Camera.requestCameraPermissionsAsync();
     setCanAskForPermission(permission.canAskAgain);
-    setState(permission.status === 'granted' ? 'camera-loading' : 'permission-revoked');
+    setState(
+      permission.status === 'granted'
+        ? 'camera-loading'
+        : 'permission-revoked',
+    );
   };
 
   const handleOpenSettings = () => {
@@ -248,8 +307,6 @@ export function PreSessionReadinessScreen({
     ],
   };
 
-  const showCamera =
-    state !== 'checking-permission' && state !== 'permission-revoked';
   const isCountdown = state === 'countdown';
   const showFaceGuide =
     showCamera && presenceResult?.faceWidthPercent !== null;
@@ -275,6 +332,7 @@ export function PreSessionReadinessScreen({
         >
           {showCamera ? (
             <CameraView
+              ref={cameraRef}
               active
               facing="front"
               mirror

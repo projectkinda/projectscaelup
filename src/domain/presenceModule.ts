@@ -1,3 +1,5 @@
+import { NativeModules, Platform } from 'react-native';
+
 import type { SessionMode } from './sessionModes';
 
 type ActiveDetector = {
@@ -15,11 +17,36 @@ type PresenceCallback = (result: PresenceResult) => void;
 let faceDetector: ActiveDetector | null = null;
 let activeDetector: ActiveDetector | null = null;
 let callbacks = new Set<PresenceCallback>();
-let tickInterval: ReturnType<typeof setInterval> | null = null;
 let lastResult: PresenceResult | null = null;
 
-function getFaceDetector(): ActiveDetector {
+type NativePresenceResult = {
+  presenceDetected: boolean;
+  faceWidthPercent?: number | null;
+  faceHorizontalOffset?: number | null;
+};
+
+type NativePresenceDetectorBridge = {
+  loadFaceModel: () => Promise<void>;
+  loadPoseModel: () => Promise<void>;
+  unloadPoseModel: () => Promise<void>;
+  detectFace: (base64Image: string) => Promise<NativePresenceResult>;
+  detectPose: (base64Image: string) => Promise<NativePresenceResult>;
+};
+
+const PresenceDetectorBridge = NativeModules
+  .PresenceDetectorBridge as NativePresenceDetectorBridge | undefined;
+
+function ensureBridge(): NativePresenceDetectorBridge {
+  if (Platform.OS !== 'android' || !PresenceDetectorBridge) {
+    throw new Error('PresenceDetectorBridge is only available on Android.');
+  }
+
+  return PresenceDetectorBridge;
+}
+
+async function getFaceDetector(): Promise<ActiveDetector> {
   if (!faceDetector) {
+    await ensureBridge().loadFaceModel();
     faceDetector = { type: 'face' };
   }
 
@@ -27,43 +54,12 @@ function getFaceDetector(): ActiveDetector {
 }
 
 async function loadPoseModel(): Promise<ActiveDetector> {
-  // MediaPipe Pose should be initialized here when the native/model package is
-  // wired. Pose is deliberately not cached after stop(); it is heavier than the
-  // face detector and belongs only to Exercise sessions.
+  await ensureBridge().loadPoseModel();
   return { type: 'pose' };
 }
 
 async function unloadPoseModel() {
-  // Release the real MediaPipe Pose resources here once the native/model
-  // integration exists.
-}
-
-function buildResult(detector: ActiveDetector): PresenceResult {
-  let result: PresenceResult;
-
-  if (detector.type === 'pose') {
-    result = {
-      presenceDetected: true,
-      faceWidthPercent: null,
-      faceHorizontalOffset: null,
-    };
-    console.log(
-      '[presence-debug] tick fired, presenceDetected:',
-      result.presenceDetected,
-    );
-    return result;
-  }
-
-  result = {
-    presenceDetected: true,
-    faceWidthPercent: 28,
-    faceHorizontalOffset: 0,
-  };
-  console.log(
-    '[presence-debug] tick fired, presenceDetected:',
-    result.presenceDetected,
-  );
-  return result;
+  await ensureBridge().unloadPoseModel();
 }
 
 function emit(result: PresenceResult) {
@@ -71,49 +67,51 @@ function emit(result: PresenceResult) {
   callbacks.forEach(callback => callback(result));
 }
 
-function stopTickLoop() {
-  if (tickInterval !== null) {
-    clearInterval(tickInterval);
-    tickInterval = null;
-  }
-}
-
-function beginTickLoop() {
-  stopTickLoop();
-
-  if (!activeDetector) {
-    return;
-  }
-
-  emit(buildResult(activeDetector));
-  tickInterval = setInterval(() => {
-    if (activeDetector) {
-      emit(buildResult(activeDetector));
-    }
-  }, 500);
-}
-
 export const PresenceModule = {
   async start(mode: SessionMode): Promise<void> {
     await this.stop();
 
-    activeDetector =
-      mode.detectionModel === 'pose'
-        ? await loadPoseModel()
-        : getFaceDetector();
-
-    beginTickLoop();
+    activeDetector = await (mode.detectionModel === 'pose'
+      ? loadPoseModel()
+      : getFaceDetector());
   },
 
   async stop(): Promise<void> {
     const detectorToRelease = activeDetector;
 
-    stopTickLoop();
     activeDetector = null;
     lastResult = null;
 
     if (detectorToRelease?.type === 'pose') {
       await unloadPoseModel();
+    }
+  },
+
+  async reportFrame(base64Image: string): Promise<void> {
+    if (!activeDetector) {
+      return;
+    }
+
+    try {
+      const bridge = ensureBridge();
+      const raw =
+        activeDetector.type === 'pose'
+          ? await bridge.detectPose(base64Image)
+          : await bridge.detectFace(base64Image);
+
+      const result = {
+        presenceDetected: raw.presenceDetected,
+        faceWidthPercent: raw.faceWidthPercent ?? null,
+        faceHorizontalOffset: raw.faceHorizontalOffset ?? null,
+      };
+
+      console.log(
+        '[presence-debug] frame processed, presenceDetected:',
+        result.presenceDetected,
+      );
+      emit(result);
+    } catch (error) {
+      console.warn('Failed to process presence frame:', error);
     }
   },
 

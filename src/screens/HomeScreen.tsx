@@ -51,13 +51,19 @@ type CompletionSummary = {
 
 function ActiveSessionCameraPreview({
   sessionId,
+  samplingActive,
 }: {
   sessionId: number | null;
+  samplingActive: boolean;
 }) {
   const [hasPermission, setHasPermission] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const cameraRef = useRef<CameraView>(null);
+  const captureInFlight = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    setIsCameraReady(false);
 
     Camera.getCameraPermissionsAsync().then(permission => {
       if (!cancelled) {
@@ -70,16 +76,50 @@ function ActiveSessionCameraPreview({
     };
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!hasPermission || !isCameraReady || !samplingActive) {
+      return;
+    }
+
+    const capturePresenceFrame = async () => {
+      if (captureInFlight.current) {
+        return;
+      }
+
+      captureInFlight.current = true;
+      try {
+        const photo = await cameraRef.current?.takePictureAsync({
+          base64: true,
+          quality: 0.3,
+          shutterSound: false,
+        });
+
+        if (photo?.base64) {
+          await PresenceModule.reportFrame(photo.base64);
+        }
+      } catch (error) {
+        console.warn('Failed to capture active presence frame:', error);
+      } finally {
+        captureInFlight.current = false;
+      }
+    };
+
+    capturePresenceFrame();
+    const intervalId = setInterval(capturePresenceFrame, 1500);
+
+    return () => clearInterval(intervalId);
+  }, [hasPermission, isCameraReady, samplingActive, sessionId]);
+
   return (
     <View style={styles.cameraPreview}>
       {hasPermission ? (
         <CameraView
           key={sessionId ?? 'active-camera'}
+          ref={cameraRef}
           active
           facing="front"
           mirror
-          mode="video"
-          mute
+          onCameraReady={() => setIsCameraReady(true)}
           style={styles.cameraPreviewFeed}
         />
       ) : null}
@@ -494,7 +534,10 @@ export function HomeScreen({
         >
           <View style={styles.runningHeader}>
             <Text style={styles.runningTitle}>{activeMode.tabLabel}</Text>
-            <ActiveSessionCameraPreview sessionId={activeSessionId} />
+            <ActiveSessionCameraPreview
+              sessionId={activeSessionId}
+              samplingActive={!isPaused && !awaitingEndChoice}
+            />
           </View>
 
           <View style={styles.runningTimerWrap}>
