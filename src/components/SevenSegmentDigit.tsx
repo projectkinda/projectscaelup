@@ -1,4 +1,3 @@
-import React from 'react';
 import Svg, { Rect } from 'react-native-svg';
 
 type SegmentName = 'a' | 'b' | 'c' | 'd' | 'e' | 'f' | 'g';

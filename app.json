@@ -5,9 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.projectscaleup.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
@@ -33,11 +33,20 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
+          "cameraPermission": "Project ScaleUp uses the camera to confirm you are present during focus sessions.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
         }
       ],
       "expo-sqlite",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

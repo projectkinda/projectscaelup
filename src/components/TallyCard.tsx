@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -85,7 +85,7 @@ export function TallyCard({
       </View>
       <View style={styles.copy}>
         <Text testID="session-count" style={styles.sessionCount}>
-          {sessionCount} sessions
+          {sessionCount === 1 ? '1 session' : `${sessionCount} sessions`}
         </Text>
         <Text style={styles.streak}>
           {showingUpDays === 1
