@@ -81,7 +81,8 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
 
     CREATE TABLE IF NOT EXISTS flagged_apps (
       app_identifier TEXT PRIMARY KEY,
-      display_name TEXT NOT NULL
+      display_name TEXT NOT NULL,
+      icon_base64 TEXT
     );
 
     CREATE TABLE IF NOT EXISTS app_state (
@@ -105,6 +106,13 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
     'custom_modes',
     'frame_width_max',
     'INTEGER NOT NULL DEFAULT 40',
+  );
+
+  await addColumnIfMissing(
+    database,
+    'flagged_apps',
+    'icon_base64',
+    'TEXT',
   );
 }
 

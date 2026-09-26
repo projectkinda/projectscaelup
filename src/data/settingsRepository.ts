@@ -4,6 +4,7 @@ import { getInstalledApps } from '../domain/appPicker';
 export type FlaggedApp = {
   appIdentifier: string;
   displayName: string;
+  iconBase64?: string;
 };
 
 export type CustomMode = {
@@ -16,6 +17,7 @@ export type CustomMode = {
 type FlaggedAppRow = {
   app_identifier: string;
   display_name: string;
+  icon_base64: string | null;
 };
 
 type CustomModeRow = {
@@ -41,7 +43,7 @@ export const FREE_TIER_APP_CAP = 3;
 
 const DEFAULT_APPS_SEEDED_KEY = 'defaultAppsSeeded';
 
-export const DEFAULT_FLAGGED_PACKAGES: FlaggedApp[] = [
+const DEFAULT_FLAGGED_PACKAGES: FlaggedApp[] = [
   { appIdentifier: 'com.instagram.android', displayName: 'Instagram' },
   { appIdentifier: 'com.zhiliaoapp.musically', displayName: 'TikTok' },
   { appIdentifier: 'com.snapchat.android', displayName: 'Snapchat' },
@@ -86,11 +88,49 @@ export async function loadSettingsData({
 
   const flaggedRows = await database.getAllAsync<FlaggedAppRow>(
     `
-      SELECT app_identifier, display_name
+      SELECT app_identifier, display_name, icon_base64
       FROM flagged_apps
       ORDER BY display_name ASC;
     `,
   );
+  const flaggedApps = flaggedRows.map(row => ({
+    appIdentifier: row.app_identifier,
+    displayName: row.display_name,
+    iconBase64: row.icon_base64 ?? undefined,
+  }));
+  const appsMissingIcons = flaggedApps.some(app => !app.iconBase64);
+
+  if (appsMissingIcons) {
+    try {
+      const installedApps = await getInstalledApps();
+      const installedAppsByPackageName = new Map(
+        installedApps.map(app => [app.packageName, app]),
+      );
+
+      for (const app of flaggedApps) {
+        if (app.iconBase64) {
+          continue;
+        }
+
+        const installedApp = installedAppsByPackageName.get(app.appIdentifier);
+        if (!installedApp?.iconBase64) {
+          continue;
+        }
+
+        app.iconBase64 = installedApp.iconBase64;
+        await database.runAsync(
+          `
+            UPDATE flagged_apps
+            SET icon_base64 = ?
+            WHERE app_identifier = ?;
+          `,
+          [installedApp.iconBase64, app.appIdentifier],
+        );
+      }
+    } catch (error) {
+      console.warn('Could not hydrate flagged app icons:', error);
+    }
+  }
 
   const customModeRows = isPaidUser
     ? await database.getAllAsync<CustomModeRow>(
@@ -104,10 +144,7 @@ export async function loadSettingsData({
     : [];
 
   return {
-    flaggedApps: flaggedRows.map(row => ({
-      appIdentifier: row.app_identifier,
-      displayName: row.display_name,
-    })),
+    flaggedApps,
     customModes: customModeRows.map(row => ({
       id: row.id,
       name: row.name,
@@ -155,7 +192,10 @@ export async function seedDefaultFlaggedApps({
   await ensureSchema(database);
 
   for (const app of DEFAULT_FLAGGED_PACKAGES) {
-    if (!installedPackageNames.has(app.appIdentifier)) {
+    const installedApp = installedApps.find(
+      candidate => candidate.packageName === app.appIdentifier,
+    );
+    if (!installedApp || !installedPackageNames.has(app.appIdentifier)) {
       continue;
     }
 
@@ -170,6 +210,14 @@ export async function seedDefaultFlaggedApps({
         VALUES (?, ?);
       `,
       [app.appIdentifier, app.displayName],
+    );
+    await database.runAsync(
+      `
+        UPDATE flagged_apps
+        SET icon_base64 = ?
+        WHERE app_identifier = ?;
+      `,
+      [installedApp.iconBase64, app.appIdentifier],
     );
   }
 
@@ -243,12 +291,13 @@ export async function saveFlaggedApp(app: FlaggedApp): Promise<FlaggedApp> {
 
   await database.runAsync(
     `
-      INSERT INTO flagged_apps (app_identifier, display_name)
-      VALUES (?, ?)
+      INSERT INTO flagged_apps (app_identifier, display_name, icon_base64)
+      VALUES (?, ?, ?)
       ON CONFLICT(app_identifier) DO UPDATE SET
-        display_name = excluded.display_name;
+        display_name = excluded.display_name,
+        icon_base64 = excluded.icon_base64;
     `,
-    [app.appIdentifier, app.displayName],
+    [app.appIdentifier, app.displayName, app.iconBase64 ?? null],
   );
 
   return app;

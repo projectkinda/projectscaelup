@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -21,7 +22,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNavigation } from '../components/BottomNavigation';
 import {
   type CustomMode,
-  DEFAULT_FLAGGED_PACKAGES,
   type FlaggedApp,
   canAddAnotherFlaggedApp,
   loadSettingsData,
@@ -30,6 +30,7 @@ import {
   saveFlaggedApp,
   saveCustomMode,
 } from '../data/settingsRepository';
+import { pickInstalledApp } from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
@@ -129,10 +130,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [isRestoring, setIsRestoring] = useState(false);
   const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
   const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
-  const [showAppChoices, setShowAppChoices] = useState(false);
-  const [savingAppIdentifier, setSavingAppIdentifier] = useState<string | null>(
-    null,
-  );
+  const [isPickingApp, setIsPickingApp] = useState(false);
   const paidUser = isPaidUser();
 
   const load = useCallback(async () => {
@@ -212,7 +210,6 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setFlaggedApps(current =>
       current.filter(item => item.appIdentifier !== app.appIdentifier),
     );
-    setShowAppChoices(true);
   };
 
   const deleteMode = async (mode: CustomMode) => {
@@ -230,13 +227,6 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setIsModeEditorVisible(true);
   };
 
-  const availableAppChoices = DEFAULT_FLAGGED_PACKAGES.filter(
-    app =>
-      !flaggedApps.some(
-        flaggedApp => flaggedApp.appIdentifier === app.appIdentifier,
-      ),
-  );
-
   const handleAddApp = async () => {
     const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
     if (!canAdd) {
@@ -244,26 +234,34 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       return;
     }
 
-    setShowAppChoices(current => !current);
-  };
-
-  const handleSelectSuggestedApp = async (app: FlaggedApp) => {
-    const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
-    if (!canAdd) {
-      onNavigate('paywall');
-      return;
-    }
-
-    setSavingAppIdentifier(app.appIdentifier);
+    setIsPickingApp(true);
     try {
-      const savedApp = await saveFlaggedApp(app);
+      const pickedApp = await pickInstalledApp();
+      if (!pickedApp) {
+        return;
+      }
+
+      if (
+        flaggedApps.some(app => app.appIdentifier === pickedApp.packageName)
+      ) {
+        return;
+      }
+
+      const savedApp = await saveFlaggedApp({
+        appIdentifier: pickedApp.packageName,
+        displayName: pickedApp.displayName,
+        iconBase64: pickedApp.iconBase64,
+      });
       setFlaggedApps(current =>
         [...current, savedApp].sort((a, b) =>
           a.displayName.localeCompare(b.displayName),
         ),
       );
+    } catch (error) {
+      console.warn('Failed to pick app:', error);
+      Alert.alert('Unable to add app', 'Try again in a moment.');
     } finally {
-      setSavingAppIdentifier(null);
+      setIsPickingApp(false);
     }
   };
 
@@ -343,106 +341,63 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
-                    {flaggedApps.length > 0 ? (
-                      flaggedApps.map(app => (
-                        <View key={app.appIdentifier} style={styles.row}>
-                          <View style={styles.flaggedAppMain}>
+                    {flaggedApps.length === 0 ? (
+                      <View style={styles.emptyAppsRow}>
+                        <Text style={styles.emptyText}>
+                          No distracting apps selected yet.
+                        </Text>
+                      </View>
+                    ) : null}
+                    <ScrollView
+                      horizontal
+                      bounces={false}
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.flaggedAppStrip}
+                    >
+                      {flaggedApps.map(app => (
+                        <Pressable
+                          key={app.appIdentifier}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${app.displayName}. Long press to remove.`}
+                          onLongPress={() => removeApp(app)}
+                          style={({ pressed }) => [
+                            styles.appIconButton,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          {app.iconBase64 ? (
+                            <Image
+                              source={{
+                                uri: `data:image/png;base64,${app.iconBase64}`,
+                              }}
+                              style={styles.appIconImage}
+                            />
+                          ) : (
                             <View style={styles.appIconFallback}>
                               <Text style={styles.appIconText}>
                                 {appInitial(app.displayName)}
                               </Text>
                             </View>
-                            <View style={styles.rowTextWrap}>
-                              <Text style={styles.rowTitle}>
-                                {app.displayName}
-                              </Text>
-                              <Text style={styles.rowDetail}>
-                                {app.appIdentifier}
-                              </Text>
-                            </View>
-                          </View>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Remove ${app.displayName}`}
-                            onPress={() => removeApp(app)}
-                            style={({ pressed }) => [
-                              styles.textAction,
-                              pressed && styles.pressed,
-                            ]}
-                          >
-                            <Text style={styles.actionText}>Remove</Text>
-                          </Pressable>
-                        </View>
-                      ))
-                    ) : (
-                      <View style={styles.row}>
-                        <Text style={styles.emptyText}>
-                          No distracting apps selected yet.
-                        </Text>
-                      </View>
-                    )}
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={handleAddApp}
-                      style={({ pressed }) => [
-                        styles.row,
-                        styles.addRow,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text style={styles.addText}>
-                        {showAppChoices ? 'Hide app choices' : 'Add app'}
-                      </Text>
-                    </Pressable>
-                    {showAppChoices ? (
-                      availableAppChoices.length > 0 ? (
-                        availableAppChoices.map(app => {
-                          const saving =
-                            savingAppIdentifier === app.appIdentifier;
-                          return (
-                            <Pressable
-                              key={app.appIdentifier}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Add ${app.displayName}`}
-                              disabled={saving}
-                              onPress={() => handleSelectSuggestedApp(app)}
-                              style={({ pressed }) => [
-                                styles.row,
-                                styles.suggestedAppRow,
-                                pressed && styles.pressed,
-                              ]}
-                            >
-                              <View style={styles.flaggedAppMain}>
-                                <View style={styles.appIconFallback}>
-                                  <Text style={styles.appIconText}>
-                                    {appInitial(app.displayName)}
-                                  </Text>
-                                </View>
-                                <View style={styles.rowTextWrap}>
-                                  <Text style={styles.rowTitle}>
-                                    {app.displayName}
-                                  </Text>
-                                  <Text style={styles.rowDetail}>
-                                    {app.appIdentifier}
-                                  </Text>
-                                </View>
-                              </View>
-                              {saving ? (
-                                <ActivityIndicator color={colors.ink} />
-                              ) : (
-                                <Text style={styles.actionText}>Add</Text>
-                              )}
-                            </Pressable>
-                          );
-                        })
-                      ) : (
-                        <View style={[styles.row, styles.suggestedAppRow]}>
-                          <Text style={styles.emptyText}>
-                            All suggested apps are already added.
-                          </Text>
-                        </View>
-                      )
-                    ) : null}
+                          )}
+                        </Pressable>
+                      ))}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Add app"
+                        disabled={isPickingApp}
+                        onPress={handleAddApp}
+                        style={({ pressed }) => [
+                          styles.addAppIconButton,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        {isPickingApp ? (
+                          <ActivityIndicator color={colors.ink} />
+                        ) : (
+                          <Text style={styles.plusText}>+</Text>
+                        )}
+                      </Pressable>
+                    </ScrollView>
                   </LinearGradient>
                 </View>
               </View>
@@ -843,17 +798,45 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   rowTextWrap: { flex: 1, minWidth: 0 },
-  flaggedAppMain: {
-    flex: 1,
-    minWidth: 0,
+  emptyAppsRow: {
+    minHeight: 48,
+    paddingTop: 12,
+    paddingBottom: 6,
+    justifyContent: 'center',
+  },
+  flaggedAppStrip: {
+    minHeight: 62,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
+  },
+  appIconButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addAppIconButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+  appIconImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
   },
   appIconFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: 7,
+    width: 42,
+    height: 42,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.module,
@@ -862,8 +845,14 @@ const styles = StyleSheet.create({
   },
   appIconText: {
     color: colors.ink,
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  plusText: {
+    color: colors.ink,
+    fontSize: 26,
+    lineHeight: 30,
     fontWeight: '700',
   },
   rowTitle: {
@@ -884,9 +873,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   addRow: { justifyContent: 'flex-start' },
-  suggestedAppRow: {
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
-  },
   addText: {
     color: colors.ink,
     fontSize: 15,
