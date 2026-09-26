@@ -47,7 +47,8 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withIosSceneLifecycle"
     ]
   }
 }
