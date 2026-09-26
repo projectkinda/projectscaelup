@@ -827,24 +827,7 @@ function AppPickerModal({
               style={styles.appPickerSearch}
             />
           </View>
-        ) : (
-          <View style={styles.appPickerStoreWrap}>
-            <View style={styles.appPickerStorePill}>
-              <View style={[styles.storeIcon, styles.playStoreIcon]}>
-                <Text style={styles.storeIconText}>P</Text>
-              </View>
-              <Text style={styles.storePillText}>Download from Play Store</Text>
-            </View>
-            <View style={styles.appPickerStorePill}>
-              <View style={[styles.storeIcon, styles.galaxyStoreIcon]}>
-                <Text style={styles.storeIconText}>G</Text>
-              </View>
-              <Text style={styles.storePillText}>
-                Download from Galaxy Store
-              </Text>
-            </View>
-          </View>
-        )}
+        ) : null}
 
         <Text style={styles.appPickerSectionLabel}>Add apps from phone</Text>
         <View style={styles.appPickerListShell}>
@@ -1300,49 +1283,8 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
   },
-  appPickerStoreWrap: {
-    marginTop: 8,
-    marginLeft: 88,
-    gap: 20,
-  },
-  appPickerStorePill: {
-    minHeight: 50,
-    borderRadius: 25,
-    backgroundColor: '#2d2d2d',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 28,
-  },
-  storeIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playStoreIcon: {
-    backgroundColor: '#ffffff',
-  },
-  galaxyStoreIcon: {
-    backgroundColor: '#f62467',
-  },
-  storeIconText: {
-    color: '#111111',
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '800',
-  },
-  storePillText: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.ink,
-    fontSize: 17,
-    lineHeight: 23,
-    fontWeight: '800',
-  },
   appPickerSectionLabel: {
-    marginTop: 60,
+    marginTop: 28,
     marginBottom: 14,
     color: 'rgba(255, 255, 255, 0.62)',
     fontSize: 15,
