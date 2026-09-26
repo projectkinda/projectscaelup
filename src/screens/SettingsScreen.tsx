@@ -47,13 +47,16 @@ type SettingsScreenProps = {
   onNavigate: (screen: string) => void;
 };
 
-type PermissionState = 'granted' | 'revoked' | 'unavailable';
+// 'notRequested': never asked, so tapping asks. 'denied': the user said no, so
+// only Settings can change it. 'off': an Android toggle that isn't on (Android
+// can't tell "never enabled" from "turned off").
+type PermissionState = 'granted' | 'notRequested' | 'denied' | 'off' | 'unavailable';
 
 // expo-camera's permission check doesn't resolve on web (no camera module
 // there), which would otherwise hang this screen's initial load forever.
 async function getCameraPermissionAsync() {
   if (Platform.OS === 'web') {
-    return { status: 'undetermined' as const };
+    return { status: 'undetermined' as const, canAskAgain: false };
   }
   return Camera.getCameraPermissionsAsync();
 }
@@ -80,22 +83,43 @@ function formatGracePeriod(seconds: number) {
 }
 
 function statusLabel(state: PermissionState) {
-  if (state === 'granted') {
-    return 'Granted';
+  switch (state) {
+    case 'granted':
+      return 'Granted';
+    case 'notRequested':
+      return 'Set up';
+    case 'denied':
+      return 'Denied';
+    case 'off':
+      return 'Off';
+    case 'unavailable':
+      return 'Unavailable';
   }
+}
 
-  if (state === 'revoked') {
-    return 'Revoked';
+function needsAttention(state: PermissionState) {
+  return state === 'denied' || state === 'off';
+}
+
+function cameraPermissionState(permission: { status: string }): PermissionState {
+  if (permission.status === 'granted') {
+    return 'granted';
   }
-
-  return 'Unavailable';
+  return permission.status === 'denied' ? 'denied' : 'notRequested';
 }
 
 function screenTimePermissionState(status: ScreenTimeStatus | null): PermissionState {
   if (!status) {
     return 'unavailable';
   }
-  return status.authorization === 'approved' ? 'granted' : 'revoked';
+  switch (status.authorization) {
+    case 'approved':
+      return 'granted';
+    case 'denied':
+      return 'denied';
+    case 'notDetermined':
+      return 'notRequested';
+  }
 }
 
 function appInitial(name: string) {
@@ -178,10 +202,13 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         id: 'camera',
         label: 'Camera',
         detail: "Used to check you're still at your desk during a session.",
-        state:
-          cameraPermission.status === 'granted' ? 'granted' : 'revoked',
+        state: cameraPermissionState(cameraPermission),
         fix: () => {
-          Linking.openSettings();
+          if (cameraPermission.status === 'granted' || !cameraPermission.canAskAgain) {
+            Linking.openSettings();
+            return;
+          }
+          Camera.requestCameraPermissionsAsync().then(load);
         },
       },
       {
@@ -195,7 +222,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           Platform.OS === 'android'
             ? usageTrackingEnabled
               ? 'granted'
-              : 'revoked'
+              : 'off'
             : 'unavailable',
         fix: openAccessibilitySettings,
       },
@@ -206,7 +233,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         id: 'overlay',
         label: 'Display over apps',
         detail: 'Used to block flagged apps while a lockdown is active.',
-        state: overlayEnabled ? 'granted' : 'revoked',
+        state: overlayEnabled ? 'granted' : 'off',
         fix: openOverlaySettings,
       });
     }
@@ -665,15 +692,15 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                         <View
                           style={[
                             styles.statusPill,
-                            permission.state === 'revoked' &&
-                              styles.revokedPill,
+                            needsAttention(permission.state) &&
+                              styles.attentionPill,
                           ]}
                         >
                           <Text
                             style={[
                               styles.statusPillText,
-                              permission.state === 'revoked' &&
-                                styles.revokedPillText,
+                              needsAttention(permission.state) &&
+                                styles.attentionPillText,
                             ]}
                           >
                             {statusLabel(permission.state)}
@@ -1422,10 +1449,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '700',
   },
-  revokedPill: {
+  attentionPill: {
     backgroundColor: colors.mutedRust,
   },
-  revokedPillText: { color: colors.warmWhite },
+  attentionPillText: { color: colors.warmWhite },
   tierText: {
     color: colors.ink,
     fontSize: 15,
