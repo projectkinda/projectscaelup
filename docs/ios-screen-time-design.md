@@ -175,16 +175,19 @@ Each needs `com.apple.developer.family-controls` and the App Group.
 
 ## 8. Build plan
 
-**Now (no paid account needed; the Simulator compiles but can't exercise Screen Time):**
-1. Review this doc (Q1–Q5).
-2. Spike Option A on branch `ios/screen-time-spike` and decide A or B.
-3. Write the iOS JS wrapper and the `Platform.OS === 'ios'` call sites, with a stub native module that returns "unavailable". Verify Android paths are untouched (diff review; the partner doesn't need to re-test).
-4. Write the native module, extensions and config plugin so they compile for the Simulator.
+**Done (branch `ios/screen-time`, no paid account needed):**
+1. ✅ Decisions (section 0) and product questions (section 7).
+2. ✅ Scene-lifecycle config plugin, so `expo prebuild --clean` is safe (`8fe1bbe`).
+3. ✅ ScreenTimeCore rules, engine and platform services, with 34 unit tests (`910c611`).
+4. ✅ Expo module, the three extensions and entitlements (`82e392e`).
+5. ✅ iOS call sites in Home, lockdown and Settings, plus reconcile on foreground. Android is unchanged (`c18bc6e`).
+6. ✅ Verified in the iOS 27 Simulator: build clean, authorization prompt and decline path, start/pause/cancel update the shared state.
 
 **After enrolling ($99):**
-5. Request Family Controls distribution approval for all 4 bundle IDs the same day. Create the App Group.
-6. Real-device tests: authorize → pick → session lock → Open anyway → grace re-lock → session end → lockdown → unlock. Test with the app killed and disconnected from Xcode. Test sessions under 15 min and over 44 min.
-7. Fill in the App Store privacy details for Screen Time usage.
+7. Set `ios.appleTeamId` in app.json (apple-targets needs it for device builds) and the signing team.
+8. Request Family Controls **distribution** approval for all 4 bundle IDs the same day. Register the App Group `group.com.projectscaleup.app`.
+9. Real-device tests: authorize → pick apps → session lock → Open anyway → grace re-lock → one distraction per long scroll → session end → lockdown → unlock. Run with the app killed and disconnected from Xcode. Include a session under 15 min, one over 44 min, and a 10-min lockdown (F1).
+10. Fill in the App Store privacy details for Screen Time.
 
 ## 9. Sources
 
