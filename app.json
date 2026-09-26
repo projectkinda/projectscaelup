@@ -12,6 +12,12 @@
       "bundleIdentifier": "com.projectscaleup.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Project ScaleUp uses the camera to confirm you are present during focus sessions."
+      },
+      "entitlements": {
+        "com.apple.developer.family-controls": true,
+        "com.apple.security.application-groups": [
+          "group.com.projectscaleup.app"
+        ]
       }
     },
     "android": {
@@ -47,7 +53,15 @@
           "recordAudioAndroid": false
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      "./plugins/withIosSceneLifecycle",
+      [
+        "./plugins/withIosLaunchScreen",
+        {
+          "backgroundColor": "#121212"
+        }
+      ],
+      "@bacons/apple-targets"
     ]
   }
 }

@@ -1,5 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 
+import { applyLockdown as applyIosLockdown } from './iosScreenTime';
+
 type NativeLockdownBridge = {
   applyLockdown: (appIdentifiers: string[], expiresAt: string) => Promise<void>;
   canDrawOverlays: () => Promise<boolean>;
@@ -12,6 +14,10 @@ const LockdownBridge = NativeModules.LockdownBridge as
 
 export const LockdownModule = {
   applyLockdown(appIdentifiers: string[], expiresAt: string): Promise<void> {
+    if (Platform.OS === 'ios') {
+      return applyIosLockdown(expiresAt);
+    }
+
     if (Platform.OS !== 'android' || !LockdownBridge) {
       return Promise.resolve();
     }

@@ -81,10 +81,14 @@ PODS:
     - ExpoModulesJSI
   - ExpoSQLite (57.0.3):
     - ExpoModulesCore
+  - ExtensionStorage (1.0.0):
+    - ExpoModulesCore
   - FBLazyVector (0.86.3)
   - hermes-engine (250829098.0.17):
     - hermes-engine/Pre-built (= 250829098.0.17)
   - hermes-engine/Pre-built (250829098.0.17)
+  - PresenceCamera (1.0.0):
+    - ExpoModulesCore
   - RCTDeprecation (0.86.3)
   - RCTRequired (0.86.3)
   - RCTSwiftUI (0.86.3)
@@ -2063,6 +2067,10 @@ PODS:
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
     - Yoga
+  - ScreenTime (1.0.0):
+    - ExpoModulesCore
+    - ScreenTimeCore
+  - ScreenTimeCore (1.0.0)
   - Yoga (0.0.0)
 
 DEPENDENCIES:
@@ -2083,8 +2091,10 @@ DEPENDENCIES:
   - ExpoModulesJSI (from `../node_modules/expo-modules-jsi/apple`)
   - ExpoModulesWorklets (from `../node_modules/expo-modules-core/ExpoModulesWorklets.podspec`)
   - ExpoSQLite (from `../node_modules/expo-sqlite/ios`)
+  - "ExtensionStorage (from `../node_modules/@bacons/apple-targets/ios`)"
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
+  - PresenceCamera (from `../modules/presence-camera/ios`)
   - RCTDeprecation (from `../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation`)
   - RCTRequired (from `../node_modules/react-native/Libraries/Required`)
   - RCTSwiftUI (from `../node_modules/react-native/ReactApple/RCTSwiftUI`)
@@ -2162,6 +2172,8 @@ DEPENDENCIES:
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNSVG (from `../node_modules/react-native-svg`)
+  - ScreenTime (from `../modules/screen-time/ios`)
+  - ScreenTimeCore (from `../modules/screen-time/core`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 EXTERNAL SOURCES:
@@ -2199,11 +2211,15 @@ EXTERNAL SOURCES:
     :podspec: "../node_modules/expo-modules-core/ExpoModulesWorklets.podspec"
   ExpoSQLite:
     :path: "../node_modules/expo-sqlite/ios"
+  ExtensionStorage:
+    :path: "../node_modules/@bacons/apple-targets/ios"
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
   hermes-engine:
     :podspec: "../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec"
     :tag: hermes-v250829098.0.17
+  PresenceCamera:
+    :path: "../modules/presence-camera/ios"
   RCTDeprecation:
     :path: "../node_modules/react-native/ReactApple/Libraries/RCTFoundation/RCTDeprecation"
   RCTRequired:
@@ -2356,6 +2372,10 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-gesture-handler"
   RNSVG:
     :path: "../node_modules/react-native-svg"
+  ScreenTime:
+    :path: "../modules/screen-time/ios"
+  ScreenTimeCore:
+    :path: "../modules/screen-time/core"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -2377,8 +2397,10 @@ SPEC CHECKSUMS:
   ExpoModulesJSI: 383849017851b1ebacbd78cfaa32b18b6152585e
   ExpoModulesWorklets: 8c9a7e3572a420e3e7f93f98453da9c9175edf88
   ExpoSQLite: 72e6ada0504a27cd043eb1bf172db70485a761b6
+  ExtensionStorage: b1b89518395d9d556e00a1b1f299172e49be3dbe
   FBLazyVector: 2138c6c2ab66c31bf5754dc18097fbc498a49c7f
   hermes-engine: 63c5db7d529c36335fada6582fd293ae2a105d77
+  PresenceCamera: 5fc60f0e6e873562169f97cdb63ed616b0387ae6
   RCTDeprecation: 96f68ebf33f8762466b01d57d6e873c4f30efb07
   RCTRequired: 166eed8ad6d8440e73e56d09a9090366609823d2
   RCTSwiftUI: e818198d11928a78c2b2afe281d072171dab617f
@@ -2455,8 +2477,10 @@ SPEC CHECKSUMS:
   RNCAsyncStorage: 2ad919e88b8bc2cd80e8697ce66d04d006743283
   RNGestureHandler: 92172e79df6e88e0e93b6341f9dcd8b5a02746ba
   RNSVG: 3fe8590403ac9f107b4d14591bc6e54da4894e5c
+  ScreenTime: 6969ebafde9c461f7bcac7019682e20133f0afc6
+  ScreenTimeCore: ecd6391d18cccf436812a4c31c492917b71b7c66
   Yoga: 18b74b3ade30bebc1904004dfaceae1dd02a330a
 
-PODFILE CHECKSUM: 8ea2d9ad3417990f80b0be3b28832da62559f4b9
+PODFILE CHECKSUM: 85a7f7bfe71854dcd29ef406d1780248271af007
 
 COCOAPODS: 1.16.2

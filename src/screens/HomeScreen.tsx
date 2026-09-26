@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PlayIcon from '../assets/icons/play.svg';
 import { BottomNavigation } from '../components/BottomNavigation';
+import { LivePresenceCamera } from '../components/LivePresenceCamera';
 import { RunningTimerDisplay } from '../components/RunningTimerDisplay';
 import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
 import { TallyCard } from '../components/TallyCard';
@@ -26,6 +28,12 @@ import { isPaidUser } from '../domain/paywall';
 import { PresenceModule } from '../domain/presenceModule';
 import { startSessionMonitor } from '../domain/sessionMonitor';
 import { startUsageMonitor } from '../domain/usageMonitor';
+import {
+  finishFocusLock,
+  pauseFocusLock,
+  resumeFocusLock,
+  startFocusLock,
+} from '../domain/iosScreenTime';
 import { getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
@@ -77,7 +85,12 @@ function ActiveSessionCameraPreview({
   }, [sessionId]);
 
   useEffect(() => {
-    if (!hasPermission || !isCameraReady || !samplingActive) {
+    if (
+      !PresenceModule.analyzesStillFrames ||
+      !hasPermission ||
+      !isCameraReady ||
+      !samplingActive
+    ) {
       return;
     }
 
@@ -112,7 +125,15 @@ function ActiveSessionCameraPreview({
 
   return (
     <View style={styles.cameraPreview}>
-      {hasPermission ? (
+      {hasPermission && Platform.OS === 'ios' ? (
+        <LivePresenceCamera
+          key={sessionId ?? 'active-camera'}
+          active={samplingActive}
+          analysisIntervalMs={1000}
+          style={styles.cameraPreviewFeed}
+        />
+      ) : null}
+      {hasPermission && Platform.OS !== 'ios' ? (
         <CameraView
           key={sessionId ?? 'active-camera'}
           ref={cameraRef}
@@ -321,6 +342,9 @@ export function HomeScreen({
       activeFlaggedAppIdentifiers.current,
     );
     sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
+    startFocusLock(sessionId, activeMode.name, sessionEndTimeMs.current).catch(
+      error => console.warn('Failed to lock flagged apps:', error),
+    );
     setRemainingSeconds(durationSeconds);
     setIsPaused(false);
     setPendingDurationSeconds(null);
@@ -356,6 +380,12 @@ export function HomeScreen({
 
   const handleAddTime = () => {
     setAwaitingEndChoice(false);
+    if (activeSessionId !== null) {
+      const nextEndMs = Date.now() + ((remainingSeconds ?? 0) + 5 * 60) * 1000;
+      startFocusLock(activeSessionId, activeMode.name, nextEndMs).catch(error =>
+        console.warn('Failed to extend the flagged-app lock:', error),
+      );
+    }
     setRemainingSeconds(current => {
       const nextRemainingSeconds = (current ?? 0) + 5 * 60;
       sessionEndTimeMs.current = Date.now() + nextRemainingSeconds * 1000;
@@ -383,6 +413,9 @@ export function HomeScreen({
         );
       }
       sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
+      resumeFocusLock(sessionEndTimeMs.current).catch(error =>
+        console.warn('Failed to re-lock flagged apps:', error),
+      );
       setIsPaused(false);
       return;
     }
@@ -391,6 +424,9 @@ export function HomeScreen({
     sessionMonitorUnsubscribe.current = null;
     usageMonitorUnsubscribe.current?.();
     usageMonitorUnsubscribe.current = null;
+    pauseFocusLock().catch(error =>
+      console.warn('Failed to unlock flagged apps for the pause:', error),
+    );
     setIsPaused(true);
   };
 
@@ -420,6 +456,11 @@ export function HomeScreen({
 
     if (sessionId !== null) {
       try {
+        await finishFocusLock(sessionId, { keepDistractions: false });
+      } catch (error) {
+        console.warn('Failed to unlock flagged apps:', error);
+      }
+      try {
         await voidSession(sessionId);
       } catch (error) {
         console.warn('Failed to void session in database:', error);
@@ -436,6 +477,12 @@ export function HomeScreen({
     }
 
     await resetActiveSessionState();
+
+    try {
+      await finishFocusLock(sessionId, { keepDistractions: true });
+    } catch (error) {
+      console.warn('Failed to collect iOS distractions:', error);
+    }
 
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;

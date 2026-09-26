@@ -6,6 +6,7 @@ import {
   Animated,
   AppState,
   Linking,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LivePresenceCamera } from '../components/LivePresenceCamera';
 import { SevenSegmentDigit } from '../components/SevenSegmentDigit';
 import {
   PresenceModule,
@@ -139,6 +141,7 @@ export function PreSessionReadinessScreen({
 
   useEffect(() => {
     const canSample =
+      PresenceModule.analyzesStillFrames &&
       showCamera &&
       isCameraReady &&
       !hasCompleted.current;
@@ -330,7 +333,14 @@ export function PreSessionReadinessScreen({
           onLayout={event => setPreviewHeight(event.nativeEvent.layout.height)}
           style={[styles.previewShell, previewAnimatedStyle]}
         >
-          {showCamera ? (
+          {showCamera && Platform.OS === 'ios' ? (
+            <LivePresenceCamera
+              active
+              analysisIntervalMs={500}
+              onCameraReady={handleCameraReady}
+              style={styles.camera}
+            />
+          ) : showCamera ? (
             <CameraView
               ref={cameraRef}
               active

@@ -37,6 +37,8 @@ import {
   type InstalledApp,
 } from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
+import { IosFlaggedApps } from '../components/IosFlaggedApps';
+import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { colors, layout } from '../theme/tokens';
@@ -45,13 +47,16 @@ type SettingsScreenProps = {
   onNavigate: (screen: string) => void;
 };
 
-type PermissionState = 'granted' | 'revoked' | 'unavailable';
+// iOS distinguishes 'notRequested' (never asked, so tapping asks) from
+// 'denied' (the user said no, so only Settings can change it). Android keeps
+// its existing granted/revoked states.
+type PermissionState = 'granted' | 'notRequested' | 'denied' | 'revoked' | 'unavailable';
 
 // expo-camera's permission check doesn't resolve on web (no camera module
 // there), which would otherwise hang this screen's initial load forever.
 async function getCameraPermissionAsync() {
   if (Platform.OS === 'web') {
-    return { status: 'undetermined' as const };
+    return { status: 'undetermined' as const, canAskAgain: false };
   }
   return Camera.getCameraPermissionsAsync();
 }
@@ -78,15 +83,43 @@ function formatGracePeriod(seconds: number) {
 }
 
 function statusLabel(state: PermissionState) {
-  if (state === 'granted') {
-    return 'Granted';
+  switch (state) {
+    case 'granted':
+      return 'Granted';
+    case 'notRequested':
+      return 'Set up';
+    case 'denied':
+      return 'Denied';
+    case 'revoked':
+      return 'Revoked';
+    case 'unavailable':
+      return 'Unavailable';
   }
+}
 
-  if (state === 'revoked') {
-    return 'Revoked';
+function needsAttention(state: PermissionState) {
+  return state === 'denied' || state === 'revoked';
+}
+
+function iosCameraPermissionState(permission: { status: string }): PermissionState {
+  if (permission.status === 'granted') {
+    return 'granted';
   }
+  return permission.status === 'denied' ? 'denied' : 'notRequested';
+}
 
-  return 'Unavailable';
+function screenTimePermissionState(status: ScreenTimeStatus | null): PermissionState {
+  if (!status) {
+    return 'unavailable';
+  }
+  switch (status.authorization) {
+    case 'approved':
+      return 'granted';
+    case 'denied':
+      return 'denied';
+    case 'notDetermined':
+      return 'notRequested';
+  }
 }
 
 function appInitial(name: string) {
@@ -142,6 +175,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     string[]
   >([]);
   const [isPickingApp, setIsPickingApp] = useState(false);
+  const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
   const paidUser = isPaidUser();
 
   const load = useCallback(async () => {
@@ -169,15 +203,30 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         label: 'Camera',
         detail: "Used to check you're still at your desk during a session.",
         state:
-          cameraPermission.status === 'granted' ? 'granted' : 'revoked',
+          Platform.OS === 'ios'
+            ? iosCameraPermissionState(cameraPermission)
+            : cameraPermission.status === 'granted'
+              ? 'granted'
+              : 'revoked',
         fix: () => {
+          const canAskNow =
+            Platform.OS === 'ios' &&
+            cameraPermission.status !== 'granted' &&
+            cameraPermission.canAskAgain;
+          if (canAskNow) {
+            Camera.requestCameraPermissionsAsync().then(load);
+            return;
+          }
           Linking.openSettings();
         },
       },
       {
         id: 'usage-tracking',
         label: Platform.OS === 'ios' ? 'Screen Time' : 'Accessibility',
-        detail: "Used to track time in apps you've flagged as distracting.",
+        detail:
+          Platform.OS === 'ios'
+            ? 'Used to lock flagged apps during focus sessions.'
+            : "Used to track time in apps you've flagged as distracting.",
         state:
           Platform.OS === 'android'
             ? usageTrackingEnabled
@@ -201,6 +250,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setFlaggedApps(settingsData.flaggedApps);
     setCustomModes(settingsData.customModes);
     setPermissions(nextPermissions);
+    setScreenTimeStatus(Platform.OS === 'ios' ? ScreenTime.getStatus() : null);
     setIsLoading(false);
   }, []);
 
@@ -263,6 +313,26 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       );
     });
   }, [appPickerQuery, flaggedApps, installedApps]);
+
+  // The iOS Screen Time row follows the live status, which the flagged-apps
+  // panel updates without reloading the whole screen.
+  const permissionRows = useMemo(
+    () =>
+      permissions.map(row =>
+        Platform.OS === 'ios' && row.id === 'usage-tracking'
+          ? {
+              ...row,
+              state: screenTimePermissionState(screenTimeStatus),
+              fix: () => {
+                ScreenTime.requestAuthorization()
+                  .then(next => next && setScreenTimeStatus(next))
+                  .catch(() => Linking.openSettings());
+              },
+            }
+          : row,
+      ),
+    [permissions, screenTimeStatus],
+  );
 
   const handleAddApp = async () => {
     const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
@@ -517,12 +587,19 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                         </ScrollView>
                       </>
                     ) : (
-                      <View style={styles.emptyAppsRow}>
-                        <Text style={styles.emptyText}>
-                          App blocking on iPhone is coming soon. It needs
-                          Apple's Screen Time access, which isn't set up yet.
-                        </Text>
-                      </View>
+                      Platform.OS === 'ios' ? (
+                        <IosFlaggedApps
+                          status={screenTimeStatus}
+                          paidUser={paidUser}
+                          onStatusChange={setScreenTimeStatus}
+                        />
+                      ) : (
+                        <View style={styles.emptyAppsRow}>
+                          <Text style={styles.emptyText}>
+                            App blocking isn't available on this device.
+                          </Text>
+                        </View>
+                      )
                     )}
                   </LinearGradient>
                 </View>
@@ -596,7 +673,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Permission status</Text>
                 <View style={styles.permissionList}>
-                  {permissions.map(permission => (
+                  {permissionRows.map(permission => (
                     <Pressable
                       key={permission.id}
                       accessibilityRole="button"
@@ -624,15 +701,15 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                         <View
                           style={[
                             styles.statusPill,
-                            permission.state === 'revoked' &&
-                              styles.revokedPill,
+                            needsAttention(permission.state) &&
+                              styles.attentionPill,
                           ]}
                         >
                           <Text
                             style={[
                               styles.statusPillText,
-                              permission.state === 'revoked' &&
-                                styles.revokedPillText,
+                              needsAttention(permission.state) &&
+                                styles.attentionPillText,
                             ]}
                           >
                             {statusLabel(permission.state)}
@@ -1381,10 +1458,10 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '700',
   },
-  revokedPill: {
+  attentionPill: {
     backgroundColor: colors.mutedRust,
   },
-  revokedPillText: { color: colors.warmWhite },
+  attentionPillText: { color: colors.warmWhite },
   tierText: {
     color: colors.ink,
     fontSize: 15,

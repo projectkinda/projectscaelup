@@ -36,6 +36,11 @@ type NativePresenceDetectorBridge = {
 const PresenceDetectorBridge = NativeModules
   .PresenceDetectorBridge as NativePresenceDetectorBridge | undefined;
 
+// Android analyses still photos the screens capture and pass to `reportFrame`.
+// iOS analyses live camera frames natively (PresenceCameraView), which then
+// calls `reportLiveReading`; there are no models to load in JavaScript.
+const analyzesStillFrames = Platform.OS === 'android';
+
 function ensureBridge(): NativePresenceDetectorBridge {
   if (Platform.OS !== 'android' || !PresenceDetectorBridge) {
     throw new Error('PresenceDetectorBridge is only available on Android.');
@@ -46,7 +51,9 @@ function ensureBridge(): NativePresenceDetectorBridge {
 
 async function getFaceDetector(): Promise<ActiveDetector> {
   if (!faceDetector) {
-    await ensureBridge().loadFaceModel();
+    if (analyzesStillFrames) {
+      await ensureBridge().loadFaceModel();
+    }
     faceDetector = { type: 'face' };
   }
 
@@ -54,12 +61,16 @@ async function getFaceDetector(): Promise<ActiveDetector> {
 }
 
 async function loadPoseModel(): Promise<ActiveDetector> {
-  await ensureBridge().loadPoseModel();
+  if (analyzesStillFrames) {
+    await ensureBridge().loadPoseModel();
+  }
   return { type: 'pose' };
 }
 
 async function unloadPoseModel() {
-  await ensureBridge().unloadPoseModel();
+  if (analyzesStillFrames) {
+    await ensureBridge().unloadPoseModel();
+  }
 }
 
 function emit(result: PresenceResult) {
@@ -68,6 +79,14 @@ function emit(result: PresenceResult) {
 }
 
 export const PresenceModule = {
+  /** True when screens should capture photos and pass them to `reportFrame`. */
+  analyzesStillFrames,
+
+  /** The detector the current session uses, for cameras that analyse frames themselves. */
+  activeDetectorType(): SessionMode['detectionModel'] | null {
+    return activeDetector?.type ?? null;
+  },
+
   async start(mode: SessionMode): Promise<void> {
     await this.stop();
 
@@ -112,6 +131,13 @@ export const PresenceModule = {
       emit(result);
     } catch (error) {
       console.warn('Failed to process presence frame:', error);
+    }
+  },
+
+  /** A reading from a camera that analyses live frames natively (iOS). */
+  reportLiveReading(result: PresenceResult): void {
+    if (activeDetector) {
+      emit(result);
     }
   },
 
