@@ -13,6 +13,7 @@ class ProjectScaleUpNativePackage : ReactPackage {
       UsageTrackingBridge(reactContext),
       LockdownBridge(reactContext),
       AppPickerBridge(reactContext),
+      PresenceDetectorBridge(reactContext),
     )
 
   override fun createViewManagers(
