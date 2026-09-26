@@ -37,6 +37,8 @@ import {
   type InstalledApp,
 } from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
+import { IosFlaggedApps } from '../components/IosFlaggedApps';
+import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { colors, layout } from '../theme/tokens';
@@ -87,6 +89,13 @@ function statusLabel(state: PermissionState) {
   }
 
   return 'Unavailable';
+}
+
+function screenTimePermissionState(status: ScreenTimeStatus | null): PermissionState {
+  if (!status) {
+    return 'unavailable';
+  }
+  return status.authorization === 'approved' ? 'granted' : 'revoked';
 }
 
 function appInitial(name: string) {
@@ -142,6 +151,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     string[]
   >([]);
   const [isPickingApp, setIsPickingApp] = useState(false);
+  const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
   const paidUser = isPaidUser();
 
   const load = useCallback(async () => {
@@ -177,7 +187,10 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       {
         id: 'usage-tracking',
         label: Platform.OS === 'ios' ? 'Screen Time' : 'Accessibility',
-        detail: "Used to track time in apps you've flagged as distracting.",
+        detail:
+          Platform.OS === 'ios'
+            ? 'Used to lock flagged apps during focus sessions.'
+            : "Used to track time in apps you've flagged as distracting.",
         state:
           Platform.OS === 'android'
             ? usageTrackingEnabled
@@ -201,6 +214,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setFlaggedApps(settingsData.flaggedApps);
     setCustomModes(settingsData.customModes);
     setPermissions(nextPermissions);
+    setScreenTimeStatus(Platform.OS === 'ios' ? ScreenTime.getStatus() : null);
     setIsLoading(false);
   }, []);
 
@@ -263,6 +277,26 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
       );
     });
   }, [appPickerQuery, flaggedApps, installedApps]);
+
+  // The iOS Screen Time row follows the live status, which the flagged-apps
+  // panel updates without reloading the whole screen.
+  const permissionRows = useMemo(
+    () =>
+      permissions.map(row =>
+        Platform.OS === 'ios' && row.id === 'usage-tracking'
+          ? {
+              ...row,
+              state: screenTimePermissionState(screenTimeStatus),
+              fix: () => {
+                ScreenTime.requestAuthorization()
+                  .then(next => next && setScreenTimeStatus(next))
+                  .catch(() => Linking.openSettings());
+              },
+            }
+          : row,
+      ),
+    [permissions, screenTimeStatus],
+  );
 
   const handleAddApp = async () => {
     const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
@@ -517,12 +551,19 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                         </ScrollView>
                       </>
                     ) : (
-                      <View style={styles.emptyAppsRow}>
-                        <Text style={styles.emptyText}>
-                          App blocking on iPhone is coming soon. It needs
-                          Apple's Screen Time access, which isn't set up yet.
-                        </Text>
-                      </View>
+                      Platform.OS === 'ios' ? (
+                        <IosFlaggedApps
+                          status={screenTimeStatus}
+                          paidUser={paidUser}
+                          onStatusChange={setScreenTimeStatus}
+                        />
+                      ) : (
+                        <View style={styles.emptyAppsRow}>
+                          <Text style={styles.emptyText}>
+                            App blocking isn't available on this device.
+                          </Text>
+                        </View>
+                      )
                     )}
                   </LinearGradient>
                 </View>
@@ -596,7 +637,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Permission status</Text>
                 <View style={styles.permissionList}>
-                  {permissions.map(permission => (
+                  {permissionRows.map(permission => (
                     <Pressable
                       key={permission.id}
                       accessibilityRole="button"
