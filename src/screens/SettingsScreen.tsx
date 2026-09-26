@@ -47,10 +47,10 @@ type SettingsScreenProps = {
   onNavigate: (screen: string) => void;
 };
 
-// 'notRequested': never asked, so tapping asks. 'denied': the user said no, so
-// only Settings can change it. 'off': an Android toggle that isn't on (Android
-// can't tell "never enabled" from "turned off").
-type PermissionState = 'granted' | 'notRequested' | 'denied' | 'off' | 'unavailable';
+// iOS distinguishes 'notRequested' (never asked, so tapping asks) from
+// 'denied' (the user said no, so only Settings can change it). Android keeps
+// its existing granted/revoked states.
+type PermissionState = 'granted' | 'notRequested' | 'denied' | 'revoked' | 'unavailable';
 
 // expo-camera's permission check doesn't resolve on web (no camera module
 // there), which would otherwise hang this screen's initial load forever.
@@ -90,18 +90,18 @@ function statusLabel(state: PermissionState) {
       return 'Set up';
     case 'denied':
       return 'Denied';
-    case 'off':
-      return 'Off';
+    case 'revoked':
+      return 'Revoked';
     case 'unavailable':
       return 'Unavailable';
   }
 }
 
 function needsAttention(state: PermissionState) {
-  return state === 'denied' || state === 'off';
+  return state === 'denied' || state === 'revoked';
 }
 
-function cameraPermissionState(permission: { status: string }): PermissionState {
+function iosCameraPermissionState(permission: { status: string }): PermissionState {
   if (permission.status === 'granted') {
     return 'granted';
   }
@@ -202,13 +202,22 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         id: 'camera',
         label: 'Camera',
         detail: "Used to check you're still at your desk during a session.",
-        state: cameraPermissionState(cameraPermission),
+        state:
+          Platform.OS === 'ios'
+            ? iosCameraPermissionState(cameraPermission)
+            : cameraPermission.status === 'granted'
+              ? 'granted'
+              : 'revoked',
         fix: () => {
-          if (cameraPermission.status === 'granted' || !cameraPermission.canAskAgain) {
-            Linking.openSettings();
+          const canAskNow =
+            Platform.OS === 'ios' &&
+            cameraPermission.status !== 'granted' &&
+            cameraPermission.canAskAgain;
+          if (canAskNow) {
+            Camera.requestCameraPermissionsAsync().then(load);
             return;
           }
-          Camera.requestCameraPermissionsAsync().then(load);
+          Linking.openSettings();
         },
       },
       {
@@ -222,7 +231,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
           Platform.OS === 'android'
             ? usageTrackingEnabled
               ? 'granted'
-              : 'off'
+              : 'revoked'
             : 'unavailable',
         fix: openAccessibilitySettings,
       },
@@ -233,7 +242,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         id: 'overlay',
         label: 'Display over apps',
         detail: 'Used to block flagged apps while a lockdown is active.',
-        state: overlayEnabled ? 'granted' : 'off',
+        state: overlayEnabled ? 'granted' : 'revoked',
         fix: openOverlaySettings,
       });
     }
