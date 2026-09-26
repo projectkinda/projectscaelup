@@ -84,6 +84,11 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
       display_name TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     INSERT OR IGNORE INTO streaks (id, current_streak, best_streak)
     VALUES (1, 0, 0);
   `);

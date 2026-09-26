@@ -1,4 +1,5 @@
 import { ensureSchema, getDatabase } from './database';
+import { getInstalledApps } from '../domain/appPicker';
 
 export type FlaggedApp = {
   appIdentifier: string;
@@ -37,6 +38,43 @@ export type SettingsData = {
 };
 
 export const FREE_TIER_APP_CAP = 3;
+
+const DEFAULT_APPS_SEEDED_KEY = 'defaultAppsSeeded';
+
+const DEFAULT_FLAGGED_PACKAGES: FlaggedApp[] = [
+  { appIdentifier: 'com.instagram.android', displayName: 'Instagram' },
+  { appIdentifier: 'com.zhiliaoapp.musically', displayName: 'TikTok' },
+  { appIdentifier: 'com.snapchat.android', displayName: 'Snapchat' },
+  { appIdentifier: 'com.facebook.katana', displayName: 'Facebook' },
+  { appIdentifier: 'com.twitter.android', displayName: 'X' },
+];
+
+async function getAppStateFlag(key: string): Promise<boolean> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  const row = await database.getFirstAsync<{ value: string }>(
+    'SELECT value FROM app_state WHERE key = ?;',
+    [key],
+  );
+
+  return row?.value === 'true';
+}
+
+async function setAppStateFlag(key: string, value: boolean): Promise<void> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  await database.runAsync(
+    `
+      INSERT INTO app_state (key, value)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value;
+    `,
+    [key, value ? 'true' : 'false'],
+  );
+}
 
 export async function loadSettingsData({
   isPaidUser = false,
@@ -97,6 +135,45 @@ export async function canAddAnotherFlaggedApp(
   );
 
   return (countRow?.count ?? 0) < FREE_TIER_APP_CAP;
+}
+
+export async function seedDefaultFlaggedApps({
+  isPaidUser = false,
+}: {
+  isPaidUser?: boolean;
+} = {}): Promise<void> {
+  const alreadySeeded = await getAppStateFlag(DEFAULT_APPS_SEEDED_KEY);
+  if (alreadySeeded) {
+    return;
+  }
+
+  const installedApps = await getInstalledApps();
+  const installedPackageNames = new Set(
+    installedApps.map(app => app.packageName),
+  );
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  for (const app of DEFAULT_FLAGGED_PACKAGES) {
+    if (!installedPackageNames.has(app.appIdentifier)) {
+      continue;
+    }
+
+    const canAdd = await canAddAnotherFlaggedApp(isPaidUser);
+    if (!canAdd) {
+      break;
+    }
+
+    await database.runAsync(
+      `
+        INSERT OR IGNORE INTO flagged_apps (app_identifier, display_name)
+        VALUES (?, ?);
+      `,
+      [app.appIdentifier, app.displayName],
+    );
+  }
+
+  await setAppStateFlag(DEFAULT_APPS_SEEDED_KEY, true);
 }
 
 function slugify(value: string) {
