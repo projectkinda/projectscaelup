@@ -28,7 +28,9 @@ import {
   removeFlaggedApp,
   saveCustomMode,
 } from '../data/settingsRepository';
+import { LockdownModule } from '../domain/lockdownModule';
 import { isPaidUser } from '../domain/paywall';
+import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { colors, layout } from '../theme/tokens';
 
 type SettingsScreenProps = {
@@ -90,15 +92,20 @@ function inferFrameWidthRange(gracePeriodSeconds: number) {
 
 async function openAccessibilitySettings() {
   if (Platform.OS === 'android') {
-    try {
-      await Linking.sendIntent('android.settings.ACCESSIBILITY_SETTINGS');
-      return;
-    } catch {
-      // Fall back to the app settings page below.
-    }
+    UsageTrackingModule.openSettings();
+    return;
   }
 
   await Linking.openSettings();
+}
+
+function openOverlaySettings() {
+  if (Platform.OS === 'android') {
+    LockdownModule.openSettings();
+    return;
+  }
+
+  Linking.openSettings();
 }
 
 async function openSubscriptionManagement() {
@@ -125,14 +132,23 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const load = useCallback(async () => {
     setIsLoading(true);
 
-    const [settingsData, cameraPermission] = await Promise.all([
+    const [
+      settingsData,
+      cameraPermission,
+      usageTrackingEnabled,
+      overlayEnabled,
+    ] = await Promise.all([
       loadSettingsData({ isPaidUser: isPaidUser() }),
       getCameraPermissionAsync(),
+      Platform.OS === 'android'
+        ? UsageTrackingModule.isEnabled()
+        : Promise.resolve(false),
+      Platform.OS === 'android'
+        ? LockdownModule.canDrawOverlays()
+        : Promise.resolve(false),
     ]);
 
-    setFlaggedApps(settingsData.flaggedApps);
-    setCustomModes(settingsData.customModes);
-    setPermissions([
+    const nextPermissions: PermissionRow[] = [
       {
         id: 'camera',
         label: 'Camera',
@@ -147,10 +163,29 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         id: 'usage-tracking',
         label: Platform.OS === 'ios' ? 'Screen Time' : 'Accessibility',
         detail: "Used to track time in apps you've flagged as distracting.",
-        state: 'unavailable',
+        state:
+          Platform.OS === 'android'
+            ? usageTrackingEnabled
+              ? 'granted'
+              : 'revoked'
+            : 'unavailable',
         fix: openAccessibilitySettings,
       },
-    ]);
+    ];
+
+    if (Platform.OS === 'android') {
+      nextPermissions.push({
+        id: 'overlay',
+        label: 'Display over apps',
+        detail: 'Used to block flagged apps while a lockdown is active.',
+        state: overlayEnabled ? 'granted' : 'revoked',
+        fix: openOverlaySettings,
+      });
+    }
+
+    setFlaggedApps(settingsData.flaggedApps);
+    setCustomModes(settingsData.customModes);
+    setPermissions(nextPermissions);
     setIsLoading(false);
   }, []);
 

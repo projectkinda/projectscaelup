@@ -21,9 +21,11 @@ import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { loadAvailableModes } from '../data/modesRepository';
+import { loadSettingsData } from '../data/settingsRepository';
 import { isPaidUser } from '../domain/paywall';
 import { PresenceModule } from '../domain/presenceModule';
 import { startSessionMonitor } from '../domain/sessionMonitor';
+import { startUsageMonitor } from '../domain/usageMonitor';
 import { getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
@@ -132,6 +134,8 @@ export function HomeScreen({
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
   const sessionMonitorUnsubscribe = useRef<(() => void) | null>(null);
+  const usageMonitorUnsubscribe = useRef<(() => void) | null>(null);
+  const activeFlaggedAppIdentifiers = useRef<string[]>([]);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -249,6 +253,20 @@ export function HomeScreen({
       sessionId,
       activeMode,
     );
+    usageMonitorUnsubscribe.current?.();
+    try {
+      const settingsData = await loadSettingsData({ isPaidUser: paidUser });
+      activeFlaggedAppIdentifiers.current = settingsData.flaggedApps.map(
+        app => app.appIdentifier,
+      );
+    } catch (error) {
+      console.warn('Failed to load flagged apps for usage monitor:', error);
+      activeFlaggedAppIdentifiers.current = [];
+    }
+    usageMonitorUnsubscribe.current = startUsageMonitor(
+      sessionId,
+      activeFlaggedAppIdentifiers.current,
+    );
     sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
     setRemainingSeconds(durationSeconds);
     setCurrentSessionDurationSeconds(durationSeconds);
@@ -308,6 +326,11 @@ export function HomeScreen({
           activeSessionId,
           activeMode,
         );
+        usageMonitorUnsubscribe.current?.();
+        usageMonitorUnsubscribe.current = startUsageMonitor(
+          activeSessionId,
+          activeFlaggedAppIdentifiers.current,
+        );
       }
       sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
       setIsPaused(false);
@@ -316,6 +339,8 @@ export function HomeScreen({
 
     sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
+    usageMonitorUnsubscribe.current?.();
+    usageMonitorUnsubscribe.current = null;
     setIsPaused(true);
   };
 
@@ -327,6 +352,9 @@ export function HomeScreen({
   const resetActiveSessionState = async () => {
     sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
+    usageMonitorUnsubscribe.current?.();
+    usageMonitorUnsubscribe.current = null;
+    activeFlaggedAppIdentifiers.current = [];
     await PresenceModule.stop();
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;

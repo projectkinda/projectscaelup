@@ -1,4 +1,5 @@
 import { ensureSchema, getDatabase } from '../data/database';
+import { LockdownModule } from './lockdownModule';
 
 type StreakRow = {
   current_streak: number;
@@ -230,6 +231,16 @@ export async function completeSession(
     const touchedApps = touchedAppRows.map(row => row.app_identifier);
     const lockdownMinutes =
       touchedApps.length > 0 ? Math.min(10 + 2 * distractionCount, 60) : 0;
+    if (touchedApps.length > 0) {
+      const expiresAt = new Date(
+        Date.now() + lockdownMinutes * 60_000,
+      ).toISOString();
+      try {
+        await LockdownModule.applyLockdown(touchedApps, expiresAt);
+      } catch (error) {
+        console.warn('Could not apply native lockdown:', error);
+      }
+    }
     const completedAt = new Date();
     const completedDate = dateKey(completedAt);
     const currentStreak = await getStreakRow();

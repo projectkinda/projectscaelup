@@ -1,3 +1,5 @@
 <resources>
   <string name="app_name">Project ScaleUp</string>
+  <string name="accessibility_service_description">Used to detect when a distracting app you have flagged is opened, so it can be locked after a focus session if used too long.</string>
+  <string name="lockdown_notification_title">Project ScaleUp lockdown active</string>
 </resources>
