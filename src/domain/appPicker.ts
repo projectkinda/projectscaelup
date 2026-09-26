@@ -14,8 +14,13 @@ const AppPickerBridge = NativeModules.AppPickerBridge as
   | NativeAppPickerBridge
   | undefined;
 
+// iOS can't list installed apps; flagged apps there will come from Apple's
+// Screen Time picker once the Family Controls integration exists.
+export const isAppPickerSupported =
+  Platform.OS === 'android' && AppPickerBridge !== undefined;
+
 export async function getInstalledApps(): Promise<InstalledApp[]> {
-  if (Platform.OS !== 'android' || !AppPickerBridge) {
+  if (!isAppPickerSupported || !AppPickerBridge) {
     return [];
   }
 

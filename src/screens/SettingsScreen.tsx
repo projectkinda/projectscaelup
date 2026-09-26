@@ -31,7 +31,11 @@ import {
   saveFlaggedApp,
   saveCustomMode,
 } from '../data/settingsRepository';
-import { getInstalledApps, type InstalledApp } from '../domain/appPicker';
+import {
+  getInstalledApps,
+  isAppPickerSupported,
+  type InstalledApp,
+} from '../domain/appPicker';
 import { LockdownModule } from '../domain/lockdownModule';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
@@ -452,63 +456,74 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
-                    {flaggedApps.length === 0 ? (
+                    {isAppPickerSupported ? (
+                      <>
+                        {flaggedApps.length === 0 ? (
+                          <View style={styles.emptyAppsRow}>
+                            <Text style={styles.emptyText}>
+                              No distracting apps selected yet.
+                            </Text>
+                          </View>
+                        ) : null}
+                        <ScrollView
+                          horizontal
+                          bounces={false}
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={styles.flaggedAppStrip}
+                        >
+                          {flaggedApps.map(app => (
+                            <Pressable
+                              key={app.appIdentifier}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${app.displayName}. Long press to remove.`}
+                              onLongPress={() => removeApp(app)}
+                              style={({ pressed }) => [
+                                styles.appIconButton,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              {app.iconBase64 ? (
+                                <Image
+                                  source={{
+                                    uri: `data:image/png;base64,${app.iconBase64}`,
+                                  }}
+                                  style={styles.appIconImage}
+                                />
+                              ) : (
+                                <View style={styles.appIconFallback}>
+                                  <Text style={styles.appIconText}>
+                                    {appInitial(app.displayName)}
+                                  </Text>
+                                </View>
+                              )}
+                            </Pressable>
+                          ))}
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Add app"
+                            disabled={isPickingApp}
+                            onPress={handleAddApp}
+                            style={({ pressed }) => [
+                              styles.addAppIconButton,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            {isPickingApp ? (
+                              <ActivityIndicator color={colors.ink} />
+                            ) : (
+                              <Text style={styles.plusText}>+</Text>
+                            )}
+                          </Pressable>
+                        </ScrollView>
+                      </>
+                    ) : (
                       <View style={styles.emptyAppsRow}>
                         <Text style={styles.emptyText}>
-                          No distracting apps selected yet.
+                          App blocking on iPhone is coming soon. It needs
+                          Apple's Screen Time access, which isn't set up yet.
                         </Text>
                       </View>
-                    ) : null}
-                    <ScrollView
-                      horizontal
-                      bounces={false}
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.flaggedAppStrip}
-                    >
-                      {flaggedApps.map(app => (
-                        <Pressable
-                          key={app.appIdentifier}
-                          accessibilityRole="button"
-                          accessibilityLabel={`${app.displayName}. Long press to remove.`}
-                          onLongPress={() => removeApp(app)}
-                          style={({ pressed }) => [
-                            styles.appIconButton,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          {app.iconBase64 ? (
-                            <Image
-                              source={{
-                                uri: `data:image/png;base64,${app.iconBase64}`,
-                              }}
-                              style={styles.appIconImage}
-                            />
-                          ) : (
-                            <View style={styles.appIconFallback}>
-                              <Text style={styles.appIconText}>
-                                {appInitial(app.displayName)}
-                              </Text>
-                            </View>
-                          )}
-                        </Pressable>
-                      ))}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel="Add app"
-                        disabled={isPickingApp}
-                        onPress={handleAddApp}
-                        style={({ pressed }) => [
-                          styles.addAppIconButton,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        {isPickingApp ? (
-                          <ActivityIndicator color={colors.ink} />
-                        ) : (
-                          <Text style={styles.plusText}>+</Text>
-                        )}
-                      </Pressable>
-                    </ScrollView>
+                    )}
                   </LinearGradient>
                 </View>
               </View>
