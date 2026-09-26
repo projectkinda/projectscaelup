@@ -1,7 +1,6 @@
 package com.projectscaleup.app
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -9,6 +8,7 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -20,6 +20,43 @@ class AppPickerBridge(
   private val reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
   private var pickAppPromise: Promise? = null
+
+  private val activityEventListener = object : BaseActivityEventListener() {
+    override fun onActivityResult(
+      activity: Activity,
+      requestCode: Int,
+      resultCode: Int,
+      data: Intent?,
+    ) {
+      if (requestCode != PICK_APP_REQUEST_CODE) {
+        return
+      }
+
+      val promise = pickAppPromise ?: return
+      pickAppPromise = null
+
+      if (resultCode != Activity.RESULT_OK) {
+        promise.resolve(null)
+        return
+      }
+
+      val packageName = data?.component?.packageName
+      if (packageName.isNullOrBlank()) {
+        promise.resolve(null)
+        return
+      }
+
+      try {
+        promise.resolve(buildAppMap(packageName))
+      } catch (error: Exception) {
+        promise.reject("APP_PICKER_RESULT_ERROR", error)
+      }
+    }
+  }
+
+  init {
+    reactContext.addActivityEventListener(activityEventListener)
+  }
 
   override fun getName() = "AppPickerBridge"
 
@@ -51,54 +88,20 @@ class AppPickerBridge(
       return
     }
 
-    reactContext.runOnUiQueueThread {
-      try {
-        val apps = getLaunchablePackageNames()
-          .map { packageName ->
-            val appMap = buildAppMap(packageName)
-            PickableApp(
-              packageName = packageName,
-              displayName = appMap.getString("displayName") ?: packageName,
-            )
-          }
-          .sortedBy { it.displayName.lowercase() }
+    val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
+      addCategory(Intent.CATEGORY_LAUNCHER)
+    }
+    val pickIntent = Intent(Intent.ACTION_PICK_ACTIVITY).apply {
+      putExtra(Intent.EXTRA_INTENT, launcherIntent)
+      putExtra(Intent.EXTRA_TITLE, "Add app")
+    }
 
-        if (apps.isEmpty()) {
-          promise.resolve(null)
-          return@runOnUiQueueThread
-        }
-
-        pickAppPromise = promise
-        AlertDialog.Builder(activity)
-          .setTitle("Add app")
-          .setItems(apps.map { it.displayName }.toTypedArray()) { dialog, index ->
-            val selectedPackageName = apps[index].packageName
-            val activePromise = pickAppPromise ?: return@setItems
-            pickAppPromise = null
-            dialog.dismiss()
-
-            try {
-              activePromise.resolve(buildAppMap(selectedPackageName))
-            } catch (error: Exception) {
-              activePromise.reject("APP_PICKER_RESULT_ERROR", error)
-            }
-          }
-          .setNegativeButton("Cancel") { dialog, _ ->
-            val activePromise = pickAppPromise
-            pickAppPromise = null
-            activePromise?.resolve(null)
-            dialog.dismiss()
-          }
-          .setOnCancelListener {
-            val activePromise = pickAppPromise
-            pickAppPromise = null
-            activePromise?.resolve(null)
-          }
-          .show()
-      } catch (error: Exception) {
-        pickAppPromise = null
-        promise.reject("APP_PICKER_OPEN_ERROR", error)
-      }
+    try {
+      pickAppPromise = promise
+      activity.startActivityForResult(pickIntent, PICK_APP_REQUEST_CODE)
+    } catch (error: Exception) {
+      pickAppPromise = null
+      promise.reject("APP_PICKER_OPEN_ERROR", error)
     }
   }
 
@@ -149,9 +152,6 @@ class AppPickerBridge(
   }
 
   companion object {
-    private data class PickableApp(
-      val packageName: String,
-      val displayName: String,
-    )
+    private const val PICK_APP_REQUEST_CODE = 9317
   }
 }
