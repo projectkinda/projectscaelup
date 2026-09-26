@@ -3,6 +3,7 @@ import * as SQLite from 'expo-sqlite';
 const DATABASE_NAME = 'project-scaleup.db';
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let schemaPromise: Promise<void> | null = null;
 
 export function getDatabase() {
   if (!databasePromise) {
@@ -14,7 +15,34 @@ export function getDatabase() {
   return databasePromise;
 }
 
-export async function ensureSchema(database: SQLite.SQLiteDatabase) {
+async function addColumnIfMissing(
+  database: SQLite.SQLiteDatabase,
+  tableName: string,
+  columnName: string,
+  columnDefinition: string,
+) {
+  const columns = await database.getAllAsync<{ name: string }>(
+    `PRAGMA table_info(${tableName});`,
+  );
+  const columnNames = new Set(columns.map(column => column.name));
+
+  if (columnNames.has(columnName)) {
+    return;
+  }
+
+  try {
+    await database.execAsync(
+      `ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition};`,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes('duplicate column name')) {
+      throw error;
+    }
+  }
+}
+
+async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
   await database.execAsync(`
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,22 +88,28 @@ export async function ensureSchema(database: SQLite.SQLiteDatabase) {
     VALUES (1, 0, 0);
   `);
 
-  const customModeColumns = await database.getAllAsync<{ name: string }>(
-    'PRAGMA table_info(custom_modes);',
-  );
-  const customModeColumnNames = new Set(
-    customModeColumns.map(column => column.name),
+  await addColumnIfMissing(
+    database,
+    'custom_modes',
+    'frame_width_min',
+    'INTEGER NOT NULL DEFAULT 15',
   );
 
-  if (!customModeColumnNames.has('frame_width_min')) {
-    await database.execAsync(
-      'ALTER TABLE custom_modes ADD COLUMN frame_width_min INTEGER NOT NULL DEFAULT 15;',
-    );
+  await addColumnIfMissing(
+    database,
+    'custom_modes',
+    'frame_width_max',
+    'INTEGER NOT NULL DEFAULT 40',
+  );
+}
+
+export async function ensureSchema(database: SQLite.SQLiteDatabase) {
+  if (!schemaPromise) {
+    schemaPromise = runSchemaSetup(database).catch(error => {
+      schemaPromise = null;
+      throw error;
+    });
   }
 
-  if (!customModeColumnNames.has('frame_width_max')) {
-    await database.execAsync(
-      'ALTER TABLE custom_modes ADD COLUMN frame_width_max INTEGER NOT NULL DEFAULT 40;',
-    );
-  }
+  return schemaPromise;
 }
