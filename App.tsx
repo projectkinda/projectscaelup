@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -7,8 +7,6 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PaywallStubScreen } from './src/screens/PaywallStubScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { seedDefaultFlaggedApps } from './src/data/settingsRepository';
-import { isPaidUser } from './src/domain/paywall';
 import { colors } from './src/theme/tokens';
 
 type AppScreen = 'home' | 'history' | 'settings' | 'paywall';
@@ -19,12 +17,6 @@ function App(): React.JSX.Element {
   const [paywallReturnScreen, setPaywallReturnScreen] =
     useState<MainScreen>('home');
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    seedDefaultFlaggedApps({ isPaidUser: isPaidUser() }).catch(error => {
-      console.warn('Failed to seed default flagged apps:', error);
-    });
-  }, []);
 
   const handleNavigate = (screen: string) => {
     if (screen === 'home' || screen === 'history' || screen === 'settings') {
