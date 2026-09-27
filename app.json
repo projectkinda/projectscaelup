@@ -18,6 +18,9 @@
         "com.apple.security.application-groups": [
           "group.com.projectscaleup.app"
         ]
+      },
+      "config": {
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
