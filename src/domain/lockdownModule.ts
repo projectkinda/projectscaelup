@@ -15,7 +15,7 @@ const LockdownBridge = NativeModules.LockdownBridge as
 export const LockdownModule = {
   applyLockdown(appIdentifiers: string[], expiresAt: string): Promise<void> {
     if (Platform.OS === 'ios') {
-      return applyIosLockdown(expiresAt);
+      return applyIosLockdown(appIdentifiers, expiresAt);
     }
 
     if (Platform.OS !== 'android' || !LockdownBridge) {

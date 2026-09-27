@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { FlaggedAppsView, ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
 import { FREE_TIER_APP_CAP } from '../data/settingsRepository';
@@ -13,14 +13,16 @@ type IosFlaggedAppsProps = {
 
 /**
  * Flagged apps on iOS. The apps are chosen in Apple's picker and drawn by iOS;
- * this component only knows how many there are (see docs/ios-screen-time-design.md).
+ * this component only knows how many there are. By default their use is
+ * tracked silently during sessions (like Android); strict mode locks them
+ * instead (see docs/ios-screen-time-design.md).
  */
 export function IosFlaggedApps({ status, paidUser, onStatusChange }: IosFlaggedAppsProps) {
   const [isBusy, setIsBusy] = useState(false);
   const [revision, setRevision] = useState(0);
 
   if (!status) {
-    return <Text style={styles.message}>App locking isn't available on this device.</Text>;
+    return <Text style={styles.message}>Screen Time isn't available on this device.</Text>;
   }
 
   const hasAccess = status.authorization === 'approved';
@@ -38,6 +40,16 @@ export function IosFlaggedApps({ status, paidUser, onStatusChange }: IosFlaggedA
       setIsBusy(false);
     }
   };
+
+  const setStrictMode = (enabled: boolean) =>
+    run(async () => {
+      try {
+        return await ScreenTime.setStrictMode(enabled);
+      } catch (error) {
+        Alert.alert('Unable to change strict mode', errorMessage(error));
+        return null;
+      }
+    });
 
   const pickApps = () =>
     run(async () => {
@@ -63,7 +75,7 @@ export function IosFlaggedApps({ status, paidUser, onStatusChange }: IosFlaggedA
         // Declining is a normal choice, so explain rather than log it.
         Alert.alert(
           'Screen Time access is needed',
-          'Allow Project ScaleUp in Settings › Screen Time to lock distracting apps during focus sessions.',
+          'Allow Project ScaleUp in Settings › Screen Time to track distracting apps during focus sessions.',
         );
         return ScreenTime.getStatus();
       }
@@ -74,11 +86,11 @@ export function IosFlaggedApps({ status, paidUser, onStatusChange }: IosFlaggedA
       <View style={styles.stack}>
         <Text style={styles.message}>
           {hasApps
-            ? `Screen Time access is off, so app locking is paused. Your ${status.flaggedAppCount} flagged ${plural(status.flaggedAppCount, 'app')} are saved.`
-            : 'Lock distracting apps during focus sessions. This needs Screen Time access.'}
+            ? `Screen Time access is off, so tracking is paused. Your ${status.flaggedAppCount} flagged ${plural(status.flaggedAppCount, 'app')} are saved.`
+            : 'Track distracting apps during focus sessions and lock them afterwards. This needs Screen Time access.'}
         </Text>
         <ActionButton
-          label={hasApps ? 'Turn app locking back on' : 'Allow Screen Time access'}
+          label={hasApps ? 'Turn Screen Time back on' : 'Allow Screen Time access'}
           busy={isBusy}
           onPress={allowAccess}
         />
@@ -98,6 +110,25 @@ export function IosFlaggedApps({ status, paidUser, onStatusChange }: IosFlaggedA
       ) : (
         <Text style={styles.message}>Flagged apps can't be changed during a focus session or lockdown.</Text>
       )}
+      {hasApps ? (
+        <View style={styles.optionRow}>
+          <View style={styles.optionText}>
+            <Text style={styles.optionTitle}>Strict mode</Text>
+            <Text style={styles.message}>
+              {status.strictMode
+                ? 'Flagged apps are locked during sessions. Opening one anyway counts as a distraction.'
+                : 'Off: use any app during a session. A minute in a flagged app counts as a distraction.'}
+            </Text>
+          </View>
+          <Switch
+            accessibilityLabel="Strict mode"
+            value={status.strictMode}
+            disabled={isBusy || !status.canEditFlaggedApps}
+            onValueChange={setStrictMode}
+            trackColor={{ true: colors.rewardAmber }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -132,6 +163,21 @@ const styles = StyleSheet.create({
   },
   strip: {
     height: 56,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  optionText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  optionTitle: {
+    color: colors.ink,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 2,
   },
   message: {
     color: colors.muted,

@@ -49,8 +49,18 @@ public final class ScreenTimeModule: Module {
     }
     .runOnQueue(.main)
 
+    AsyncFunction("setStrictMode") { (enabled: Bool) -> ScreenTimeStatus in
+      ScreenTimePreferences.shared.strictMode = enabled
+      return Self.status(engine: Self.engine)
+    }
+
     AsyncFunction("startSession") { (id: Int, modeName: String, endsAtMs: Double) in
-      Self.engine.startSession(id: id, modeName: modeName, endsAt: Self.date(fromMs: endsAtMs))
+      Self.engine.startSession(
+        id: id,
+        modeName: modeName,
+        endsAt: Self.date(fromMs: endsAtMs),
+        strict: ScreenTimePreferences.shared.strictMode
+      )
     }
 
     AsyncFunction("pauseSession") {
@@ -61,12 +71,13 @@ public final class ScreenTimeModule: Module {
       Self.engine.resumeSession(endsAt: Self.date(fromMs: endsAtMs))
     }
 
-    AsyncFunction("endSession") { (id: Int) -> [Double] in
-      Self.engine.endSession(id: id).map { $0.occurredAt.timeIntervalSince1970 * 1000 }
+    AsyncFunction("endSession") { (id: Int) -> [DistractionRecord] in
+      Self.engine.endSession(id: id).map(DistractionRecord.init)
     }
 
-    AsyncFunction("lockDown") { (untilMs: Double) in
-      Self.engine.lockDown(until: Self.date(fromMs: untilMs))
+    /// `appKeys` lists the apps to lock; `nil` locks every flagged app.
+    AsyncFunction("lockDown") { (untilMs: Double, appKeys: [String]?) in
+      Self.engine.lockDown(until: Self.date(fromMs: untilMs), apps: appKeys.map { .only(Set($0)) } ?? .all)
     }
 
     AsyncFunction("reconcile") {
@@ -85,6 +96,7 @@ public final class ScreenTimeModule: Module {
     status.authorization = authorizationName(AuthorizationCenter.shared.authorizationStatus)
     status.flaggedAppCount = FlaggedApps.shared.selection().applicationTokens.count
     status.canEditFlaggedApps = engine.canEditFlaggedApps()
+    status.strictMode = ScreenTimePreferences.shared.strictMode
     return status
   }
 
@@ -114,6 +126,20 @@ struct ScreenTimeStatus: Record {
   @Field var authorization: String = "notDetermined"
   @Field var flaggedAppCount: Int = 0
   @Field var canEditFlaggedApps: Bool = true
+  @Field var strictMode: Bool = false
+}
+
+struct DistractionRecord: Record {
+  @Field var occurredAtMs: Double = 0
+  /// The flagged app's stable key, or `nil` when iOS can't say which app.
+  @Field var appKey: String?
+
+  init() {}
+
+  init(_ distraction: Distraction) {
+    occurredAtMs = distraction.occurredAt.timeIntervalSince1970 * 1000
+    appKey = distraction.appKey
+  }
 }
 
 final class AuthorizationFailedException: GenericException<String>, @unchecked Sendable {

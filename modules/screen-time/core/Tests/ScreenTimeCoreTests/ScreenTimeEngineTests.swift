@@ -17,15 +17,21 @@ final class InMemoryStore: ScreenTimeStateStore {
 }
 
 final class RecordingShields: ShieldApplying {
-  private let applied = Mutex<[Set<ShieldLayer>]>([])
-  var last: Set<ShieldLayer>? { applied.withLock { $0.last } }
-  func apply(_ layers: Set<ShieldLayer>) { applied.withLock { $0.append(layers) } }
+  private let applied = Mutex<[ShieldPlan]>([])
+  var last: ShieldPlan? { applied.withLock { $0.last } }
+  func apply(_ plan: ShieldPlan) { applied.withLock { $0.append(plan) } }
 }
 
 final class RecordingScheduler: WakeScheduling {
   private let windows = Mutex<[WakeWindow?]>([])
   var last: WakeWindow?? { windows.withLock { $0.last } }
   func scheduleWake(_ window: WakeWindow?) { windows.withLock { $0.append(window) } }
+}
+
+final class RecordingUsage: UsageMonitoring {
+  private let plans = Mutex<[UsagePlan?]>([])
+  var last: UsagePlan?? { plans.withLock { $0.last } }
+  func monitorUsage(_ plan: UsagePlan?) { plans.withLock { $0.append(plan) } }
 }
 
 final class Clock: Sendable {
@@ -39,59 +45,58 @@ struct ScreenTimeEngineTests {
   let store = InMemoryStore()
   let shields = RecordingShields()
   let scheduler = RecordingScheduler()
+  let usage = RecordingUsage()
   let clock = Clock()
 
   func makeEngine() -> ScreenTimeEngine {
     let clock = clock
-    return ScreenTimeEngine(store: store, shields: shields, scheduler: scheduler, now: { clock.now })
+    return ScreenTimeEngine(store: store, shields: shields, scheduler: scheduler, usage: usage, now: { clock.now })
   }
 
-  @Test func `starting a session raises the lock and schedules its end`() {
+  func minutes(_ value: Double) -> Date { clock.now.addingTimeInterval(value * 60) }
+
+  @Test func `a normal session tracks silently and never shields`() {
     let engine = makeEngine()
-    engine.startSession(id: 1, modeName: "Study", endsAt: clock.now.addingTimeInterval(25 * 60))
-    #expect(shields.last == [.session])
-    #expect(scheduler.last??.wakesAt == clock.now.addingTimeInterval(25 * 60))
+    engine.startSession(id: 1, modeName: "Study", endsAt: minutes(25), strict: false)
+    #expect(shields.last == ShieldPlan.none)
+    #expect(usage.last??.sessionId == 1)
+    #expect(scheduler.last??.wakesAt == minutes(25))
   }
 
-  @Test func `open anyway lifts the lock and a later reconcile restores it`() {
+  @Test func `used apps are counted, then only they are locked down`() {
     let engine = makeEngine()
-    engine.startSession(id: 1, modeName: "Study", endsAt: clock.now.addingTimeInterval(25 * 60))
+    engine.startSession(id: 1, modeName: "Study", endsAt: minutes(25), strict: false)
+    clock.advance(minutes: 3)
+    #expect(engine.recordUsage(appKey: "insta"))
+    #expect(usage.last??.excludedAppKeys == ["insta"])
+
+    let distractions = engine.endSession(id: 1)
+    #expect(distractions.map(\.appKey) == ["insta"])
+    #expect(usage.last == .some(nil))
+
+    engine.lockDown(until: minutes(12), apps: .only(["insta"]))
+    #expect(shields.last?.lockdown == .only(["insta"]))
+    clock.advance(minutes: 12)
+    engine.reconcile()
+    #expect(shields.last == ShieldPlan.none)
+  }
+
+  @Test func `a strict session shields, open anyway lifts it, and reconcile restores it`() {
+    let engine = makeEngine()
+    engine.startSession(id: 1, modeName: "Study", endsAt: minutes(25), strict: true)
+    #expect(shields.last?.session == true)
+    #expect(usage.last == .some(nil))
 
     #expect(engine.openAnyway() == .unlocked(countedAsDistraction: true))
-    #expect(shields.last == [])
-    #expect(scheduler.last??.wakesAt == clock.now.addingTimeInterval(2 * 60))
-
+    #expect(shields.last?.session == false)
     clock.advance(minutes: 2)
     engine.reconcile()
-    #expect(shields.last == [.session])
-  }
-
-  @Test func `ending hands back distractions and clears everything`() {
-    let engine = makeEngine()
-    engine.startSession(id: 1, modeName: "Study", endsAt: clock.now.addingTimeInterval(25 * 60))
-    _ = engine.openAnyway()
-
-    #expect(engine.endSession(id: 1).count == 1)
-    #expect(shields.last == [])
-    #expect(scheduler.last == .some(nil))
-  }
-
-  @Test func `a lockdown locks, then lifts on the reconcile after it expires`() {
-    let engine = makeEngine()
-    engine.lockDown(until: clock.now.addingTimeInterval(10 * 60))
-    #expect(shields.last == [.lockdown])
-    #expect(scheduler.last??.wakesAt == clock.now.addingTimeInterval(10 * 60))
-
-    clock.advance(minutes: 10)
-    engine.reconcile()
-    #expect(shields.last == [])
+    #expect(shields.last?.session == true)
   }
 
   @Test func `reconciling twice changes nothing`() {
     let engine = makeEngine()
-    engine.startSession(id: 1, modeName: "Study", endsAt: clock.now.addingTimeInterval(25 * 60))
-    let first = engine.reconcile()
-    let second = engine.reconcile()
-    #expect(first == second)
+    engine.startSession(id: 1, modeName: "Study", endsAt: minutes(25), strict: false)
+    #expect(engine.reconcile() == engine.reconcile())
   }
 }

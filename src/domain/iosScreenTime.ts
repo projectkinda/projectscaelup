@@ -3,20 +3,39 @@ import { Platform } from 'react-native';
 import { ScreenTime } from '../../modules/screen-time';
 import { ensureSchema, getDatabase } from '../data/database';
 
-// iOS locks flagged apps during a session instead of watching them (see
-// docs/ios-screen-time-design.md). Every function here is a no-op elsewhere,
-// so screens can call them unconditionally next to the Android equivalents.
+// iOS Screen Time (see docs/ios-screen-time-design.md). By default iOS tracks
+// flagged-app use silently, like Android; strict mode locks the apps during a
+// session instead. Every function here is a no-op elsewhere, so screens can
+// call them unconditionally next to the Android equivalents.
 
 const isActive = Platform.OS === 'ios' && ScreenTime.isAvailable;
 
-/**
- * iOS can't tell which flagged app was opened (tokens are opaque and differ
- * between processes), so distractions record this identifier instead.
- */
-export const IOS_FLAGGED_APPS_IDENTIFIER = 'ios.flagged-apps';
+// Distractions are stored with these `app_identifier`s. A tracked app has a
+// stable, opaque key (iOS never reveals which app it is); strict mode's
+// "Open anyway" can't say which flagged app was opened at all.
+const IOS_APP_PREFIX = 'ios.app.';
+const IOS_ANY_FLAGGED_APP = 'ios.flagged-apps';
 
-export function describeTouchedApp(appIdentifier: string): string {
-  return appIdentifier === IOS_FLAGGED_APPS_IDENTIFIER ? 'Your flagged apps' : appIdentifier;
+function isIosIdentifier(appIdentifier: string) {
+  return appIdentifier.startsWith(IOS_APP_PREFIX) || appIdentifier === IOS_ANY_FLAGGED_APP;
+}
+
+/**
+ * The touched apps for the post-session summary. iOS app names can only be
+ * drawn by iOS itself, so iOS apps read as a count; others pass through.
+ */
+export function describeTouchedApps(appIdentifiers: string[]): string {
+  const others = appIdentifiers.filter(id => !isIosIdentifier(id));
+  const iosApps = appIdentifiers.filter(id => id.startsWith(IOS_APP_PREFIX)).length;
+  const anyFlagged = appIdentifiers.includes(IOS_ANY_FLAGGED_APP);
+
+  const parts = [...others];
+  if (anyFlagged) {
+    parts.push('Your flagged apps');
+  } else if (iosApps > 0) {
+    parts.push(iosApps === 1 ? '1 flagged app' : `${iosApps} flagged apps`);
+  }
+  return parts.join(', ');
 }
 
 export async function startFocusLock(sessionId: number, modeName: string, endsAtMs: number) {
@@ -41,9 +60,9 @@ export async function resumeFocusLock(endsAtMs: number) {
 }
 
 /**
- * Lifts the session lock. When the session counts, its "Open anyway" taps are
- * stored as `app_touched` distractions so `completeSession` scores them exactly
- * like Android's; when it's cancelled they're discarded.
+ * Ends the session natively. When it counts, its distractions are stored as
+ * `app_touched` rows so `completeSession` scores them exactly like Android's;
+ * when it's cancelled they're discarded.
  */
 export async function finishFocusLock(sessionId: number, { keepDistractions }: { keepDistractions: boolean }) {
   if (!isActive) {
@@ -57,23 +76,27 @@ export async function finishFocusLock(sessionId: number, { keepDistractions }: {
   const database = await getDatabase();
   await ensureSchema(database);
   await database.withTransactionAsync(async () => {
-    for (const occurredAt of distractions) {
+    for (const { occurredAt, appKey } of distractions) {
       await database.runAsync(
         `
           INSERT INTO distraction_events (session_id, type, app_identifier, occurred_at)
           VALUES (?, 'app_touched', ?, ?);
         `,
-        [sessionId, IOS_FLAGGED_APPS_IDENTIFIER, occurredAt.toISOString()],
+        [sessionId, appKey ? `${IOS_APP_PREFIX}${appKey}` : IOS_ANY_FLAGGED_APP, occurredAt.toISOString()],
       );
     }
   });
 }
 
-export async function applyLockdown(expiresAt: string) {
+/** Locks the touched apps, or every flagged app when one of them is unknown. */
+export async function applyLockdown(appIdentifiers: string[], expiresAt: string) {
   if (!isActive) {
     return;
   }
-  await ScreenTime.lockDown(new Date(expiresAt));
+  const appKeys = appIdentifiers.includes(IOS_ANY_FLAGGED_APP)
+    ? null
+    : appIdentifiers.filter(id => id.startsWith(IOS_APP_PREFIX)).map(id => id.slice(IOS_APP_PREFIX.length));
+  await ScreenTime.lockDown(new Date(expiresAt), appKeys);
 }
 
 /** Corrects the shields if a timed change was missed while the app was closed. */

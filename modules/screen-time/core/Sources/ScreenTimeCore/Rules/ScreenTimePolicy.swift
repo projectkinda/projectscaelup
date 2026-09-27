@@ -5,20 +5,34 @@ import Foundation
 /// Nothing here touches the system, so every decision is unit-tested on a Mac,
 /// and the app plus all extensions share one definition of the behaviour.
 public struct ScreenTimePolicy: Sendable {
+  // Silent tracking (default).
+  /// Use of one flagged app past this, within a session, counts as a distraction.
+  /// Android uses 30 s; iOS reports sub-minute thresholds unreliably.
+  public var usageThreshold: TimeInterval
+  /// Reports this soon after monitoring starts are ignored: iOS 26 has been seen
+  /// firing threshold events immediately instead of after real use.
+  public var usageSettlingTime: TimeInterval
+
+  // Strict mode.
   /// How long "Open anyway" unlocks flagged apps before the session lock returns.
   public var gracePeriod: TimeInterval
   /// Re-opening within this window after a grace period ends continues the same
   /// visit, so one long scroll counts as one distraction (matching Android).
   public var sameVisitWindow: TimeInterval
+
   /// A session paused for longer than this is abandoned (for example, the app was
   /// killed mid-pause), so it can't keep flagged apps uneditable forever.
   public var maximumPause: TimeInterval
 
   public init(
+    usageThreshold: TimeInterval = 60,
+    usageSettlingTime: TimeInterval = 10,
     gracePeriod: TimeInterval = 2 * 60,
     sameVisitWindow: TimeInterval = 60,
     maximumPause: TimeInterval = 6 * 60 * 60
   ) {
+    self.usageThreshold = usageThreshold
+    self.usageSettlingTime = usageSettlingTime
     self.gracePeriod = gracePeriod
     self.sameVisitWindow = sameVisitWindow
     self.maximumPause = maximumPause
@@ -52,15 +66,26 @@ public struct ScreenTimePolicy: Sendable {
   }
 
   /// The shields that should be up for a settled state.
-  public func activeShields(in state: ScreenTimeState) -> Set<ShieldLayer> {
-    var layers: Set<ShieldLayer> = []
-    if let session = state.session, session.pausedAt == nil, session.graceUntil == nil {
-      layers.insert(.session)
+  public func shieldPlan(in state: ScreenTimeState) -> ShieldPlan {
+    var plan = ShieldPlan.none
+    if let session = state.session, session.strict, session.pausedAt == nil, session.graceUntil == nil {
+      plan.session = true
     }
-    if state.lockdown != nil {
-      layers.insert(.lockdown)
-    }
-    return layers
+    plan.lockdown = state.lockdown?.apps
+    return plan
+  }
+
+  /// What to monitor for silent tracking, if anything.
+  public func usagePlan(in state: ScreenTimeState) -> UsagePlan? {
+    guard let session = state.session, !session.strict, session.pausedAt == nil else { return nil }
+    return UsagePlan(
+      sessionId: session.id,
+      segment: session.segment,
+      start: session.segmentStartedAt,
+      end: max(session.endsAt, session.segmentStartedAt.addingTimeInterval(WakePlanner.minimumInterval)),
+      threshold: usageThreshold,
+      excludedAppKeys: Set(session.countedAppKeys)
+    )
   }
 
   /// The next moment the shields need to change, if any.
@@ -82,8 +107,8 @@ public struct ScreenTimePolicy: Sendable {
     return candidates.filter { $0 > now }.min()
   }
 
-  /// Flagged apps can't be changed while they're locked, otherwise removing an
-  /// app from the list would be a way out of a session or lockdown.
+  /// Flagged apps can't be changed during a session or lockdown, otherwise
+  /// removing an app from the list would be a way out of either.
   public func canEditFlaggedApps(in state: ScreenTimeState) -> Bool {
     state.session == nil && state.lockdown == nil
   }
@@ -94,13 +119,18 @@ public struct ScreenTimePolicy: Sendable {
     id: Int,
     modeName: String,
     endsAt: Date,
+    strict: Bool,
     in state: ScreenTimeState,
     at now: Date
   ) -> ScreenTimeState {
     var result = settled(state, at: now)
-    result.session = FocusSession(id: id, modeName: modeName, endsAt: endsAt)
     // Anything left from a session the app never finished importing is stale.
     result.pendingDistractions.removeAll { $0.sessionId != id }
+    var session = FocusSession(id: id, modeName: modeName, endsAt: endsAt, strict: strict, startedAt: now)
+    // Restarting the same session (for example "+5 min" after the alarm) keeps
+    // what it already counted, so an app isn't counted twice.
+    session.countedAppKeys = result.pendingDistractions.compactMap(\.appKey)
+    result.session = session
     return result
   }
 
@@ -123,6 +153,8 @@ public struct ScreenTimePolicy: Sendable {
     guard var session = result.session, session.pausedAt != nil else { return result }
     session.pausedAt = nil
     session.endsAt = endsAt
+    session.segment += 1
+    session.segmentStartedAt = now
     result.session = session
     return settled(result, at: now)
   }
@@ -141,7 +173,31 @@ public struct ScreenTimePolicy: Sendable {
     return (result, distractions)
   }
 
-  // MARK: - Shield interactions
+  // MARK: - Silent tracking
+
+  /// Records that a flagged app passed the usage threshold. Counts each app
+  /// once per session, and ignores reports that can't be real use.
+  public func recordingUsage(
+    appKey: String,
+    in state: ScreenTimeState,
+    at now: Date
+  ) -> (state: ScreenTimeState, counted: Bool) {
+    var result = settled(state, at: now)
+    guard var session = result.session,
+      !session.strict,
+      session.pausedAt == nil,
+      now.timeIntervalSince(session.segmentStartedAt) >= usageSettlingTime,
+      !session.countedAppKeys.contains(appKey)
+    else {
+      return (result, false)
+    }
+    session.countedAppKeys.append(appKey)
+    result.session = session
+    result.pendingDistractions.append(Distraction(sessionId: session.id, occurredAt: now, appKey: appKey))
+    return (result, true)
+  }
+
+  // MARK: - Strict mode
 
   public enum OpenAnywayOutcome: Equatable, Sendable {
     /// Flagged apps are unlocked for the grace period.
@@ -157,6 +213,7 @@ public struct ScreenTimePolicy: Sendable {
     var result = settled(state, at: now)
     guard result.lockdown == nil,
       var session = result.session,
+      session.strict,
       session.pausedAt == nil
     else {
       return (result, .refused)
@@ -167,7 +224,7 @@ public struct ScreenTimePolicy: Sendable {
     } ?? false
 
     if !continuesVisit {
-      result.pendingDistractions.append(Distraction(sessionId: session.id, occurredAt: now))
+      result.pendingDistractions.append(Distraction(sessionId: session.id, occurredAt: now, appKey: nil))
     }
     session.graceUntil = min(now.addingTimeInterval(gracePeriod), session.endsAt)
     result.session = session
@@ -176,16 +233,21 @@ public struct ScreenTimePolicy: Sendable {
 
   // MARK: - Lockdown
 
-  /// Starts or extends the post-session lockdown. Never shortens an active one.
+  /// Starts or extends the post-session lockdown for `apps`. Never shortens an
+  /// active one, and an extension covers both the old and the new apps.
   public func lockingDown(
     until: Date,
+    apps: AppSelection,
     in state: ScreenTimeState,
     at now: Date
   ) -> ScreenTimeState {
     var result = settled(state, at: now)
     guard until > now else { return result }
-    let current = result.lockdown?.until ?? .distantPast
-    result.lockdown = Lockdown(until: max(current, until))
+    if let current = result.lockdown {
+      result.lockdown = Lockdown(until: max(current.until, until), apps: current.apps.union(apps))
+    } else {
+      result.lockdown = Lockdown(until: until, apps: apps)
+    }
     return result
   }
 }
