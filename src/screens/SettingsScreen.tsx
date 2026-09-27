@@ -225,7 +225,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
         label: Platform.OS === 'ios' ? 'Screen Time' : 'Accessibility',
         detail:
           Platform.OS === 'ios'
-            ? 'Used to lock flagged apps during focus sessions.'
+            ? 'Used to track flagged apps during sessions and lock them afterwards.'
             : "Used to track time in apps you've flagged as distracting.",
         state:
           Platform.OS === 'android'

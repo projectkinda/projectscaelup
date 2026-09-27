@@ -6,6 +6,14 @@ export type ScreenTimeStatus = {
   flaggedAppCount: number;
   /** False during a focus session or lockdown, so the list can't be used as a way out. */
   canEditFlaggedApps: boolean;
+  /** Lock flagged apps during sessions instead of tracking use silently. */
+  strictMode: boolean;
+};
+
+export type ScreenTimeDistraction = {
+  occurredAt: Date;
+  /** The flagged app's stable, opaque key, or null when iOS can't say which app. */
+  appKey: string | null;
 };
 
 export type FlaggedAppsViewProps = {

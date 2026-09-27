@@ -22,7 +22,7 @@ import {
   TALLY_STROKE_VIEWBOX,
 } from '../components/tallyStrokePaths';
 import { colors, layout } from '../theme/tokens';
-import { describeTouchedApp } from '../domain/iosScreenTime';
+import { describeTouchedApps } from '../domain/iosScreenTime';
 
 const GROUP_MARK_WIDTH = 50.554;
 const GROUP_MARK_HEIGHT = 39.654;
@@ -189,7 +189,7 @@ export function PostSessionSummaryScreen({
                   {lockdownMinutes} min lockdown
                 </Text>
                 <Text style={styles.flaggedAppsText} numberOfLines={2}>
-                  {touchedApps.map(describeTouchedApp).join(', ')}
+                  {describeTouchedApps(touchedApps)}
                 </Text>
               </LinearGradient>
             ) : null}

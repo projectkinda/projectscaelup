@@ -1,16 +1,17 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { ScreenTimeStatus } from './ScreenTime.types';
+import type { ScreenTimeDistraction, ScreenTimeStatus } from './ScreenTime.types';
 
 declare class ScreenTimeNativeModule extends NativeModule {
   getStatus(): ScreenTimeStatus;
   requestAuthorization(): Promise<ScreenTimeStatus>;
   presentFlaggedAppsPicker(maxApps: number | null): Promise<ScreenTimeStatus>;
+  setStrictMode(enabled: boolean): Promise<ScreenTimeStatus>;
   startSession(id: number, modeName: string, endsAtMs: number): Promise<void>;
   pauseSession(): Promise<void>;
   resumeSession(endsAtMs: number): Promise<void>;
-  endSession(id: number): Promise<number[]>;
-  lockDown(untilMs: number): Promise<void>;
+  endSession(id: number): Promise<{ occurredAtMs: number; appKey: string | null }[]>;
+  lockDown(untilMs: number, appKeys: string[] | null): Promise<void>;
   reconcile(): Promise<void>;
 }
 
@@ -33,6 +34,11 @@ export const ScreenTime = {
     return native ? native.presentFlaggedAppsPicker(maxApps) : null;
   },
 
+  /** Strict mode locks flagged apps during sessions; off, their use is tracked silently. */
+  async setStrictMode(enabled: boolean): Promise<ScreenTimeStatus | null> {
+    return native ? native.setStrictMode(enabled) : null;
+  },
+
   async startSession(id: number, modeName: string, endsAt: Date): Promise<void> {
     await native?.startSession(id, modeName, endsAt.getTime());
   },
@@ -45,14 +51,15 @@ export const ScreenTime = {
     await native?.resumeSession(endsAt.getTime());
   },
 
-  /** Ends the session natively and returns when each "Open anyway" distraction happened. */
-  async endSession(id: number): Promise<Date[]> {
-    const timestamps = (await native?.endSession(id)) ?? [];
-    return timestamps.map(ms => new Date(ms));
+  /** Ends the session natively and returns its distractions. */
+  async endSession(id: number): Promise<ScreenTimeDistraction[]> {
+    const records = (await native?.endSession(id)) ?? [];
+    return records.map(record => ({ occurredAt: new Date(record.occurredAtMs), appKey: record.appKey }));
   },
 
-  async lockDown(until: Date): Promise<void> {
-    await native?.lockDown(until.getTime());
+  /** Locks `appKeys` until `until`; `null` locks every flagged app. */
+  async lockDown(until: Date, appKeys: string[] | null): Promise<void> {
+    await native?.lockDown(until.getTime(), appKeys);
   },
 
   /** Brings the shields in line with the current time. Call when the app becomes active. */

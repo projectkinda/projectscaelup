@@ -1,11 +1,26 @@
 # iOS Screen Time design (flagged apps, distractions, lockdown)
 
-**Status:** v3, decided. Implementation in progress on branch `ios/screen-time`. **Owner:** iOS (Ragesh). **Date:** 2026-09-26
+**Status:** v4. Silent tracking by default, live lock as optional strict mode. **Owner:** iOS (Ragesh). **Updated:** 2026-09-27
 **Scope decision (2026-09-26):** Android stays exactly as it is. iOS gets its own approach built around Apple's limits, so the two platforms don't have to behave identically.
 
 ---
 
-## 0. Decisions log (v3, 2026-09-26)
+## 0. Decision v4 (2026-09-27): silent tracking by default
+
+v3 locked flagged apps **during** sessions on iOS. Partner review pointed out that this reverses a core product decision: *use anything freely during a session, pay for it afterwards*. Live locking was a reliability choice, not an iOS limit: silent tracking is possible, just less reliable. So:
+
+- **Default (matches Android): silent tracking.** Nothing is locked during a session. Each flagged app is watched with a DeviceActivity usage event. At **1 minute** of use in a session (Android: 30 s; iOS reports sub-minute thresholds unreliably), the monitor extension records a distraction **for that app**. Each app counts once per session, because iOS reports cumulative use and can't tell visits apart, so iOS is at most as strict as Android, never harsher.
+- **The lockdown covers only the apps that were used**, identified by a stable digest of each app's token (the event name carries it). This matches Android.
+- **Strict mode (optional, off by default)** keeps v3's live lock: lock screen, "Open anyway" with a 2-minute grace, one distraction per visit. The lockdown after a strict session covers all flagged apps, because the lock screen can't reliably say which app was opened (L7).
+- **Reliability guards:**
+  - usage reports in the first 10 s of a session segment are ignored (iOS 26 has fired events immediately)
+  - use after the session's real end is ignored (sessions under 15 min are monitored for 15)
+  - resuming after a pause starts a fresh segment, and already-counted apps aren't watched again
+- **Still to verify on a real iPhone:** how promptly the 1-minute events fire. If they prove unusable, we revisit with that evidence.
+
+Sections 1–8 below describe v3; where they describe the live lock, read them as **strict mode**.
+
+## 0a. Decisions log (v3, 2026-09-26)
 
 Partner feedback on v1 was reviewed against the research in section 3. Where it conflicts with an Apple limit, the Apple limit wins.
 
@@ -167,7 +182,7 @@ Each needs `com.apple.developer.family-controls` and the App Group.
 
 | # | Question | Proposal |
 |---|---|---|
-| Q1 | Should iOS lock flagged apps **during** the session, not only after? | **Decided: yes.** It's the only reliable way to detect a distraction on iOS. |
+| Q1 | Should iOS lock flagged apps **during** the session, not only after? | **Revised in v4: no, not by default.** Silent tracking is the default; the live lock is optional strict mode (section 0). |
 | Q2 | Grace period after "Open anyway" | **Decided:** 2 min, with the 60 s same-visit rule |
 | Q3 | Should "Open anyway" be available at all, or strict mode? | **Decided:** available; strict mode is a later option |
 | Q4 | Categories and websites in the picker | **Decided:** not in v1 |
