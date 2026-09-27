@@ -468,6 +468,23 @@ export function HomeScreen({
     }
   };
 
+  const handleEndEarly = () => {
+    Alert.alert(
+      'End this session?',
+      "It won't be counted toward your streak or tally.",
+      [
+        { text: 'Keep going', style: 'cancel' },
+        {
+          text: 'End Early',
+          style: 'destructive',
+          onPress: async () => {
+            await handleCancelSession();
+          },
+        },
+      ],
+    );
+  };
+
   const handleCompleteSession = async () => {
     const sessionId = activeSessionId;
 
@@ -611,8 +628,8 @@ export function HomeScreen({
 
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Finish session"
-              onPress={handleCancelSession}
+              accessibilityLabel="End session early"
+              onPress={handleEndEarly}
               style={({ pressed }) => [
                 styles.startShell,
                 pressed && styles.pressed,
@@ -623,7 +640,7 @@ export function HomeScreen({
                 pointerEvents="none"
                 style={styles.startButton}
               >
-                <Text style={styles.startLabel}>Finish</Text>
+                <Text style={styles.startLabel}>End Early</Text>
               </LinearGradient>
             </Pressable>
           </View>
