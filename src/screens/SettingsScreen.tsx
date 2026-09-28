@@ -21,6 +21,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '../components/BottomNavigation';
 import {
+  AppPickerList,
+  SelectionMark,
+  filterAppsForPicker,
+} from '../components/AppPickerList';
+import {
   type CustomMode,
   type FlaggedApp,
   FREE_TIER_APP_CAP,
@@ -311,23 +316,16 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     const flaggedAppIdentifiers = new Set(
       flaggedApps.map(app => app.appIdentifier),
     );
-    const normalizedQuery = appPickerQuery.trim().toLowerCase();
-
     return installedApps.filter(app => {
       if (flaggedAppIdentifiers.has(app.packageName)) {
         return false;
       }
-
-      if (!normalizedQuery) {
-        return true;
-      }
-
-      return (
-        app.displayName.toLowerCase().includes(normalizedQuery) ||
-        app.packageName.toLowerCase().includes(normalizedQuery)
-      );
     });
-  }, [appPickerQuery, flaggedApps, installedApps]);
+  }, [flaggedApps, installedApps]);
+  const visibleInstalledApps = useMemo(
+    () => filterAppsForPicker(availableInstalledApps, appPickerQuery),
+    [appPickerQuery, availableInstalledApps],
+  );
 
   // The iOS Screen Time row follows the live status, which the flagged-apps
   // panel updates without reloading the whole screen.
@@ -804,7 +802,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
         onSave={handleSaveMode}
       />
       <AppPickerModal
-        apps={availableInstalledApps}
+        apps={visibleInstalledApps}
         isSaving={isPickingApp}
         query={appPickerQuery}
         remainingSlots={remainingFreeAppSlots}
@@ -816,19 +814,6 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
         onToggleAllVisible={toggleAllVisibleApps}
         onToggleApp={toggleSelectedApp}
       />
-    </View>
-  );
-}
-
-function SelectionMark({ selected }: { selected: boolean }) {
-  return (
-    <View
-      style={[
-        styles.selectionCircle,
-        selected && styles.selectionCircleSelected,
-      ]}
-    >
-      {selected ? <View style={styles.selectionCheck} /> : null}
     </View>
   );
 }
@@ -864,7 +849,6 @@ function AppPickerModal({
   const selectedCount = selectedAppIdentifiers.length;
   const allVisibleSelected =
     apps.length > 0 && apps.every(app => selectedAppSet.has(app.packageName));
-  const canSelectMore = selectedCount < remainingSlots;
 
   return (
     <Modal
@@ -929,64 +913,21 @@ function AppPickerModal({
           </Pressable>
         </View>
 
-        {isSearchVisible ? (
-          <View style={styles.appPickerSearchWrap}>
-            <TextInput
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              placeholder="Search"
-              placeholderTextColor="rgba(255, 255, 255, 0.42)"
-              value={query}
-              onChangeText={onChangeQuery}
-              style={styles.appPickerSearch}
-            />
-          </View>
-        ) : null}
-
         <Text style={styles.appPickerSectionLabel}>Add apps from phone</Text>
-        <View style={styles.appPickerListShell}>
-          <ScrollView
-            bounces={false}
-            showsVerticalScrollIndicator
-            contentContainerStyle={styles.appPickerList}
-          >
-            {apps.map(app => {
-              const selected = selectedAppSet.has(app.packageName);
-              const disabled = !selected && !canSelectMore;
-
-              return (
-                <Pressable
-                  key={app.packageName}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: selected, disabled }}
-                  accessibilityLabel={app.displayName}
-                  disabled={disabled}
-                  onPress={() => onToggleApp(app)}
-                  style={({ pressed }) => [
-                    styles.appPickerRow,
-                    pressed && styles.pressed,
-                    disabled && styles.appPickerRowDisabled,
-                  ]}
-                >
-                  <SelectionMark selected={selected} />
-                  <Image
-                    source={{ uri: `data:image/png;base64,${app.iconBase64}` }}
-                    style={styles.appPickerIcon}
-                  />
-                  <Text style={styles.appPickerAppName} numberOfLines={1}>
-                    {app.displayName}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {apps.length === 0 ? (
-              <View style={styles.appPickerEmpty}>
-                <Text style={styles.emptyText}>No apps found.</Text>
-              </View>
-            ) : null}
-          </ScrollView>
-        </View>
+        <AppPickerList
+          apps={apps}
+          selectedIds={selectedAppIdentifiers}
+          onToggle={packageName => {
+            const app = apps.find(item => item.packageName === packageName);
+            if (app) {
+              onToggleApp(app);
+            }
+          }}
+          maxSelectable={remainingSlots}
+          query={isSearchVisible ? query : ''}
+          onChangeQuery={onChangeQuery}
+          showSearch={isSearchVisible}
+        />
       </View>
     </Modal>
   );

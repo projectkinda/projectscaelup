@@ -167,6 +167,7 @@ type HomeScreenProps = {
   isActive: boolean;
   sessionMessage?: string | null;
   onNavigate: (screen: string) => void;
+  onSessionActiveChange?: (active: boolean) => void;
   onStartSession: (details: {
     modeId: string;
     modeName: string;
@@ -180,6 +181,7 @@ export function HomeScreen({
   isActive,
   sessionMessage,
   onNavigate,
+  onSessionActiveChange,
   onStartSession,
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
@@ -259,6 +261,10 @@ export function HomeScreen({
     Math.min(58, Math.round(availableContentHeight * 0.07)),
   );
   const hasActiveSession = remainingSeconds !== null;
+
+  useEffect(() => {
+    onSessionActiveChange?.(hasActiveSession);
+  }, [hasActiveSession, onSessionActiveChange]);
 
   useEffect(() => {
     contentProgress.setValue(0);
