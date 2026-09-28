@@ -116,6 +116,11 @@ function ActiveSessionCameraPreview({
 
         if (photo?.base64) {
           await PresenceModule.reportFrame(photo.base64);
+        } else {
+          console.log('[presence-debug]', {
+            event: 'take_picture_no_base64',
+            time: new Date().toISOString(),
+          });
         }
       } catch (error) {
         console.warn('Failed to capture active presence frame:', error);
