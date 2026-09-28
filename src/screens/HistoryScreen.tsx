@@ -22,6 +22,8 @@ import {
   type HistoryTrendPoint,
   loadHistoryData,
 } from '../data/historyRepository';
+import { FlaggedAppLabel } from '../../modules/screen-time';
+import { iosAppKey } from '../domain/iosScreenTime';
 import { isPaidUser } from '../domain/paywall';
 import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
@@ -294,6 +296,12 @@ function ModeBreakdown({
 
 function SessionCard({ session }: { session: HistorySession }) {
   const hasLockdown = session.lockdownMinutes > 0;
+  // iOS apps are drawn natively from their keys; mixed or unknown apps aren't.
+  const appKeys = session.flaggedApps.map(app => iosAppKey(app.appIdentifier));
+  const iosKeys =
+    appKeys.length > 0 && appKeys.every(key => key !== null)
+      ? (appKeys as string[])
+      : null;
   const distractionLabel =
     session.distractionCount === 1
       ? '1 distraction'
@@ -333,7 +341,26 @@ function SessionCard({ session }: { session: HistorySession }) {
           </Text>
         ) : null}
       </View>
-      {session.flaggedApps.length > 0 ? (
+      {iosKeys ? (
+        <View style={styles.flaggedAppsRow}>
+          <FlaggedAppLabel
+            appKeys={iosKeys.slice(0, 3)}
+            display="icons"
+            size={24}
+            style={[
+              styles.flaggedAppNativeIcons,
+              { width: 24 + 18 * (Math.min(iosKeys.length, 3) - 1) },
+            ]}
+          />
+          <FlaggedAppLabel
+            appKeys={iosKeys}
+            display="names"
+            size={13}
+            color={colors.muted}
+            style={styles.flaggedAppsNative}
+          />
+        </View>
+      ) : session.flaggedApps.length > 0 ? (
         <View style={styles.flaggedAppsRow}>
           <View style={styles.flaggedAppIcons}>
             {session.flaggedApps.slice(0, 3).map((app, index) =>
@@ -867,6 +894,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginRight: -6,
     backgroundColor: '#2A2A2A',
+  },
+  flaggedAppNativeIcons: {
+    height: 24,
+  },
+  flaggedAppsNative: {
+    flex: 1,
+    minWidth: 0,
+    height: 18,
   },
   flaggedApps: {
     flex: 1,

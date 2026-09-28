@@ -21,3 +21,19 @@ export type FlaggedAppsViewProps = {
   revision: number;
   style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
 };
+
+export type FlaggedAppLabelProps = {
+  /** Distraction keys (`ScreenTimeDistraction.appKey`) of the apps to draw. */
+  appKeys: string[];
+  /** Overlapping icons, or the names on one line. */
+  display: 'icons' | 'names';
+  /** Icon side, or font size, in points. */
+  size: number;
+  /** Text color for `names`. */
+  color?: string;
+  /** Text weight for `names`. */
+  weight?: 'regular' | 'medium';
+  /** Horizontal alignment within the view. */
+  align?: 'start' | 'center';
+  style?: import('react-native').StyleProp<import('react-native').ViewStyle>;
+};

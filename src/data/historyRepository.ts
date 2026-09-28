@@ -1,3 +1,4 @@
+import { iosAppKey } from '../domain/iosScreenTime';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
 import { ensureSchema, getDatabase } from './database';
 
@@ -13,6 +14,7 @@ export type HistorySession = {
 };
 
 export type HistoryFlaggedApp = {
+  appIdentifier: string | null;
   displayName: string;
   iconBase64: string | null;
 };
@@ -53,6 +55,7 @@ type SessionRow = {
 
 type FlaggedAppRow = {
   session_id: number;
+  app_identifier: string | null;
   display_name: string | null;
   icon_base64: string | null;
 };
@@ -74,6 +77,8 @@ type CustomModeNameRow = {
   id: string;
   name: string;
 };
+
+const UNNAMED_APP = 'A flagged app';
 
 const builtInModeNameById = new Map(
   BUILT_IN_MODES.map(mode => [mode.id, mode.name]),
@@ -184,6 +189,7 @@ export async function loadHistoryData({
     `
       SELECT DISTINCT
              de.session_id,
+             de.app_identifier,
              fa.display_name,
              fa.icon_base64
       FROM sessions s
@@ -200,8 +206,24 @@ export async function loadHistoryData({
   const flaggedAppsBySessionId = flaggedAppRows.reduce(
     (map, row) => {
       const apps = map.get(row.session_id) ?? [];
+      // Unnamed apps read the same, so list them once, unless iOS can draw them.
+      const isUnnamed = (
+        displayName: string | null,
+        appIdentifier: string | null,
+      ) => displayName === null && iosAppKey(appIdentifier) === null;
+      if (
+        isUnnamed(row.display_name, row.app_identifier) &&
+        apps.some(
+          app =>
+            app.displayName === UNNAMED_APP &&
+            isUnnamed(null, app.appIdentifier),
+        )
+      ) {
+        return map;
+      }
       apps.push({
-        displayName: row.display_name ?? 'A flagged app',
+        appIdentifier: row.app_identifier,
+        displayName: row.display_name ?? UNNAMED_APP,
         iconBase64: row.icon_base64,
       });
       map.set(row.session_id, apps);

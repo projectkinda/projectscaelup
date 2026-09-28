@@ -22,7 +22,9 @@ import {
   TALLY_STROKE_PATHS,
   TALLY_STROKE_VIEWBOX,
 } from '../components/tallyStrokePaths';
+import { FlaggedAppLabel } from '../../modules/screen-time';
 import { colors, layout } from '../theme/tokens';
+import { iosAppKey } from '../domain/iosScreenTime';
 import type { DistractionEventSummary } from '../domain/sessionHistory';
 
 const GROUP_MARK_WIDTH = 50.554;
@@ -201,16 +203,8 @@ export function PostSessionSummaryScreen({
                       <View
                         key={`${event.occurredAt}-${event.type}-${index}`}
                         style={styles.distractionRow}
-                        >
-                          {event.type === 'app_touched' ? (
-                            <AppEventIcon iconBase64={event.iconBase64} />
-                          ) : null}
-                          <Text
-                            numberOfLines={1}
-                            style={styles.distractionLabel}
-                        >
-                          {eventLabel(event)}
-                        </Text>
+                      >
+                        <DistractionEventApp event={event} />
                         <Text style={styles.distractionMeta}>
                           {eventMeta(event, modeGracePeriodSeconds)}
                         </Text>
@@ -229,9 +223,7 @@ export function PostSessionSummaryScreen({
                 <Text style={styles.lockdownTitle}>
                   {lockdownMinutes} min lockdown
                 </Text>
-                <Text style={styles.flaggedAppsText} numberOfLines={2}>
-                  {describeTouchedApps(distractionEvents)}
-                </Text>
+                <TouchedApps events={distractionEvents} />
               </LinearGradient>
             ) : null}
           </View>
@@ -257,6 +249,66 @@ export function PostSessionSummaryScreen({
         </Pressable>
       </Animated.View>
     </View>
+  );
+}
+
+/** The event's icon and label. iOS apps are drawn natively from their key. */
+function DistractionEventApp({ event }: { event: DistractionEventSummary }) {
+  const appKey = event.type === 'app_touched' ? iosAppKey(event.appIdentifier) : null;
+  if (appKey) {
+    return (
+      <>
+        <FlaggedAppLabel
+          appKeys={[appKey]}
+          display="icons"
+          size={24}
+          style={styles.distractionAppIcon}
+        />
+        <FlaggedAppLabel
+          appKeys={[appKey]}
+          display="names"
+          size={14}
+          color={colors.ink}
+          style={styles.distractionNativeLabel}
+        />
+      </>
+    );
+  }
+
+  return (
+    <>
+      {event.type === 'app_touched' ? (
+        <AppEventIcon iconBase64={event.iconBase64} />
+      ) : null}
+      <Text numberOfLines={1} style={styles.distractionLabel}>
+        {eventLabel(event)}
+      </Text>
+    </>
+  );
+}
+
+/** The lockdown panel's app list. iOS apps are named natively from their keys. */
+function TouchedApps({ events }: { events: DistractionEventSummary[] }) {
+  const touched = events.filter(event => event.type === 'app_touched');
+  const iosKeys = touched.map(event => iosAppKey(event.appIdentifier));
+  if (touched.length > 0 && iosKeys.every(key => key !== null)) {
+    return (
+      <FlaggedAppLabel
+        appKeys={Array.from(new Set(iosKeys as string[]))}
+        display="names"
+        size={13}
+        color={colors.muted}
+        weight="medium"
+        align="center"
+        style={styles.flaggedAppsNativeText}
+      />
+    );
+  }
+
+  return (
+    <Text style={styles.flaggedAppsText} numberOfLines={2}>
+      {describeTouchedApps(events)}
+    </Text>
   );
 }
 
@@ -513,6 +565,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '400',
   },
+  distractionNativeLabel: {
+    flex: 1,
+    minWidth: 0,
+    height: 20,
+  },
   distractionMeta: {
     flexShrink: 0,
     color: colors.muted,
@@ -545,6 +602,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  flaggedAppsNativeText: {
+    alignSelf: 'stretch',
+    height: 18,
+    marginTop: 7,
   },
   continueShell: {
     width: '100%',
