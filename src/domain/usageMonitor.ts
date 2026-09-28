@@ -8,6 +8,16 @@ type AppUsageState = {
 };
 
 const APP_TOUCH_THRESHOLD_MS = 30_000;
+const IGNORED_PACKAGES = new Set(['com.android.systemui']);
+
+function shouldIgnorePackage(appIdentifier: string) {
+  const normalized = appIdentifier.toLowerCase();
+  return (
+    IGNORED_PACKAGES.has(appIdentifier) ||
+    normalized.includes('inputmethod') ||
+    normalized.includes('keyboard')
+  );
+}
 
 export function startUsageMonitor(
   sessionId: number,
@@ -32,30 +42,20 @@ export function startUsageMonitor(
     }
   };
 
-  const closePreviousApp = () => {
-    if (!currentForegroundApp) {
-      return;
-    }
+  const crossedThreshold = (state: AppUsageState) =>
+    state.lastTickAt !== null &&
+    !state.hasCountedThisVisit &&
+    state.cumulativeMs + (Date.now() - state.lastTickAt) >=
+      APP_TOUCH_THRESHOLD_MS;
 
-    const currentState = usageByApp[currentForegroundApp];
-    if (currentState?.lastTickAt) {
-      currentState.cumulativeMs += Date.now() - currentState.lastTickAt;
-      currentState.lastTickAt = null;
-      currentState.hasCountedThisVisit = false;
-    }
-  };
+  const crossedAtMs = (state: AppUsageState) =>
+    (state.lastTickAt as number) +
+    Math.max(0, APP_TOUCH_THRESHOLD_MS - state.cumulativeMs);
 
-  const recordIfThresholdReached = async (appIdentifier: string) => {
-    const currentState = usageByApp[appIdentifier];
-    if (!currentState?.lastTickAt || currentState.hasCountedThisVisit) {
-      return;
-    }
-
-    const visitMs = Date.now() - currentState.lastTickAt;
-    if (currentState.cumulativeMs + visitMs < APP_TOUCH_THRESHOLD_MS) {
-      return;
-    }
-
+  const recordAppTouch = async (
+    appIdentifier: string,
+    occurredAtMs: number,
+  ) => {
     const database = await getDatabase();
     await ensureSchema(database);
     await database.runAsync(
@@ -68,23 +68,55 @@ export function startUsageMonitor(
         )
         VALUES (?, 'app_touched', ?, ?);
       `,
-      [sessionId, appIdentifier, new Date().toISOString()],
+      [sessionId, appIdentifier, new Date(occurredAtMs).toISOString()],
     );
+  };
+
+  const checkAndRecord = (appIdentifier: string) => {
+    const currentState = usageByApp[appIdentifier];
+    if (!currentState || !crossedThreshold(currentState)) {
+      return;
+    }
+
     currentState.hasCountedThisVisit = true;
+    const occurredAtMs = crossedAtMs(currentState);
+    recordAppTouch(appIdentifier, occurredAtMs).catch(error => {
+      console.warn('Failed to record app usage distraction:', error);
+    });
+  };
+
+  const leaveCurrentApp = () => {
+    stopThresholdLoop();
+
+    if (!currentForegroundApp) {
+      return;
+    }
+
+    const currentState = usageByApp[currentForegroundApp];
+    if (currentState?.lastTickAt) {
+      checkAndRecord(currentForegroundApp);
+      currentState.cumulativeMs += Date.now() - currentState.lastTickAt;
+      currentState.lastTickAt = null;
+      currentState.hasCountedThisVisit = false;
+    }
   };
 
   const startThresholdLoop = (appIdentifier: string) => {
     stopThresholdLoop();
     intervalId = setInterval(() => {
-      recordIfThresholdReached(appIdentifier).catch(error => {
-        console.warn('Failed to record app usage distraction:', error);
-      });
+      checkAndRecord(appIdentifier);
     }, 1000);
   };
 
   const unsubscribe = UsageTrackingModule.onAppUsageTick(({ appIdentifier }) => {
-    closePreviousApp();
-    stopThresholdLoop();
+    if (
+      appIdentifier === currentForegroundApp ||
+      shouldIgnorePackage(appIdentifier)
+    ) {
+      return;
+    }
+
+    leaveCurrentApp();
     currentForegroundApp = appIdentifier;
 
     const nextState = usageByApp[appIdentifier];
@@ -97,8 +129,7 @@ export function startUsageMonitor(
   });
 
   return () => {
-    closePreviousApp();
-    stopThresholdLoop();
+    leaveCurrentApp();
     unsubscribe();
   };
 }
