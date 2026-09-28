@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -34,6 +34,7 @@ function App(): React.JSX.Element {
   const [requiredPermissions, setRequiredPermissions] =
     useState<RequiredPermissionStatus | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
+  const didApplyResetOnboardingRef = useRef(false);
 
   useEffect(() => {
     sweepPresencePhotoCacheQuietly();
@@ -76,7 +77,8 @@ function App(): React.JSX.Element {
       return;
     }
 
-    if (DEV_FLAGS.resetOnboarding) {
+    if (DEV_FLAGS.resetOnboarding && !didApplyResetOnboardingRef.current) {
+      didApplyResetOnboardingRef.current = true;
       await setAppState(ONBOARDING_COMPLETE_KEY, 'false');
       await setAppState(ONBOARDING_STEP_KEY, 'permissions');
     }

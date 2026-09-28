@@ -89,6 +89,9 @@ export function PermissionStep({
     if (permissionIsOn(nextStatus, permission)) {
       setHint(null);
       setSuccess(true);
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
       successTimeoutRef.current = setTimeout(onBack, 600);
       return true;
     }
