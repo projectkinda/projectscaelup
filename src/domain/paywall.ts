@@ -1,5 +1,6 @@
 export const DEV_FLAGS = {
   forcePaidUser: false,
+  resetOnboarding: false,
 };
 
 // TEMP STUB - replace this single function with a real RevenueCat entitlement
