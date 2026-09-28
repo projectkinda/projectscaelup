@@ -805,6 +805,19 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   );
 }
 
+function SelectionMark({ selected }: { selected: boolean }) {
+  return (
+    <View
+      style={[
+        styles.selectionCircle,
+        selected && styles.selectionCircleSelected,
+      ]}
+    >
+      {selected ? <View style={styles.selectionCheck} /> : null}
+    </View>
+  );
+}
+
 function AppPickerModal({
   apps,
   isSaving,
@@ -860,12 +873,7 @@ function AppPickerModal({
               pressed && styles.pressed,
             ]}
           >
-            <View
-              style={[
-                styles.selectionCircle,
-                allVisibleSelected && styles.selectionCircleSelected,
-              ]}
-            />
+            <SelectionMark selected={allVisibleSelected} />
             <Text style={styles.selectAllText}>All</Text>
           </Pressable>
           <Text style={styles.appPickerTitle}>Add apps</Text>
@@ -946,12 +954,7 @@ function AppPickerModal({
                     disabled && styles.appPickerRowDisabled,
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.selectionCircle,
-                      selected && styles.selectionCircleSelected,
-                    ]}
-                  />
+                  <SelectionMark selected={selected} />
                   <Image
                     source={{ uri: `data:image/png;base64,${app.iconBase64}` }}
                     style={styles.appPickerIcon}
@@ -1302,10 +1305,21 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#6f6f7b',
     backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   selectionCircleSelected: {
     borderColor: colors.ink,
     backgroundColor: colors.ink,
+  },
+  selectionCheck: {
+    width: 11,
+    height: 6,
+    marginTop: -1,
+    borderLeftWidth: 2.5,
+    borderBottomWidth: 2.5,
+    borderColor: '#111111',
+    transform: [{ rotate: '-45deg' }],
   },
   selectAllText: {
     marginTop: 5,

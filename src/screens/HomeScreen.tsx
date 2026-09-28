@@ -58,10 +58,8 @@ type CompletionSummary = {
 };
 
 function ActiveSessionCameraPreview({
-  sessionId,
   samplingActive,
 }: {
-  sessionId: number | null;
   samplingActive: boolean;
 }) {
   const [hasPermission, setHasPermission] = useState(false);
@@ -82,7 +80,7 @@ function ActiveSessionCameraPreview({
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, []);
 
   useEffect(() => {
     if (
@@ -121,27 +119,32 @@ function ActiveSessionCameraPreview({
     const intervalId = setInterval(capturePresenceFrame, 1500);
 
     return () => clearInterval(intervalId);
-  }, [hasPermission, isCameraReady, samplingActive, sessionId]);
+  }, [hasPermission, isCameraReady, samplingActive]);
 
   return (
     <View style={styles.cameraPreview}>
       {hasPermission && Platform.OS === 'ios' ? (
         <LivePresenceCamera
-          key={sessionId ?? 'active-camera'}
           active={samplingActive}
           analysisIntervalMs={1000}
-          style={styles.cameraPreviewFeed}
+          onCameraReady={() => setIsCameraReady(true)}
+          style={[
+            styles.cameraPreviewFeed,
+            !isCameraReady && styles.cameraPreviewFeedHidden,
+          ]}
         />
       ) : null}
       {hasPermission && Platform.OS !== 'ios' ? (
         <CameraView
-          key={sessionId ?? 'active-camera'}
           ref={cameraRef}
           active
           facing="front"
           mirror
           onCameraReady={() => setIsCameraReady(true)}
-          style={styles.cameraPreviewFeed}
+          style={[
+            styles.cameraPreviewFeed,
+            !isCameraReady && styles.cameraPreviewFeedHidden,
+          ]}
         />
       ) : null}
     </View>
@@ -295,59 +298,62 @@ export function HomeScreen({
     }
   }, [awaitingEndChoice, isActive, onNavigate]);
 
-  const beginActiveSession = async (durationSeconds: number) => {
+  const beginActiveSession = (durationSeconds: number) => {
     const startedAt = new Date();
-    let sessionId: number | null = null;
-    try {
-      sessionId = await startSession({
-        modeId: activeMode.id,
-        durationSeconds,
-        startedAt,
-      });
-    } catch (error) {
-      console.warn('Failed to start session in database:', error);
-      sessionId = Date.now();
-    }
+    const mode = activeMode;
+    const sessionEndTime = Date.now() + durationSeconds * 1000;
 
-    try {
-      onStartSession({
-        modeId: activeMode.id,
-        modeName: activeMode.name,
-        durationMinutes: Math.ceil(durationSeconds / 60),
-        durationSeconds,
-        durationFormatted: formatDuration(durationSeconds),
-      });
-    } catch (error) {
-      console.warn('onStartSession handler error:', error);
-    }
-
-    setActiveSessionId(sessionId);
-    sessionMonitorUnsubscribe.current?.();
-    sessionMonitorUnsubscribe.current = startSessionMonitor(
-      sessionId,
-      activeMode,
-    );
-    usageMonitorUnsubscribe.current?.();
-    try {
-      const settingsData = await loadSettingsData({ isPaidUser: paidUser });
-      activeFlaggedAppIdentifiers.current = settingsData.flaggedApps.map(
-        app => app.appIdentifier,
-      );
-    } catch (error) {
-      console.warn('Failed to load flagged apps for usage monitor:', error);
-      activeFlaggedAppIdentifiers.current = [];
-    }
-    usageMonitorUnsubscribe.current = startUsageMonitor(
-      sessionId,
-      activeFlaggedAppIdentifiers.current,
-    );
-    sessionEndTimeMs.current = Date.now() + durationSeconds * 1000;
-    startFocusLock(sessionId, activeMode.name, sessionEndTimeMs.current).catch(
-      error => console.warn('Failed to lock flagged apps:', error),
-    );
+    sessionEndTimeMs.current = sessionEndTime;
     setRemainingSeconds(durationSeconds);
     setIsPaused(false);
     setPendingDurationSeconds(null);
+
+    void (async () => {
+      let sessionId: number;
+      try {
+        sessionId = await startSession({
+          modeId: mode.id,
+          durationSeconds,
+          startedAt,
+        });
+      } catch (error) {
+        console.warn('Failed to start session in database:', error);
+        sessionId = Date.now();
+      }
+
+      try {
+        onStartSession({
+          modeId: mode.id,
+          modeName: mode.name,
+          durationMinutes: Math.ceil(durationSeconds / 60),
+          durationSeconds,
+          durationFormatted: formatDuration(durationSeconds),
+        });
+      } catch (error) {
+        console.warn('onStartSession handler error:', error);
+      }
+
+      setActiveSessionId(sessionId);
+      sessionMonitorUnsubscribe.current?.();
+      sessionMonitorUnsubscribe.current = startSessionMonitor(sessionId, mode);
+      usageMonitorUnsubscribe.current?.();
+      try {
+        const settingsData = await loadSettingsData({ isPaidUser: paidUser });
+        activeFlaggedAppIdentifiers.current = settingsData.flaggedApps.map(
+          app => app.appIdentifier,
+        );
+      } catch (error) {
+        console.warn('Failed to load flagged apps for usage monitor:', error);
+        activeFlaggedAppIdentifiers.current = [];
+      }
+      usageMonitorUnsubscribe.current = startUsageMonitor(
+        sessionId,
+        activeFlaggedAppIdentifiers.current,
+      );
+      startFocusLock(sessionId, mode.name, sessionEndTime).catch(
+        error => console.warn('Failed to lock flagged apps:', error),
+      );
+    })();
   };
 
   const handleStart = async () => {
@@ -599,7 +605,6 @@ export function HomeScreen({
           <View style={styles.runningHeader}>
             <Text style={styles.runningTitle}>{activeMode.tabLabel}</Text>
             <ActiveSessionCameraPreview
-              sessionId={activeSessionId}
               samplingActive={!isPaused && !awaitingEndChoice}
             />
           </View>
@@ -820,6 +825,9 @@ const styles = StyleSheet.create({
   },
   cameraPreviewFeed: {
     ...StyleSheet.absoluteFill,
+  },
+  cameraPreviewFeedHidden: {
+    opacity: 0,
   },
   runningTimerWrap: {
     flex: 1,
