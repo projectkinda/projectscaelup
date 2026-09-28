@@ -124,10 +124,6 @@ export const PresenceModule = {
         faceHorizontalOffset: raw.faceHorizontalOffset ?? null,
       };
 
-      console.log('[presence-debug]', {
-        time: new Date().toISOString(),
-        presenceDetected: result.presenceDetected,
-      });
       emit(result);
     } catch (error) {
       console.warn('Failed to process presence frame:', error);

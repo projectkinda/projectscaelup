@@ -37,22 +37,12 @@ export function startSessionMonitor(sessionId: number, mode: SessionMode) {
     if (presenceState === 'PRESENT') {
       if (!result.presenceDetected) {
         absenceStartedAt = Date.now();
-        console.log('[presence-debug]', {
-          event: 'absence_timer_started',
-          sessionId,
-          time: new Date(absenceStartedAt).toISOString(),
-        });
         presenceState = 'ABSENT_TIMING';
       }
       return;
     }
 
     if (result.presenceDetected) {
-      console.log('[presence-debug]', {
-        event: 'presence_returned',
-        sessionId,
-        time: new Date().toISOString(),
-      });
       await finishCurrentAbsence();
       absenceStartedAt = null;
       presenceState = 'PRESENT';
@@ -76,12 +66,6 @@ export function startSessionMonitor(sessionId: number, mode: SessionMode) {
           [sessionId, new Date().toISOString()],
         );
         currentAbsenceEventId = result.lastInsertRowId;
-        console.log('[presence-debug]', {
-          event: 'camera_absence_inserted',
-          sessionId,
-          distractionEventId: currentAbsenceEventId,
-          time: new Date().toISOString(),
-        });
       })().finally(() => {
         absenceInsertPromise = null;
       });
