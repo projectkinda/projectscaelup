@@ -37,6 +37,7 @@ import {
 import { getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
+  type DistractionEventSummary,
   formatDuration,
   getSessionCount,
   getShowingUpDayCount,
@@ -53,6 +54,8 @@ type CompletionSummary = {
   previousSessionCount: number;
   sessionCount: number;
   distractionCount: number;
+  distractionEvents: DistractionEventSummary[];
+  modeGracePeriodSeconds: number;
   lockdownMinutes: number;
   touchedApps: string[];
 };
@@ -138,6 +141,7 @@ function ActiveSessionCameraPreview({
         <CameraView
           ref={cameraRef}
           active
+          animateShutter={false}
           facing="front"
           mirror
           onCameraReady={() => setIsCameraReady(true)}
@@ -197,7 +201,7 @@ export function HomeScreen({
     useState<CompletionSummary | null>(null);
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
-  const sessionMonitorUnsubscribe = useRef<(() => void) | null>(null);
+  const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
   const usageMonitorUnsubscribe = useRef<(() => void) | null>(null);
   const activeFlaggedAppIdentifiers = useRef<string[]>([]);
 
@@ -334,7 +338,7 @@ export function HomeScreen({
       }
 
       setActiveSessionId(sessionId);
-      sessionMonitorUnsubscribe.current?.();
+      void sessionMonitorUnsubscribe.current?.();
       sessionMonitorUnsubscribe.current = startSessionMonitor(sessionId, mode);
       usageMonitorUnsubscribe.current?.();
       try {
@@ -400,14 +404,14 @@ export function HomeScreen({
     setIsPaused(false);
   };
 
-  const handlePauseToggle = () => {
+  const handlePauseToggle = async () => {
     if (remainingSeconds === null) {
       return;
     }
 
     if (isPaused) {
       if (activeSessionId !== null) {
-        sessionMonitorUnsubscribe.current?.();
+        await sessionMonitorUnsubscribe.current?.();
         sessionMonitorUnsubscribe.current = startSessionMonitor(
           activeSessionId,
           activeMode,
@@ -426,7 +430,7 @@ export function HomeScreen({
       return;
     }
 
-    sessionMonitorUnsubscribe.current?.();
+    await sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
     usageMonitorUnsubscribe.current?.();
     usageMonitorUnsubscribe.current = null;
@@ -442,7 +446,7 @@ export function HomeScreen({
   };
 
   const resetActiveSessionState = async () => {
-    sessionMonitorUnsubscribe.current?.();
+    await sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
     usageMonitorUnsubscribe.current?.();
     usageMonitorUnsubscribe.current = null;
@@ -510,6 +514,7 @@ export function HomeScreen({
     const previousCount = sessionCount;
     let nextCount = previousCount + 1;
     let distractionCount = 0;
+    let distractionEvents: DistractionEventSummary[] = [];
     let lockdownMinutes = 0;
     let touchedApps: string[] = [];
     let nextShowingUpDays = showingUpDays || 1;
@@ -517,6 +522,7 @@ export function HomeScreen({
       const completed = await completeSession(sessionId);
       nextCount = completed.sessionCount;
       distractionCount = completed.distractionCount;
+      distractionEvents = completed.events;
       lockdownMinutes = completed.lockdownMinutes;
       touchedApps = completed.touchedApps;
       nextShowingUpDays = completed.showingUpDays;
@@ -529,6 +535,8 @@ export function HomeScreen({
       previousSessionCount: previousCount,
       sessionCount: nextCount,
       distractionCount,
+      distractionEvents,
+      modeGracePeriodSeconds: activeMode.gracePeriodSeconds,
       lockdownMinutes,
       touchedApps,
     });
@@ -564,6 +572,8 @@ export function HomeScreen({
         previousSessionCount={completionSummary.previousSessionCount}
         sessionCount={completionSummary.sessionCount}
         distractionCount={completionSummary.distractionCount}
+        distractionEvents={completionSummary.distractionEvents}
+        modeGracePeriodSeconds={completionSummary.modeGracePeriodSeconds}
         lockdownMinutes={completionSummary.lockdownMinutes}
         touchedApps={completionSummary.touchedApps}
         onContinue={() => {

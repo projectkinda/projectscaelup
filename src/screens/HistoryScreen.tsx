@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -26,6 +26,7 @@ import { formatDuration } from '../domain/sessionHistory';
 import { colors, layout } from '../theme/tokens';
 
 type HistoryScreenProps = {
+  isActive: boolean;
   onNavigate: (screen: string) => void;
 };
 
@@ -402,7 +403,7 @@ function HistoryFirstRunState({
   );
 }
 
-export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
+export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [history, setHistory] = useState<HistoryData | null>(null);
@@ -411,12 +412,22 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
   const [visibleSessionCount, setVisibleSessionCount] = useState(
     INITIAL_VISIBLE_SESSIONS,
   );
+  const hasLoadedOnceRef = useRef(false);
 
+  // Loads on mount, then silently revalidates whenever the tab comes back
+  // into view -- never re-blanks the screen to a spinner on a revisit, since
+  // the screen stays mounted (hidden) rather than remounting per tab switch.
   useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
     let cancelled = false;
 
     async function load() {
-      setIsLoading(true);
+      if (!hasLoadedOnceRef.current) {
+        setIsLoading(true);
+      }
       setErrorMessage(null);
 
       try {
@@ -432,6 +443,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
         }
       } finally {
         if (!cancelled) {
+          hasLoadedOnceRef.current = true;
           setIsLoading(false);
         }
       }
@@ -442,7 +454,7 @@ export function HistoryScreen({ onNavigate }: HistoryScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isActive]);
 
   const hasSessions = (history?.sessions.length ?? 0) > 0;
   const isFirstRunHistory =

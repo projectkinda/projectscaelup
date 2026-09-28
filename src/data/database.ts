@@ -59,7 +59,8 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
       session_id INTEGER NOT NULL REFERENCES sessions(id),
       type TEXT NOT NULL,
       app_identifier TEXT,
-      occurred_at TEXT NOT NULL
+      occurred_at TEXT NOT NULL,
+      duration_seconds INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS streaks (
@@ -113,6 +114,13 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
     'flagged_apps',
     'icon_base64',
     'TEXT',
+  );
+
+  await addColumnIfMissing(
+    database,
+    'distraction_events',
+    'duration_seconds',
+    'INTEGER',
   );
 }
 

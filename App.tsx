@@ -54,7 +54,8 @@ function App(): React.JSX.Element {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        {/* Home stays mounted (hidden) so an active session keeps running across tabs. */}
+        {/* Every tab stays mounted (hidden) so switching tabs never re-fetches
+            from a blank state and flashes a loading spinner. */}
         <View style={[styles.root, activeScreen !== 'home' && styles.hidden]}>
           <HomeScreen
             isActive={activeScreen === 'home'}
@@ -65,14 +66,22 @@ function App(): React.JSX.Element {
             }}
           />
         </View>
+        <View style={[styles.root, activeScreen !== 'history' && styles.hidden]}>
+          <HistoryScreen
+            isActive={activeScreen === 'history'}
+            onNavigate={handleNavigate}
+          />
+        </View>
+        <View style={[styles.root, activeScreen !== 'settings' && styles.hidden]}>
+          <SettingsScreen
+            isActive={activeScreen === 'settings'}
+            onNavigate={handleNavigate}
+          />
+        </View>
         {activeScreen === 'paywall' ? (
           <PaywallStubScreen
             onDismiss={() => setActiveScreen(paywallReturnScreen)}
           />
-        ) : activeScreen === 'history' ? (
-          <HistoryScreen onNavigate={handleNavigate} />
-        ) : activeScreen === 'settings' ? (
-          <SettingsScreen onNavigate={handleNavigate} />
         ) : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -1,5 +1,5 @@
 import { Camera } from 'expo-camera';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,6 +44,7 @@ import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { colors, layout } from '../theme/tokens';
 
 type SettingsScreenProps = {
+  isActive: boolean;
   onNavigate: (screen: string) => void;
 };
 
@@ -158,7 +159,7 @@ async function openSubscriptionManagement() {
   await Linking.openURL(url);
 }
 
-export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
+export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [flaggedApps, setFlaggedApps] = useState<FlaggedApp[]>([]);
@@ -177,9 +178,12 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
   const [isPickingApp, setIsPickingApp] = useState(false);
   const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
   const paidUser = isPaidUser();
+  const hasLoadedOnceRef = useRef(false);
 
   const load = useCallback(async () => {
-    setIsLoading(true);
+    if (!hasLoadedOnceRef.current) {
+      setIsLoading(true);
+    }
 
     const [
       settingsData,
@@ -251,6 +255,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setCustomModes(settingsData.customModes);
     setPermissions(nextPermissions);
     setScreenTimeStatus(Platform.OS === 'ios' ? ScreenTime.getStatus() : null);
+    hasLoadedOnceRef.current = true;
     setIsLoading(false);
   }, []);
 
@@ -265,6 +270,16 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
     return () => subscription.remove();
   }, [load]);
+
+  // The screen stays mounted (hidden) across tab switches, so revalidate
+  // silently whenever the tab comes back into view instead of relying on a
+  // remount -- load() no longer blanks the screen to a spinner past the
+  // first load.
+  useEffect(() => {
+    if (isActive) {
+      load();
+    }
+  }, [isActive, load]);
 
   const removeApp = async (app: FlaggedApp) => {
     await removeFlaggedApp(app.appIdentifier);

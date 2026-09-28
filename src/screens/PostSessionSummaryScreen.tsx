@@ -23,6 +23,7 @@ import {
 } from '../components/tallyStrokePaths';
 import { colors, layout } from '../theme/tokens';
 import { describeTouchedApps } from '../domain/iosScreenTime';
+import type { DistractionEventSummary } from '../domain/sessionHistory';
 
 const GROUP_MARK_WIDTH = 50.554;
 const GROUP_MARK_HEIGHT = 39.654;
@@ -31,6 +32,8 @@ type PostSessionSummaryScreenProps = {
   previousSessionCount: number;
   sessionCount: number;
   distractionCount: number;
+  distractionEvents: DistractionEventSummary[];
+  modeGracePeriodSeconds: number;
   lockdownMinutes: number;
   touchedApps: string[];
   onContinue: () => void;
@@ -40,6 +43,8 @@ export function PostSessionSummaryScreen({
   previousSessionCount,
   sessionCount,
   distractionCount,
+  distractionEvents,
+  modeGracePeriodSeconds,
   lockdownMinutes,
   touchedApps,
   onContinue,
@@ -171,13 +176,46 @@ export function PostSessionSummaryScreen({
 
             <LinearGradient
               colors={['#333333', '#141414']}
-              style={styles.distractionPanel}
+              style={[
+                styles.distractionPanel,
+                distractionCount === 0 && styles.distractionPanelEmpty,
+              ]}
             >
-              <Text style={styles.distractionText}>
-                {distractionCount === 0
-                  ? 'No distractions logged'
-                  : `${distractionCount} ${distractionCount === 1 ? 'distraction' : 'distractions'} logged`}
-              </Text>
+              {distractionCount === 0 ? (
+                <Text style={styles.distractionText}>
+                  No distractions logged
+                </Text>
+              ) : (
+                <>
+                  <Text style={styles.distractionHeading}>
+                    {distractionCount}{' '}
+                    {distractionCount === 1 ? 'distraction' : 'distractions'}
+                  </Text>
+                  <ScrollView
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                    style={styles.distractionListScroller}
+                    contentContainerStyle={styles.distractionList}
+                  >
+                    {distractionEvents.map((event, index) => (
+                      <View
+                        key={`${event.occurredAt}-${event.type}-${index}`}
+                        style={styles.distractionRow}
+                      >
+                        <Text
+                          numberOfLines={1}
+                          style={styles.distractionLabel}
+                        >
+                          {eventLabel(event)}
+                        </Text>
+                        <Text style={styles.distractionMeta}>
+                          {eventMeta(event, modeGracePeriodSeconds)}
+                        </Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
             </LinearGradient>
 
             {touchedApps.length > 0 ? (
@@ -217,6 +255,55 @@ export function PostSessionSummaryScreen({
       </Animated.View>
     </View>
   );
+}
+
+function eventLabel(event: DistractionEventSummary) {
+  if (event.type === 'camera_absence') {
+    return 'Left the frame';
+  }
+
+  return event.displayName ?? 'A flagged app';
+}
+
+function eventMeta(
+  event: DistractionEventSummary,
+  modeGracePeriodSeconds: number,
+) {
+  const occurredAtMs = new Date(event.occurredAt).getTime();
+  const displayTimeMs =
+    event.type === 'camera_absence'
+      ? occurredAtMs - modeGracePeriodSeconds * 1000
+      : occurredAtMs;
+  const time = formatClockTime(new Date(displayTimeMs));
+
+  if (event.type !== 'camera_absence') {
+    return time;
+  }
+
+  return `${time} · ${formatShortDuration(event.durationSeconds ?? 0)}`;
+}
+
+function formatClockTime(date: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function formatShortDuration(totalSeconds: number) {
+  const clamped = Math.max(0, Math.round(totalSeconds));
+  const minutes = Math.floor(clamped / 60);
+  const seconds = clamped % 60;
+
+  if (minutes === 0) {
+    return `${seconds}s`;
+  }
+
+  if (seconds === 0) {
+    return `${minutes}m`;
+  }
+
+  return `${minutes}m ${seconds}s`;
 }
 
 function HeroRevealMark({
@@ -349,9 +436,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+  },
+  distractionPanelEmpty: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 16,
   },
   distractionText: {
     color: colors.muted,
@@ -359,6 +449,41 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  distractionHeading: {
+    color: colors.ink,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  distractionListScroller: {
+    marginTop: 12,
+    width: '100%',
+  },
+  distractionList: {
+    gap: 9,
+    paddingBottom: 2,
+  },
+  distractionRow: {
+    minHeight: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  distractionLabel: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '400',
+  },
+  distractionMeta: {
+    flexShrink: 0,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
   },
   lockdownPanel: {
     width: '100%',

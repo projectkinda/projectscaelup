@@ -344,6 +344,7 @@ export function PreSessionReadinessScreen({
             <CameraView
               ref={cameraRef}
               active
+              animateShutter={false}
               facing="front"
               mirror
               onCameraReady={handleCameraReady}

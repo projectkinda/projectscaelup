@@ -17,10 +17,19 @@ type SessionStartInput = {
 
 type CompletedSessionResult = {
   distractionCount: number;
+  events: DistractionEventSummary[];
   lockdownMinutes: number;
   sessionCount: number;
   showingUpDays: number;
   touchedApps: string[];
+};
+
+export type DistractionEventSummary = {
+  type: 'camera_absence' | 'app_touched';
+  appIdentifier: string | null;
+  occurredAt: string;
+  displayName: string | null;
+  durationSeconds: number | null;
 };
 
 function dateKey(value: Date) {
@@ -226,9 +235,36 @@ export async function completeSession(
       `,
       [sessionId],
     );
+    const eventRows = await database.getAllAsync<{
+      type: 'camera_absence' | 'app_touched';
+      app_identifier: string | null;
+      occurred_at: string;
+      display_name: string | null;
+      duration_seconds: number | null;
+    }>(
+      `
+        SELECT de.type,
+               de.app_identifier,
+               de.occurred_at,
+               de.duration_seconds,
+               fa.display_name
+        FROM distraction_events de
+        LEFT JOIN flagged_apps fa ON fa.app_identifier = de.app_identifier
+        WHERE de.session_id = ?
+        ORDER BY de.occurred_at ASC;
+      `,
+      [sessionId],
+    );
 
     const distractionCount = distractionCountRow?.count ?? 0;
     const touchedApps = touchedAppRows.map(row => row.app_identifier);
+    const events = eventRows.map(row => ({
+      type: row.type,
+      appIdentifier: row.app_identifier,
+      occurredAt: row.occurred_at,
+      displayName: row.display_name,
+      durationSeconds: row.duration_seconds,
+    }));
     const lockdownMinutes =
       touchedApps.length > 0 ? Math.min(10 + 2 * distractionCount, 60) : 0;
     if (touchedApps.length > 0) {
@@ -288,6 +324,7 @@ export async function completeSession(
 
     return {
       distractionCount,
+      events,
       lockdownMinutes,
       sessionCount: next.totalSessionsCompleted,
       showingUpDays: showingUpDayCountRow?.count ?? 0,
@@ -297,6 +334,7 @@ export async function completeSession(
     console.warn('Could not completeSession in SQLite:', err);
     return {
       distractionCount: 0,
+      events: [],
       lockdownMinutes: 0,
       sessionCount: 1,
       showingUpDays: 1,
