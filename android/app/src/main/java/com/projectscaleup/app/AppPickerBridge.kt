@@ -17,6 +17,8 @@ import java.io.ByteArrayOutputStream
 class AppPickerBridge(
   reactContext: ReactApplicationContext,
 ) : ReactContextBaseJavaModule(reactContext) {
+  private val iconSizePx = 128
+
   override fun getName() = "AppPickerBridge"
 
   @ReactMethod
@@ -75,8 +77,14 @@ class AppPickerBridge(
       output
     }
 
+    val scaled = if (bitmap.width == iconSizePx && bitmap.height == iconSizePx) {
+      bitmap
+    } else {
+      Bitmap.createScaledBitmap(bitmap, iconSizePx, iconSizePx, true)
+    }
+
     val stream = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+    scaled.compress(Bitmap.CompressFormat.PNG, 100, stream)
     return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
   }
 }

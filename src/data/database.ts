@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'project-scaleup.db';
+const SMALL_ICON_CACHE_RESET_KEY = 'smallIconCacheResetV1';
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let schemaPromise: Promise<void> | null = null;
@@ -122,6 +123,19 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
     'duration_seconds',
     'INTEGER',
   );
+
+  const iconReset = await database.getFirstAsync<{ value: string }>(
+    'SELECT value FROM app_state WHERE key = ?;',
+    [SMALL_ICON_CACHE_RESET_KEY],
+  );
+
+  if (iconReset?.value !== 'true') {
+    await database.execAsync('UPDATE flagged_apps SET icon_base64 = NULL;');
+    await database.runAsync(
+      'INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?);',
+      [SMALL_ICON_CACHE_RESET_KEY, 'true'],
+    );
+  }
 }
 
 export async function ensureSchema(database: SQLite.SQLiteDatabase) {

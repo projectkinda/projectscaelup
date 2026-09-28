@@ -3,6 +3,7 @@ import { AppState, StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { sweepPresencePhotoCacheQuietly } from './src/domain/frameCleanup';
 import { reconcileScreenTime } from './src/domain/iosScreenTime';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
@@ -18,6 +19,10 @@ function App(): React.JSX.Element {
   const [paywallReturnScreen, setPaywallReturnScreen] =
     useState<MainScreen>('home');
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    sweepPresencePhotoCacheQuietly();
+  }, []);
 
   // iOS: a lock may have been due to change while the app was closed and the
   // system missed the wake-up, so check on launch and every return to the app.

@@ -17,6 +17,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LivePresenceCamera } from '../components/LivePresenceCamera';
 import { SevenSegmentDigit } from '../components/SevenSegmentDigit';
 import {
+  deletePresencePhotoQuietly,
+  sweepPresencePhotoCacheQuietly,
+} from '../domain/frameCleanup';
+import {
   PresenceModule,
   type PresenceResult,
 } from '../domain/presenceModule';
@@ -140,6 +144,12 @@ export function PreSessionReadinessScreen({
   );
 
   useEffect(() => {
+    return () => {
+      sweepPresencePhotoCacheQuietly();
+    };
+  }, []);
+
+  useEffect(() => {
     const canSample =
       PresenceModule.analyzesStillFrames &&
       showCamera &&
@@ -156,12 +166,14 @@ export function PreSessionReadinessScreen({
       }
 
       captureInFlight.current = true;
+      let photoUri: string | undefined;
       try {
         const photo = await cameraRef.current?.takePictureAsync({
           base64: true,
           quality: 0.3,
           shutterSound: false,
         });
+        photoUri = photo?.uri;
 
         if (photo?.base64) {
           await PresenceModule.reportFrame(photo.base64);
@@ -169,6 +181,7 @@ export function PreSessionReadinessScreen({
       } catch (error) {
         console.warn('Failed to capture readiness presence frame:', error);
       } finally {
+        await deletePresencePhotoQuietly(photoUri);
         captureInFlight.current = false;
       }
     };

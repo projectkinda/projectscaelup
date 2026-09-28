@@ -24,6 +24,10 @@ import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadSettingsData } from '../data/settingsRepository';
+import {
+  deletePresencePhotoQuietly,
+  sweepPresencePhotoCacheQuietly,
+} from '../domain/frameCleanup';
 import { isPaidUser } from '../domain/paywall';
 import { PresenceModule } from '../domain/presenceModule';
 import { startSessionMonitor } from '../domain/sessionMonitor';
@@ -101,12 +105,14 @@ function ActiveSessionCameraPreview({
       }
 
       captureInFlight.current = true;
+      let photoUri: string | undefined;
       try {
         const photo = await cameraRef.current?.takePictureAsync({
           base64: true,
           quality: 0.3,
           shutterSound: false,
         });
+        photoUri = photo?.uri;
 
         if (photo?.base64) {
           await PresenceModule.reportFrame(photo.base64);
@@ -114,6 +120,7 @@ function ActiveSessionCameraPreview({
       } catch (error) {
         console.warn('Failed to capture active presence frame:', error);
       } finally {
+        await deletePresencePhotoQuietly(photoUri);
         captureInFlight.current = false;
       }
     };
@@ -452,6 +459,7 @@ export function HomeScreen({
     usageMonitorUnsubscribe.current = null;
     activeFlaggedAppIdentifiers.current = [];
     await PresenceModule.stop();
+    sweepPresencePhotoCacheQuietly();
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;
     setActiveSessionId(null);
@@ -592,6 +600,7 @@ export function HomeScreen({
         modeName={preparedModeName ?? activeMode.tabLabel}
         onCancel={async () => {
           await PresenceModule.stop();
+          sweepPresencePhotoCacheQuietly();
           setPreparedModeName(null);
           setPendingDurationSeconds(null);
         }}
