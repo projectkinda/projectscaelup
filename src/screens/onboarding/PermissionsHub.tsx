@@ -12,12 +12,14 @@ import {
   type RequiredPermissionStatus,
 } from '../../domain/onboardingState';
 import { colors, layout } from '../../theme/tokens';
+import { BackButton } from './DoneStep';
 
 export type PermissionKind = 'camera' | 'accessibility' | 'overlay';
 
 type PermissionsHubProps = {
   mode: 'onboarding' | 'gate';
   status: RequiredPermissionStatus;
+  onBack?: () => void;
   onOpenStep: (permission: PermissionKind) => void;
   onContinue?: () => void;
 };
@@ -55,6 +57,7 @@ function isDone(status: RequiredPermissionStatus, permission: PermissionKind) {
 export function PermissionsHub({
   mode,
   status,
+  onBack,
   onOpenStep,
   onContinue,
 }: PermissionsHubProps) {
@@ -76,6 +79,7 @@ export function PermissionsHub({
         ]}
       >
         <View style={styles.content}>
+          {onBack ? <BackButton onPress={onBack} /> : null}
           <Text style={styles.title}>Turn on 3 things</Text>
           <Text style={styles.subtitle}>The app needs all three to work.</Text>
 

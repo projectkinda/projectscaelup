@@ -80,7 +80,7 @@ function App(): React.JSX.Element {
     if (DEV_FLAGS.resetOnboarding && !didApplyResetOnboardingRef.current) {
       didApplyResetOnboardingRef.current = true;
       await setAppState(ONBOARDING_COMPLETE_KEY, 'false');
-      await setAppState(ONBOARDING_STEP_KEY, 'permissions');
+      await setAppState(ONBOARDING_STEP_KEY, 'welcome');
     }
 
     const [onboardingComplete, permissionStatus] = await Promise.all([
@@ -106,7 +106,7 @@ function App(): React.JSX.Element {
   };
 
   const completeOnboarding = async () => {
-    await setAppState(ONBOARDING_STEP_KEY, 'permissions');
+    await setAppState(ONBOARDING_STEP_KEY, 'done');
     await setAppState(ONBOARDING_COMPLETE_KEY, 'true');
     setGate('ready');
   };

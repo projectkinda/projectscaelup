@@ -24,6 +24,7 @@ import { type PermissionKind } from './PermissionsHub';
 type PermissionStepProps = {
   permission: PermissionKind;
   status: RequiredPermissionStatus;
+  appNames?: string[];
   onBack: () => void;
   onStatusChange: (status: RequiredPermissionStatus) => void;
 };
@@ -68,6 +69,7 @@ function hintMessage(permission: PermissionKind) {
 export function PermissionStep({
   permission,
   status,
+  appNames = [],
   onBack,
   onStatusChange,
 }: PermissionStepProps) {
@@ -172,6 +174,7 @@ export function PermissionStep({
 
   const body = renderBody({
     permission,
+    appNames,
     accessibilityDisclosureAccepted,
     showGuidance,
   });
@@ -287,13 +290,18 @@ export function PermissionStep({
 
 function renderBody({
   permission,
+  appNames,
   accessibilityDisclosureAccepted,
   showGuidance,
 }: {
   permission: PermissionKind;
+  appNames: string[];
   accessibilityDisclosureAccepted: boolean;
   showGuidance: boolean;
 }) {
+  const pickedApps =
+    appNames.length > 0 ? appNames.slice(0, 3).join(', ') : 'the apps you picked';
+
   if (permission === 'camera') {
     return (
       <>
@@ -314,8 +322,9 @@ function renderBody({
         <Text style={styles.title}>Accessibility access</Text>
         <Text style={styles.bodyText}>
           Android calls this Accessibility. Project ScaleUp uses it for one
-          thing: knowing which app is in front. It can't read what's on your
-          screen, your messages or anything you type. Nothing leaves your phone.
+          thing: knowing which app is in front, so it can notice {pickedApps}.
+          It can't read what's on your screen, your messages or anything you
+          type. Nothing leaves your phone.
         </Text>
       </>
     );
