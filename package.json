@@ -33,5 +33,12 @@
     "ios": "expo run:ios",
     "web": "node scripts/start-web-with-coi.js"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@bacons/xcode": {
+      "@expo/plist": {
+        "@xmldom/xmldom": "0.8.15"
+      }
+    }
+  }
 }
