@@ -29,6 +29,7 @@ export type DistractionEventSummary = {
   appIdentifier: string | null;
   occurredAt: string;
   displayName: string | null;
+  iconBase64: string | null;
   durationSeconds: number | null;
 };
 
@@ -240,6 +241,7 @@ export async function completeSession(
       app_identifier: string | null;
       occurred_at: string;
       display_name: string | null;
+      icon_base64: string | null;
       duration_seconds: number | null;
     }>(
       `
@@ -247,7 +249,8 @@ export async function completeSession(
                de.app_identifier,
                de.occurred_at,
                de.duration_seconds,
-               fa.display_name
+               fa.display_name,
+               fa.icon_base64
         FROM distraction_events de
         LEFT JOIN flagged_apps fa ON fa.app_identifier = de.app_identifier
         WHERE de.session_id = ?
@@ -263,6 +266,7 @@ export async function completeSession(
       appIdentifier: row.app_identifier,
       occurredAt: row.occurred_at,
       displayName: row.display_name,
+      iconBase64: row.icon_base64,
       durationSeconds: row.duration_seconds,
     }));
     const lockdownMinutes =

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Drawable
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
@@ -17,6 +18,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.ceil
@@ -44,6 +46,11 @@ class LockdownOverlayService : Service() {
     }
   }
 
+  private val hideRunnable = Runnable {
+    hideOverlay()
+    stopIfNoActiveLockdowns()
+  }
+
   override fun onCreate() {
     super.onCreate()
     instance = this
@@ -52,6 +59,10 @@ class LockdownOverlayService : Service() {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    pendingShow?.let { (packageName, expiresAtMs) ->
+      showOverlay(packageName, expiresAtMs)
+    }
+    pendingShow = null
     stopIfNoActiveLockdowns()
     return START_STICKY
   }
@@ -71,8 +82,15 @@ class LockdownOverlayService : Service() {
       return
     }
 
+    val appChanged = currentAppIdentifier != appIdentifier
     currentAppIdentifier = appIdentifier
     currentExpiresAtMs = expiresAtMs
+
+    if (appChanged && overlayView != null) {
+      hideOverlay()
+      currentAppIdentifier = appIdentifier
+      currentExpiresAtMs = expiresAtMs
+    }
 
     if (overlayView == null) {
       overlayView = buildOverlayView(appIdentifier).also { view ->
@@ -84,7 +102,17 @@ class LockdownOverlayService : Service() {
     refreshOverlay.run()
   }
 
+  private fun scheduleHide() {
+    handler.removeCallbacks(hideRunnable)
+    handler.postDelayed(hideRunnable, 300)
+  }
+
+  private fun cancelScheduledHide() {
+    handler.removeCallbacks(hideRunnable)
+  }
+
   private fun hideOverlay() {
+    handler.removeCallbacks(hideRunnable)
     handler.removeCallbacks(refreshOverlay)
     overlayView?.let { view ->
       runCatching { windowManager?.removeView(view) }
@@ -96,6 +124,7 @@ class LockdownOverlayService : Service() {
   }
 
   private fun buildOverlayView(appIdentifier: String): View {
+    val (label, icon) = loadAppLabelAndIcon(appIdentifier)
     val root = FrameLayout(this).apply {
       setBackgroundColor(Color.rgb(20, 20, 20))
       isClickable = true
@@ -108,6 +137,17 @@ class LockdownOverlayService : Service() {
       setPadding(40, 40, 40, 40)
     }
 
+    val iconView = ImageView(this).apply {
+      layoutParams = LinearLayout.LayoutParams(dp(80), dp(80)).apply {
+        bottomMargin = dp(20)
+      }
+      if (icon != null) {
+        setImageDrawable(icon)
+      } else {
+        visibility = View.GONE
+      }
+    }
+
     val title = TextView(this).apply {
       text = "Locked"
       setTextColor(Color.rgb(205, 115, 88))
@@ -117,7 +157,7 @@ class LockdownOverlayService : Service() {
     }
 
     val appName = TextView(this).apply {
-      text = appIdentifier
+      text = label
       setTextColor(Color.rgb(246, 249, 253))
       textSize = 18f
       gravity = Gravity.CENTER
@@ -131,6 +171,7 @@ class LockdownOverlayService : Service() {
       setPadding(0, 12, 0, 0)
     }
 
+    content.addView(iconView)
     content.addView(title)
     content.addView(appName)
     content.addView(remainingText)
@@ -143,6 +184,17 @@ class LockdownOverlayService : Service() {
     )
     return root
   }
+
+  private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+
+  private fun loadAppLabelAndIcon(packageName: String): Pair<String, Drawable?> =
+    try {
+      val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+      val label = packageManager.getApplicationLabel(applicationInfo).toString()
+      label to packageManager.getApplicationIcon(packageName)
+    } catch (error: Exception) {
+      packageName to null
+    }
 
   private fun overlayLayoutParams(): WindowManager.LayoutParams {
     val overlayType =
@@ -204,7 +256,9 @@ class LockdownOverlayService : Service() {
 
   companion object {
     private const val NOTIFICATION_ID = 4205
+    private val IGNORED_PACKAGES = setOf("com.android.systemui")
     private var instance: LockdownOverlayService? = null
+    private var pendingShow: Pair<String, Long>? = null
 
     fun start(context: Context) {
       val intent = Intent(context, LockdownOverlayService::class.java)
@@ -215,17 +269,41 @@ class LockdownOverlayService : Service() {
       }
     }
 
-    fun handleForegroundAppChanged(context: Context, packageName: String) {
+    private fun shouldIgnoreForHiding(
+      context: Context,
+      packageName: String,
+      className: String?,
+    ): Boolean {
+      if (packageName == context.packageName && className != MainActivity::class.java.name) {
+        return true
+      }
+      if (packageName in IGNORED_PACKAGES) {
+        return true
+      }
+      val lower = packageName.lowercase()
+      return lower.contains("inputmethod") || lower.contains("keyboard")
+    }
+
+    fun handleForegroundAppChanged(
+      context: Context,
+      packageName: String,
+      className: String? = null,
+    ) {
       val expiresAtMs = LockdownStore.getExpiry(context, packageName)
       if (expiresAtMs == null) {
-        instance?.hideOverlay()
-        instance?.stopIfNoActiveLockdowns()
+        if (shouldIgnoreForHiding(context, packageName, className)) {
+          return
+        }
+        instance?.scheduleHide()
         return
       }
 
       if (instance == null) {
+        pendingShow = packageName to expiresAtMs
         start(context)
+        return
       }
+      instance?.cancelScheduledHide()
       instance?.showOverlay(packageName, expiresAtMs)
     }
   }

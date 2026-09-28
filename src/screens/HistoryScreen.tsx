@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -333,9 +334,27 @@ function SessionCard({ session }: { session: HistorySession }) {
         ) : null}
       </View>
       {session.flaggedApps.length > 0 ? (
-        <Text style={styles.flaggedApps} numberOfLines={2}>
-          {session.flaggedApps.join(', ')}
-        </Text>
+        <View style={styles.flaggedAppsRow}>
+          <View style={styles.flaggedAppIcons}>
+            {session.flaggedApps.slice(0, 3).map((app, index) =>
+              app.iconBase64 ? (
+                <Image
+                  key={`${app.displayName}-${index}`}
+                  source={{ uri: `data:image/png;base64,${app.iconBase64}` }}
+                  style={styles.flaggedAppIcon}
+                />
+              ) : (
+                <View
+                  key={`${app.displayName}-${index}`}
+                  style={styles.flaggedAppIconPlaceholder}
+                />
+              ),
+            )}
+          </View>
+          <Text style={styles.flaggedApps} numberOfLines={2}>
+            {session.flaggedApps.map(app => app.displayName).join(', ')}
+          </Text>
+        </View>
       ) : null}
     </LinearGradient>
   );
@@ -827,8 +846,31 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '600',
   },
-  flaggedApps: {
+  flaggedAppsRow: {
     marginTop: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  flaggedAppIcons: {
+    flexDirection: 'row',
+  },
+  flaggedAppIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    marginRight: -6,
+  },
+  flaggedAppIconPlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    marginRight: -6,
+    backgroundColor: '#2A2A2A',
+  },
+  flaggedApps: {
+    flex: 1,
+    minWidth: 0,
     color: colors.muted,
     fontSize: 13,
     lineHeight: 18,

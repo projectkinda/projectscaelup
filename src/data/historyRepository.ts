@@ -9,7 +9,12 @@ export type HistorySession = {
   durationSeconds: number;
   distractionCount: number;
   lockdownMinutes: number;
-  flaggedApps: string[];
+  flaggedApps: HistoryFlaggedApp[];
+};
+
+export type HistoryFlaggedApp = {
+  displayName: string;
+  iconBase64: string | null;
 };
 
 export type HistoryTrendPoint = {
@@ -44,7 +49,12 @@ type SessionRow = {
   duration_seconds: number;
   distraction_count: number;
   lockdown_minutes: number;
-  flagged_apps: string | null;
+};
+
+type FlaggedAppRow = {
+  session_id: number;
+  display_name: string | null;
+  icon_base64: string | null;
 };
 
 type TrendRow = {
@@ -79,10 +89,9 @@ function subtractDays(date: Date, days: number) {
 function mapSession(
   row: SessionRow,
   modeNameById: Map<string, string>,
+  flaggedAppsBySessionId: Map<number, HistoryFlaggedApp[]>,
 ): HistorySession {
-  const flaggedApps = row.flagged_apps
-    ? row.flagged_apps.split(',').filter(Boolean)
-    : [];
+  const flaggedApps = flaggedAppsBySessionId.get(row.id) ?? [];
 
   return {
     id: row.id,
@@ -162,19 +171,43 @@ export async function loadHistoryData({
              s.mode_id,
              s.duration_seconds,
              s.distraction_count,
-             s.lockdown_minutes,
-             GROUP_CONCAT(DISTINCT COALESCE(fa.display_name, de.app_identifier)) AS flagged_apps
+             s.lockdown_minutes
       FROM sessions s
-      LEFT JOIN distraction_events de
+      WHERE s.completed = 1
+        ${cutoffDate ? 'AND s.started_at >= ?' : ''}
+      ORDER BY s.started_at DESC;
+    `,
+    cutoffParams,
+  );
+
+  const flaggedAppRows = await database.getAllAsync<FlaggedAppRow>(
+    `
+      SELECT DISTINCT
+             de.session_id,
+             fa.display_name,
+             fa.icon_base64
+      FROM sessions s
+      INNER JOIN distraction_events de
         ON de.session_id = s.id AND de.type = 'app_touched'
       LEFT JOIN flagged_apps fa
         ON fa.app_identifier = de.app_identifier
       WHERE s.completed = 1
         ${cutoffDate ? 'AND s.started_at >= ?' : ''}
-      GROUP BY s.id
-      ORDER BY s.started_at DESC;
+      ORDER BY de.occurred_at ASC;
     `,
     cutoffParams,
+  );
+  const flaggedAppsBySessionId = flaggedAppRows.reduce(
+    (map, row) => {
+      const apps = map.get(row.session_id) ?? [];
+      apps.push({
+        displayName: row.display_name ?? 'A flagged app',
+        iconBase64: row.icon_base64,
+      });
+      map.set(row.session_id, apps);
+      return map;
+    },
+    new Map<number, HistoryFlaggedApp[]>(),
   );
 
   const streak = await database.getFirstAsync<{
@@ -217,7 +250,9 @@ export async function loadHistoryData({
       durationSeconds: row.duration_seconds,
       distractionCount: row.distraction_count,
     })),
-    sessions: sessionRows.map(row => mapSession(row, modeNameById)),
+    sessions: sessionRows.map(row =>
+      mapSession(row, modeNameById, flaggedAppsBySessionId),
+    ),
     modeBreakdown: allModes.map(mode => ({
       modeId: mode.id,
       modeName: mode.name,

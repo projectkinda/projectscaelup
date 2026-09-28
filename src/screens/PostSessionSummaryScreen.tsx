@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,7 +23,6 @@ import {
   TALLY_STROKE_VIEWBOX,
 } from '../components/tallyStrokePaths';
 import { colors, layout } from '../theme/tokens';
-import { describeTouchedApps } from '../domain/iosScreenTime';
 import type { DistractionEventSummary } from '../domain/sessionHistory';
 
 const GROUP_MARK_WIDTH = 50.554;
@@ -201,10 +201,13 @@ export function PostSessionSummaryScreen({
                       <View
                         key={`${event.occurredAt}-${event.type}-${index}`}
                         style={styles.distractionRow}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={styles.distractionLabel}
+                        >
+                          {event.type === 'app_touched' ? (
+                            <AppEventIcon iconBase64={event.iconBase64} />
+                          ) : null}
+                          <Text
+                            numberOfLines={1}
+                            style={styles.distractionLabel}
                         >
                           {eventLabel(event)}
                         </Text>
@@ -227,7 +230,7 @@ export function PostSessionSummaryScreen({
                   {lockdownMinutes} min lockdown
                 </Text>
                 <Text style={styles.flaggedAppsText} numberOfLines={2}>
-                  {describeTouchedApps(touchedApps)}
+                  {describeTouchedApps(distractionEvents)}
                 </Text>
               </LinearGradient>
             ) : null}
@@ -255,6 +258,27 @@ export function PostSessionSummaryScreen({
       </Animated.View>
     </View>
   );
+}
+
+function AppEventIcon({ iconBase64 }: { iconBase64: string | null }) {
+  if (iconBase64) {
+    return (
+      <Image
+        source={{ uri: `data:image/png;base64,${iconBase64}` }}
+        style={styles.distractionAppIcon}
+      />
+    );
+  }
+
+  return <View style={styles.distractionAppIconPlaceholder} />;
+}
+
+function describeTouchedApps(events: DistractionEventSummary[]) {
+  const names = events
+    .filter(event => event.type === 'app_touched')
+    .map(event => event.displayName ?? 'A flagged app');
+  const uniqueNames = Array.from(new Set(names));
+  return uniqueNames.length > 0 ? uniqueNames.join(', ') : 'A flagged app';
 }
 
 function eventLabel(event: DistractionEventSummary) {
@@ -469,6 +493,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  distractionAppIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+  },
+  distractionAppIconPlaceholder: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: '#2A2A2A',
   },
   distractionLabel: {
     flex: 1,

@@ -10,8 +10,9 @@ class UsageTrackingAccessibilityService : AccessibilityService() {
     }
 
     val packageName = event.packageName?.toString() ?: return
+    val className = event.className?.toString()
     UsageTrackingBridge.emitForegroundAppChanged(packageName)
-    LockdownOverlayService.handleForegroundAppChanged(applicationContext, packageName)
+    LockdownOverlayService.handleForegroundAppChanged(applicationContext, packageName, className)
   }
 
   override fun onInterrupt() = Unit
