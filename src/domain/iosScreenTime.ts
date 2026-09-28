@@ -16,26 +16,14 @@ const isActive = Platform.OS === 'ios' && ScreenTime.isAvailable;
 const IOS_APP_PREFIX = 'ios.app.';
 const IOS_ANY_FLAGGED_APP = 'ios.flagged-apps';
 
-function isIosIdentifier(appIdentifier: string) {
-  return appIdentifier.startsWith(IOS_APP_PREFIX) || appIdentifier === IOS_ANY_FLAGGED_APP;
-}
-
 /**
- * The touched apps for the post-session summary. iOS app names can only be
- * drawn by iOS itself, so iOS apps read as a count; others pass through.
+ * The Screen Time key of a tracked iOS app, for `FlaggedAppLabel` to draw its
+ * name and icon; null for Android apps, unknown iOS apps and other platforms.
  */
-export function describeTouchedApps(appIdentifiers: string[]): string {
-  const others = appIdentifiers.filter(id => !isIosIdentifier(id));
-  const iosApps = appIdentifiers.filter(id => id.startsWith(IOS_APP_PREFIX)).length;
-  const anyFlagged = appIdentifiers.includes(IOS_ANY_FLAGGED_APP);
-
-  const parts = [...others];
-  if (anyFlagged) {
-    parts.push('Your flagged apps');
-  } else if (iosApps > 0) {
-    parts.push(iosApps === 1 ? '1 flagged app' : `${iosApps} flagged apps`);
-  }
-  return parts.join(', ');
+export function iosAppKey(appIdentifier: string | null): string | null {
+  return isActive && appIdentifier?.startsWith(IOS_APP_PREFIX)
+    ? appIdentifier.slice(IOS_APP_PREFIX.length)
+    : null;
 }
 
 export async function startFocusLock(sessionId: number, modeName: string, endsAtMs: number) {

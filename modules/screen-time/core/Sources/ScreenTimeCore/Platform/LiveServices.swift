@@ -26,6 +26,9 @@ public final class FlaggedApps: Sendable {
   public static let shared = FlaggedApps()
 
   private let file = CoordinatedFile<FamilyActivitySelection>(named: "flagged-apps.json")
+  /// Every app ever flagged, by key, so past distractions can still be drawn
+  /// after the user unflags the app. Tokens only, like the selection itself.
+  private let archive = CoordinatedFile<[String: ApplicationToken]>(named: "known-apps.json")
 
   public func selection() -> FamilyActivitySelection {
     file.read() ?? FamilyActivitySelection(includeEntireCategory: false)
@@ -36,7 +39,20 @@ public final class FlaggedApps: Sendable {
   public func save(_ selection: FamilyActivitySelection) {
     var appsOnly = FamilyActivitySelection(includeEntireCategory: false)
     appsOnly.applicationTokens = selection.applicationTokens
-    file.update { _ in appsOnly }
+    // Archive the outgoing apps too: selections saved before the archive existed.
+    var outgoing: Set<ApplicationToken> = []
+    file.update { previous in
+      outgoing = previous?.applicationTokens ?? []
+      return appsOnly
+    }
+    archive.update { known in
+      (known ?? [:]).merging(Self.byKey(outgoing.union(appsOnly.applicationTokens))) { _, latest in latest }
+    }
+  }
+
+  /// The app a distraction's key refers to, flagged now or in the past.
+  public func token(forKey key: String) -> ApplicationToken? {
+    tokensByKey()[key] ?? archive.read()?[key]
   }
 
   var applicationTokens: Set<ApplicationToken> {
@@ -45,7 +61,11 @@ public final class FlaggedApps: Sendable {
 
   /// The flagged apps by their stable key.
   func tokensByKey() -> [String: ApplicationToken] {
-    Dictionary(applicationTokens.map { (Self.key(for: $0), $0) }, uniquingKeysWith: { first, _ in first })
+    Self.byKey(applicationTokens)
+  }
+
+  private static func byKey(_ tokens: Set<ApplicationToken>) -> [String: ApplicationToken] {
+    Dictionary(tokens.map { (key(for: $0), $0) }, uniquingKeysWith: { first, _ in first })
   }
 
   /// A stable, opaque identifier for a flagged app: a digest of its token's

@@ -89,6 +89,27 @@ public final class ScreenTimeModule: Module {
         view.reload()
       }
     }
+
+    View(FlaggedAppLabelView.self) {
+      Prop("appKeys") { (view: FlaggedAppLabelView, keys: [String]) in
+        view.setAppKeys(keys)
+      }
+      Prop("display") { (view: FlaggedAppLabelView, display: FlaggedAppLabelModel.Display) in
+        view.setDisplay(display)
+      }
+      Prop("size") { (view: FlaggedAppLabelView, size: Double) in
+        view.setSize(size)
+      }
+      Prop("color") { (view: FlaggedAppLabelView, color: UIColor) in
+        view.setColor(color)
+      }
+      Prop("weight") { (view: FlaggedAppLabelView, weight: FlaggedAppLabelModel.Weight) in
+        view.setWeight(weight)
+      }
+      Prop("align") { (view: FlaggedAppLabelView, align: FlaggedAppLabelModel.Align) in
+        view.setAlign(align)
+      }
+    }
   }
 
   private static func status(engine: ScreenTimeEngine) -> ScreenTimeStatus {
