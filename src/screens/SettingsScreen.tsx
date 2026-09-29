@@ -320,6 +320,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       if (flaggedAppIdentifiers.has(app.packageName)) {
         return false;
       }
+      return true;
     });
   }, [flaggedApps, installedApps]);
   const visibleInstalledApps = useMemo(
