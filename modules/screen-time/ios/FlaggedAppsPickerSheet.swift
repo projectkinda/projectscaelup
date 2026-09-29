@@ -21,7 +21,7 @@ struct FlaggedAppsPickerSheet: View {
   var body: some View {
     NavigationStack {
       FamilyActivityPicker(
-        headerText: "Pick the apps that distract you. They're locked during focus sessions.",
+        headerText: "Pick the apps that distract you. Use one during a focus session and it's locked afterwards.",
         footerText: footerText,
         selection: $selection
       )
