@@ -72,7 +72,10 @@ function App(): React.JSX.Element {
   }, [sessionActive]);
 
   const evaluateLaunchGate = async (hasActiveSession: boolean) => {
-    if (Platform.OS !== 'android') {
+    if (
+      Platform.OS !== 'android' &&
+      !(Platform.OS === 'ios' && DEV_FLAGS.iosOnboardingPreview)
+    ) {
       setGate('ready');
       return;
     }

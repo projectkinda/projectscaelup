@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,7 +15,7 @@ import {
 import { colors, layout } from '../../theme/tokens';
 import { BackButton } from './DoneStep';
 
-export type PermissionKind = 'camera' | 'accessibility' | 'overlay';
+export type PermissionKind = 'camera' | 'accessibility' | 'overlay' | 'screenTime';
 
 type PermissionsHubProps = {
   mode: 'onboarding' | 'gate';
@@ -24,18 +25,22 @@ type PermissionsHubProps = {
   onContinue?: () => void;
 };
 
-const ROWS: Array<{
+type PermissionRow = {
   id: PermissionKind;
   icon: string;
   title: string;
   reason: string;
-}> = [
-  {
-    id: 'camera',
-    icon: 'C',
-    title: 'Camera',
-    reason: "Checks you're at your desk.",
-  },
+};
+
+const CAMERA_ROW: PermissionRow = {
+  id: 'camera',
+  icon: 'C',
+  title: 'Camera',
+  reason: "Checks you're at your desk.",
+};
+
+const ANDROID_ROWS: PermissionRow[] = [
+  CAMERA_ROW,
   {
     id: 'accessibility',
     icon: 'A',
@@ -49,6 +54,23 @@ const ROWS: Array<{
     reason: "Shows the lock screen on top of locked apps.",
   },
 ];
+
+// iPhone has no overlay step: Apple draws the lock screen itself.
+const IOS_ROWS: PermissionRow[] = [
+  CAMERA_ROW,
+  {
+    id: 'screenTime',
+    icon: 'S',
+    title: 'Screen Time',
+    reason: 'Notices the apps you pick and locks them afterwards.',
+  },
+];
+
+const ROWS = Platform.OS === 'ios' ? IOS_ROWS : ANDROID_ROWS;
+const HEADING =
+  Platform.OS === 'ios'
+    ? { title: 'Turn on 2 things', subtitle: 'The app needs both to work.' }
+    : { title: 'Turn on 3 things', subtitle: 'The app needs all three to work.' };
 
 function isDone(status: RequiredPermissionStatus, permission: PermissionKind) {
   return status[permission];
@@ -80,8 +102,8 @@ export function PermissionsHub({
       >
         <View style={styles.content}>
           {onBack ? <BackButton onPress={onBack} /> : null}
-          <Text style={styles.title}>Turn on 3 things</Text>
-          <Text style={styles.subtitle}>The app needs all three to work.</Text>
+          <Text style={styles.title}>{HEADING.title}</Text>
+          <Text style={styles.subtitle}>{HEADING.subtitle}</Text>
 
           <View style={styles.permissionList}>
             {ROWS.map(row => {
