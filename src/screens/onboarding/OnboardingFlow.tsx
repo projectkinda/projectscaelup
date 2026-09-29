@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
+import { ScreenTime } from '../../../modules/screen-time';
 import { getAppState, setAppState } from '../../data/appStateRepository';
 import { loadSettingsData } from '../../data/settingsRepository';
 import {
@@ -10,6 +11,7 @@ import {
 import { colors } from '../../theme/tokens';
 import { AppsStep } from './AppsStep';
 import { DoneStep } from './DoneStep';
+import { IosAppsStep } from './IosAppsStep';
 import {
   PermissionsHub,
   type PermissionKind,
@@ -25,8 +27,14 @@ type OnboardingFlowProps = {
 };
 
 const ONBOARDING_STEP_KEY = 'onboarding_step';
-const steps = ['welcome', 'apps', 'permissions', 'done'] as const;
-type OnboardingStep = (typeof steps)[number];
+type OnboardingStep = 'welcome' | 'apps' | 'permissions' | 'done';
+
+// Apple's app picker only opens once Screen Time is approved, so iPhone asks
+// for permissions before apps. Android picks apps first.
+const steps: readonly OnboardingStep[] =
+  Platform.OS === 'ios'
+    ? ['welcome', 'permissions', 'apps', 'done']
+    : ['welcome', 'apps', 'permissions', 'done'];
 
 function isOnboardingStep(value: string | null): value is OnboardingStep {
   return steps.includes(value as OnboardingStep);
@@ -34,6 +42,18 @@ function isOnboardingStep(value: string | null): value is OnboardingStep {
 
 function stepIndex(step: OnboardingStep) {
   return steps.indexOf(step);
+}
+
+function stepAfter(step: OnboardingStep): OnboardingStep {
+  return steps[stepIndex(step) + 1] ?? 'done';
+}
+
+async function flaggedAppCount() {
+  if (Platform.OS === 'ios') {
+    return ScreenTime.getStatus()?.flaggedAppCount ?? 0;
+  }
+  const settingsData = await loadSettingsData();
+  return settingsData.flaggedApps.length;
 }
 
 export function OnboardingFlow({
@@ -98,11 +118,13 @@ export function OnboardingFlow({
     let cancelled = false;
 
     async function restoreStep() {
-      const [savedStepValue, permissionStatus, flaggedApps] = await Promise.all([
-        getAppState(ONBOARDING_STEP_KEY),
-        getRequiredPermissionStatus(),
-        loadSettingsData().then(data => data.flaggedApps),
-      ]);
+      const [savedStepValue, permissionStatus, flaggedApps, appCount] =
+        await Promise.all([
+          getAppState(ONBOARDING_STEP_KEY),
+          getRequiredPermissionStatus(),
+          loadSettingsData().then(data => data.flaggedApps),
+          flaggedAppCount(),
+        ]);
 
       if (cancelled) {
         return;
@@ -116,16 +138,16 @@ export function OnboardingFlow({
         ? savedStepValue
         : 'welcome';
 
-      if (
-        flaggedApps.length === 0 &&
-        stepIndex(nextStep) >= stepIndex('permissions')
-      ) {
-        nextStep = 'apps';
-      } else if (
-        !permissionStatus.all &&
-        stepIndex(nextStep) > stepIndex('permissions')
-      ) {
-        nextStep = 'permissions';
+      // Resume at the first unfinished step the saved one is past.
+      const unfinished = [
+        { step: 'apps' as const, done: appCount > 0 },
+        { step: 'permissions' as const, done: permissionStatus.all },
+      ].sort((a, b) => stepIndex(a.step) - stepIndex(b.step));
+      for (const { step, done } of unfinished) {
+        if (!done && stepIndex(nextStep) > stepIndex(step)) {
+          nextStep = step;
+          break;
+        }
       }
 
       setCurrentStep(nextStep);
@@ -183,7 +205,16 @@ export function OnboardingFlow({
   }
 
   if (mode === 'onboarding' && currentStep === 'welcome') {
-    return <WelcomeStep onContinue={() => void moveToStep('apps')} />;
+    return <WelcomeStep onContinue={() => void moveToStep(stepAfter('welcome'))} />;
+  }
+
+  if (mode === 'onboarding' && currentStep === 'apps' && Platform.OS === 'ios') {
+    return (
+      <IosAppsStep
+        onBack={goBack}
+        onContinue={() => void moveToStep(stepAfter('apps'))}
+      />
+    );
   }
 
   if (mode === 'onboarding' && currentStep === 'apps') {
@@ -195,7 +226,7 @@ export function OnboardingFlow({
         onContinue={() => {
           void (async () => {
             await refreshSelectedApps();
-            await moveToStep('permissions');
+            await moveToStep(stepAfter('apps'));
           })();
         }}
       />
@@ -209,7 +240,7 @@ export function OnboardingFlow({
         status={status}
         onBack={mode === 'onboarding' ? goBack : undefined}
         onOpenStep={setPermissionStep}
-        onContinue={() => void moveToStep('done')}
+        onContinue={() => void moveToStep(stepAfter('permissions'))}
       />
     );
   }

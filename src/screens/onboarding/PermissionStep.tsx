@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ScreenTime } from '../../../modules/screen-time';
 import { LockdownModule } from '../../domain/lockdownModule';
 import {
   getRequiredPermissionStatus,
@@ -46,7 +47,15 @@ function permissionIsOn(
   return status[permission];
 }
 
+// Apple may not show its Screen Time popup again after a No, so a denied
+// user gets both paths: Settings, and asking again.
+const SCREEN_TIME_DENIED_HINT =
+  'Screen Time is off for Project ScaleUp. Turn it on in Settings > Screen Time, or ask again.';
+
 function statusMessage(permission: PermissionKind) {
+  if (permission === 'screenTime') {
+    return 'Screen Time is on.';
+  }
   if (permission === 'accessibility') {
     return 'Accessibility is on.';
   }
@@ -57,6 +66,9 @@ function statusMessage(permission: PermissionKind) {
 }
 
 function hintMessage(permission: PermissionKind) {
+  if (permission === 'screenTime') {
+    return SCREEN_TIME_DENIED_HINT;
+  }
   if (permission === 'accessibility') {
     return 'Not on yet. Look for Project ScaleUp under Installed apps.';
   }
@@ -80,7 +92,12 @@ export function PermissionStep({
     useState(false);
   const [showGuidance, setShowGuidance] = useState(false);
   const [waitingForSettings, setWaitingForSettings] = useState(false);
-  const [hint, setHint] = useState<string | null>(null);
+  const [screenTimeDenied, setScreenTimeDenied] = useState(() =>
+    screenTimeDeniedAtStart(permission),
+  );
+  const [hint, setHint] = useState<string | null>(() =>
+    screenTimeDeniedAtStart(permission) ? SCREEN_TIME_DENIED_HINT : null,
+  );
   const [success, setSuccess] = useState(false);
   const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -162,7 +179,30 @@ export function PermissionStep({
     await Linking.openSettings();
   };
 
+  const handleScreenTimePress = async () => {
+    setHint(null);
+    try {
+      await ScreenTime.requestAuthorization();
+    } catch {
+      // Saying no rejects the request; the status below reflects it.
+    }
+    const nextStatus = await getRequiredPermissionStatus();
+    onStatusChange(nextStatus);
+    if (nextStatus.screenTime) {
+      onBack();
+      return;
+    }
+    setScreenTimeDenied(true);
+    setHint(SCREEN_TIME_DENIED_HINT);
+  };
+
   const handleOpenSettings = () => {
+    if (permission === 'screenTime') {
+      setWaitingForSettings(true);
+      setHint(null);
+      void Linking.openSettings();
+      return;
+    }
     setWaitingForSettings(true);
     setHint(null);
     if (permission === 'accessibility') {
@@ -179,7 +219,11 @@ export function PermissionStep({
     showGuidance,
   });
   const primaryLabel =
-    permission === 'camera'
+    permission === 'screenTime'
+      ? screenTimeDenied
+        ? 'Open settings'
+        : 'Allow Screen Time'
+      : permission === 'camera'
       ? cameraPermission?.canAskAgain === false &&
         cameraPermission.status !== 'granted'
         ? 'Open settings'
@@ -189,7 +233,11 @@ export function PermissionStep({
         : 'Open settings';
 
   const handlePrimaryPress =
-    permission === 'camera'
+    permission === 'screenTime'
+      ? screenTimeDenied
+        ? handleOpenSettings
+        : handleScreenTimePress
+      : permission === 'camera'
       ? handleCameraPress
       : permission === 'accessibility' && !accessibilityDisclosureAccepted
         ? () => setAccessibilityDisclosureAccepted(true)
@@ -252,7 +300,34 @@ export function PermissionStep({
               </LinearGradient>
             </Pressable>
 
+            {permission === 'screenTime' && screenTimeDenied ? (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={checkAndReturnIfOn}
+                  style={({ pressed }) => [
+                    styles.textButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.textButtonLabel}>
+                    I've turned it on
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleScreenTimePress}
+                  style={({ pressed }) => [
+                    styles.textButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.textButtonLabel}>Ask again</Text>
+                </Pressable>
+              </>
+            ) : null}
             {permission !== 'camera' &&
+            permission !== 'screenTime' &&
             (permission !== 'accessibility' ||
               accessibilityDisclosureAccepted) ? (
               <>
@@ -310,6 +385,20 @@ function renderBody({
         <Text style={styles.bodyText}>
           Checks you're still at your desk while a session runs. Each frame is
           checked on your phone and deleted straight away. Nothing is uploaded.
+        </Text>
+      </>
+    );
+  }
+
+  if (permission === 'screenTime') {
+    return (
+      <>
+        <StepIllustration />
+        <Text style={styles.title}>Screen Time</Text>
+        <Text style={styles.bodyText}>
+          Apple's Screen Time lets Project ScaleUp notice the apps you pick
+          during a session and lock them afterwards. Apple keeps which apps you
+          pick private, even from us.
         </Text>
       </>
     );
@@ -377,6 +466,13 @@ function renderBody({
         </View>
       ) : null}
     </>
+  );
+}
+
+function screenTimeDeniedAtStart(permission: PermissionKind) {
+  return (
+    permission === 'screenTime' &&
+    ScreenTime.getStatus()?.authorization === 'denied'
   );
 }
 
