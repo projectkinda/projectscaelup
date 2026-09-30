@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
+  AppState,
   Platform,
   Pressable,
   ScrollView,
@@ -29,6 +30,10 @@ import {
   sweepPresencePhotoCacheQuietly,
 } from '../domain/frameCleanup';
 import { isPaidUser } from '../domain/paywall';
+import {
+  MAX_PAUSE_SECONDS,
+  MAX_PAUSES_PER_SESSION,
+} from '../domain/pauseRules';
 import { PresenceModule } from '../domain/presenceModule';
 import { startSessionMonitor } from '../domain/sessionMonitor';
 import { startUsageMonitor } from '../domain/usageMonitor';
@@ -45,6 +50,8 @@ import {
   formatDuration,
   getSessionCount,
   getShowingUpDayCount,
+  recordSessionPauseResume,
+  recordSessionPauseStart,
   startSession,
   voidSession,
 } from '../domain/sessionHistory';
@@ -198,6 +205,7 @@ export function HomeScreen({
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [pauseCountUsed, setPauseCountUsed] = useState(0);
   const [awaitingEndChoice, setAwaitingEndChoice] = useState(false);
   const [isPreparingPresence, setIsPreparingPresence] = useState(false);
   const [preparedModeName, setPreparedModeName] = useState<string | null>(null);
@@ -213,6 +221,11 @@ export function HomeScreen({
   const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
   const usageMonitorUnsubscribe = useRef<(() => void) | null>(null);
   const activeFlaggedAppIdentifiers = useRef<string[]>([]);
+  const activeSegmentStartMs = useRef<number | null>(null);
+  const focusMsAccumulated = useRef(0);
+  const activePauseId = useRef<number | null>(null);
+  const activePauseStartedAtMs = useRef<number | null>(null);
+  const resumeInFlight = useRef(false);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -261,6 +274,38 @@ export function HomeScreen({
     Math.min(58, Math.round(availableContentHeight * 0.07)),
   );
   const hasActiveSession = remainingSeconds !== null;
+  const pausesRemaining = Math.max(
+    0,
+    MAX_PAUSES_PER_SESSION - pauseCountUsed,
+  );
+  const pauseDisabled =
+    !isPaused && !awaitingEndChoice && pausesRemaining <= 0;
+  const pauseButtonLabel = isPaused
+    ? 'Resume'
+    : pausesRemaining <= 0
+      ? 'No pauses left'
+      : `Pause (${pausesRemaining} left)`;
+
+  const closeActiveSegment = useCallback((nowMs = Date.now()) => {
+    if (activeSegmentStartMs.current === null) {
+      return;
+    }
+
+    focusMsAccumulated.current += Math.max(
+      0,
+      nowMs - activeSegmentStartMs.current,
+    );
+    activeSegmentStartMs.current = null;
+  }, []);
+
+  const buildSessionTiming = useCallback(() => {
+    closeActiveSegment();
+    return {
+      focusSeconds: Math.max(0, Math.round(focusMsAccumulated.current / 1000)),
+      gracePeriodSeconds: activeMode.gracePeriodSeconds,
+      platform: Platform.OS,
+    };
+  }, [activeMode.gracePeriodSeconds, closeActiveSegment]);
 
   useEffect(() => {
     onSessionActiveChange?.(hasActiveSession);
@@ -296,6 +341,7 @@ export function HomeScreen({
       );
 
       if (nextRemainingSeconds <= 0) {
+        closeActiveSegment();
         setAwaitingEndChoice(true);
         setIsPaused(true);
       }
@@ -305,7 +351,7 @@ export function HomeScreen({
     const intervalId = setInterval(syncRemainingTime, 250);
 
     return () => clearInterval(intervalId);
-  }, [awaitingEndChoice, hasActiveSession, isPaused]);
+  }, [awaitingEndChoice, closeActiveSegment, hasActiveSession, isPaused]);
 
   // The end-of-session choice lives on Home, so bring the user back if the
   // timer runs out while they are on another tab.
@@ -321,6 +367,12 @@ export function HomeScreen({
     const sessionEndTime = Date.now() + durationSeconds * 1000;
 
     sessionEndTimeMs.current = sessionEndTime;
+    activeSegmentStartMs.current = Date.now();
+    focusMsAccumulated.current = 0;
+    activePauseId.current = null;
+    activePauseStartedAtMs.current = null;
+    resumeInFlight.current = false;
+    setPauseCountUsed(0);
     setRemainingSeconds(durationSeconds);
     setIsPaused(false);
     setPendingDurationSeconds(null);
@@ -414,8 +466,96 @@ export function HomeScreen({
       sessionEndTimeMs.current = Date.now() + nextRemainingSeconds * 1000;
       return nextRemainingSeconds;
     });
+    activeSegmentStartMs.current = Date.now();
     setIsPaused(false);
   };
+
+  const resumePausedSession = useCallback(
+    async (autoResumed = false) => {
+      if (
+        remainingSeconds === null ||
+        !isPaused ||
+        awaitingEndChoice ||
+        resumeInFlight.current
+      ) {
+        return;
+      }
+
+      resumeInFlight.current = true;
+      const resumedAt = new Date();
+      const pauseId = activePauseId.current;
+
+      try {
+        if (pauseId !== null) {
+          await recordSessionPauseResume(pauseId, {
+            resumedAt,
+            autoResumed,
+          });
+          activePauseId.current = null;
+          activePauseStartedAtMs.current = null;
+        }
+
+        if (activeSessionId !== null) {
+          await sessionMonitorUnsubscribe.current?.();
+          sessionMonitorUnsubscribe.current = startSessionMonitor(
+            activeSessionId,
+            activeMode,
+          );
+          usageMonitorUnsubscribe.current?.();
+          usageMonitorUnsubscribe.current = startUsageMonitor(
+            activeSessionId,
+            activeFlaggedAppIdentifiers.current,
+          );
+        }
+
+        sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
+        resumeFocusLock(sessionEndTimeMs.current).catch(error =>
+          console.warn('Failed to re-lock flagged apps:', error),
+        );
+        activeSegmentStartMs.current = Date.now();
+        setIsPaused(false);
+      } finally {
+        resumeInFlight.current = false;
+      }
+    },
+    [
+      activeMode,
+      activeSessionId,
+      awaitingEndChoice,
+      isPaused,
+      remainingSeconds,
+    ],
+  );
+
+  useEffect(() => {
+    if (
+      !hasActiveSession ||
+      !isPaused ||
+      awaitingEndChoice ||
+      activePauseStartedAtMs.current === null
+    ) {
+      return;
+    }
+
+    const autoResumeIfNeeded = () => {
+      const pausedAtMs = activePauseStartedAtMs.current;
+      if (
+        pausedAtMs !== null &&
+        Date.now() - pausedAtMs >= MAX_PAUSE_SECONDS * 1000
+      ) {
+        void resumePausedSession(true);
+      }
+    };
+
+    autoResumeIfNeeded();
+    const intervalId = setInterval(autoResumeIfNeeded, 1000);
+    const subscription = AppState.addEventListener('change', autoResumeIfNeeded);
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, [awaitingEndChoice, hasActiveSession, isPaused, resumePausedSession]);
 
   const handlePauseToggle = async () => {
     if (remainingSeconds === null) {
@@ -423,26 +563,26 @@ export function HomeScreen({
     }
 
     if (isPaused) {
-      if (activeSessionId !== null) {
-        await sessionMonitorUnsubscribe.current?.();
-        sessionMonitorUnsubscribe.current = startSessionMonitor(
-          activeSessionId,
-          activeMode,
-        );
-        usageMonitorUnsubscribe.current?.();
-        usageMonitorUnsubscribe.current = startUsageMonitor(
-          activeSessionId,
-          activeFlaggedAppIdentifiers.current,
-        );
-      }
-      sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
-      resumeFocusLock(sessionEndTimeMs.current).catch(error =>
-        console.warn('Failed to re-lock flagged apps:', error),
-      );
-      setIsPaused(false);
+      await resumePausedSession(false);
       return;
     }
 
+    if (pauseCountUsed >= MAX_PAUSES_PER_SESSION) {
+      return;
+    }
+
+    const pausedAt = new Date();
+    closeActiveSegment(pausedAt.getTime());
+    if (activeSessionId !== null) {
+      activePauseId.current = await recordSessionPauseStart(
+        activeSessionId,
+        pausedAt,
+      );
+      activePauseStartedAtMs.current = pausedAt.getTime();
+      setPauseCountUsed(current =>
+        Math.min(MAX_PAUSES_PER_SESSION, current + 1),
+      );
+    }
     await sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
     usageMonitorUnsubscribe.current?.();
@@ -468,14 +608,27 @@ export function HomeScreen({
     sweepPresencePhotoCacheQuietly();
     setRemainingSeconds(null);
     sessionEndTimeMs.current = null;
+    activeSegmentStartMs.current = null;
+    focusMsAccumulated.current = 0;
+    activePauseId.current = null;
+    activePauseStartedAtMs.current = null;
+    resumeInFlight.current = false;
     setActiveSessionId(null);
     setIsPaused(false);
+    setPauseCountUsed(0);
     setAwaitingEndChoice(false);
     setPreparedModeName(null);
   };
 
   const handleCancelSession = async () => {
     const sessionId = activeSessionId;
+    const timing = sessionId !== null ? buildSessionTiming() : null;
+    if (activePauseId.current !== null) {
+      await recordSessionPauseResume(activePauseId.current, {
+        resumedAt: new Date(),
+        autoResumed: false,
+      });
+    }
     await resetActiveSessionState();
 
     if (sessionId !== null) {
@@ -485,7 +638,7 @@ export function HomeScreen({
         console.warn('Failed to unlock flagged apps:', error);
       }
       try {
-        await voidSession(sessionId);
+        await voidSession(sessionId, timing ?? undefined);
       } catch (error) {
         console.warn('Failed to void session in database:', error);
       }
@@ -517,6 +670,7 @@ export function HomeScreen({
       return;
     }
 
+    const timing = buildSessionTiming();
     await resetActiveSessionState();
 
     try {
@@ -533,7 +687,7 @@ export function HomeScreen({
     let touchedApps: string[] = [];
     let nextShowingUpDays = showingUpDays || 1;
     try {
-      const completed = await completeSession(sessionId);
+      const completed = await completeSession(sessionId, timing);
       nextCount = completed.sessionCount;
       distractionCount = completed.distractionCount;
       distractionEvents = completed.events;
@@ -641,17 +795,21 @@ export function HomeScreen({
           <View style={styles.runningActions}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={isPaused ? 'Resume session' : 'Pause session'}
+              accessibilityLabel={
+                isPaused ? 'Resume session' : pauseButtonLabel
+              }
               onPress={handlePauseToggle}
+              disabled={pauseDisabled}
               style={({ pressed }) => [
                 styles.pauseShell,
-                pressed && styles.pressed,
+                pressed && !pauseDisabled && styles.pressed,
+                pauseDisabled && styles.disabled,
               ]}
             >
               <View style={styles.pauseButton}>
                 {isPaused ? <PlayIcon width={13} height={13} /> : <PauseGlyph />}
                 <Text style={styles.pauseLabel}>
-                  {isPaused ? 'Resume' : 'Pause'}
+                  {pauseButtonLabel}
                 </Text>
               </View>
             </Pressable>
@@ -989,6 +1147,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ink,
   },
   pressed: { opacity: 0.82, transform: [{ scale: 0.995 }] },
+  disabled: { opacity: 0.55 },
   textPressed: { opacity: 0.55 },
   sessionMessage: { position: 'absolute', width: 1, height: 1, opacity: 0 },
 });

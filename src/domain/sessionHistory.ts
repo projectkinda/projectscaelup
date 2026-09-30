@@ -15,6 +15,12 @@ type SessionStartInput = {
   startedAt?: Date;
 };
 
+type SessionTimingInput = {
+  focusSeconds: number;
+  gracePeriodSeconds: number;
+  platform: string;
+};
+
 type CompletedSessionResult = {
   distractionCount: number;
   events: DistractionEventSummary[];
@@ -22,6 +28,27 @@ type CompletedSessionResult = {
   sessionCount: number;
   showingUpDays: number;
   touchedApps: string[];
+};
+
+type SessionRow = {
+  started_at: string;
+};
+
+type FirstDistractionRow = {
+  type: 'camera_absence' | 'app_touched';
+  occurred_at: string;
+};
+
+type PauseRow = {
+  paused_at: string;
+  resumed_at: string | null;
+};
+
+type SessionDerivedStats = {
+  cleanSeconds: number;
+  firstDistractionType: 'camera_absence' | 'app_touched' | null;
+  pauseCount: number;
+  pausedSeconds: number;
 };
 
 export type DistractionEventSummary = {
@@ -191,20 +218,178 @@ export async function startSession({
   }
 }
 
-export async function voidSession(sessionId: number): Promise<void> {
+export async function recordSessionPauseStart(
+  sessionId: number,
+  pausedAt = new Date(),
+): Promise<number | null> {
   try {
     const database = await getDatabase();
     await ensureSchema(database);
+    const result = await database.runAsync(
+      `
+        INSERT INTO session_pauses (session_id, paused_at)
+        VALUES (?, ?);
+      `,
+      [sessionId, pausedAt.toISOString()],
+    );
+    return result.lastInsertRowId;
+  } catch (err) {
+    console.warn('Could not record session pause in SQLite:', err);
+    return null;
+  }
+}
+
+export async function recordSessionPauseResume(
+  pauseId: number,
+  options: { resumedAt?: Date; autoResumed?: boolean } = {},
+): Promise<void> {
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
+    await database.runAsync(
+      `
+        UPDATE session_pauses
+        SET resumed_at = ?,
+            auto_resumed = ?
+        WHERE id = ?;
+      `,
+      [
+        (options.resumedAt ?? new Date()).toISOString(),
+        options.autoResumed ? 1 : 0,
+        pauseId,
+      ],
+    );
+  } catch (err) {
+    console.warn('Could not record session resume in SQLite:', err);
+  }
+}
+
+function secondsBetween(startMs: number, endMs: number) {
+  return Math.max(0, Math.round((endMs - startMs) / 1000));
+}
+
+async function deriveSessionStats(
+  sessionId: number,
+  timing: SessionTimingInput,
+): Promise<SessionDerivedStats> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  const session = await database.getFirstAsync<SessionRow>(
+    `
+      SELECT started_at
+      FROM sessions
+      WHERE id = ?;
+    `,
+    [sessionId],
+  );
+  const firstDistraction = await database.getFirstAsync<FirstDistractionRow>(
+    `
+      SELECT type, occurred_at
+      FROM distraction_events
+      WHERE session_id = ?
+      ORDER BY occurred_at ASC
+      LIMIT 1;
+    `,
+    [sessionId],
+  );
+  const pauses = await database.getAllAsync<PauseRow>(
+    `
+      SELECT paused_at, resumed_at
+      FROM session_pauses
+      WHERE session_id = ?
+      ORDER BY paused_at ASC;
+    `,
+    [sessionId],
+  );
+
+  const nowMs = Date.now();
+  const pauseCount = pauses.length;
+  const pausedSeconds = pauses.reduce((total, pause) => {
+    const pausedAtMs = new Date(pause.paused_at).getTime();
+    const resumedAtMs = pause.resumed_at
+      ? new Date(pause.resumed_at).getTime()
+      : nowMs;
+    return total + secondsBetween(pausedAtMs, resumedAtMs);
+  }, 0);
+
+  if (!session || !firstDistraction) {
+    return {
+      cleanSeconds: timing.focusSeconds,
+      firstDistractionType: null,
+      pauseCount,
+      pausedSeconds,
+    };
+  }
+
+  const startedAtMs = new Date(session.started_at).getTime();
+  const occurredAtMs = new Date(firstDistraction.occurred_at).getTime();
+  const pausedBeforeDistractionMs = pauses.reduce((total, pause) => {
+    const pausedAtMs = new Date(pause.paused_at).getTime();
+    if (pausedAtMs >= occurredAtMs) {
+      return total;
+    }
+
+    const resumedAtMs = pause.resumed_at
+      ? new Date(pause.resumed_at).getTime()
+      : nowMs;
+    return total + Math.max(0, Math.min(resumedAtMs, occurredAtMs) - pausedAtMs);
+  }, 0);
+  const graceAdjustmentSeconds =
+    firstDistraction.type === 'camera_absence'
+      ? timing.gracePeriodSeconds
+      : 0;
+  const cleanSeconds = Math.min(
+    timing.focusSeconds,
+    Math.max(
+      0,
+      Math.round((occurredAtMs - startedAtMs - pausedBeforeDistractionMs) / 1000) -
+        graceAdjustmentSeconds,
+    ),
+  );
+
+  return {
+    cleanSeconds,
+    firstDistractionType: firstDistraction.type,
+    pauseCount,
+    pausedSeconds,
+  };
+}
+
+export async function voidSession(
+  sessionId: number,
+  timing?: SessionTimingInput,
+): Promise<void> {
+  try {
+    const database = await getDatabase();
+    await ensureSchema(database);
+    const stats = timing ? await deriveSessionStats(sessionId, timing) : null;
 
     await database.runAsync(
       `
         UPDATE sessions
         SET completed = 0,
             distraction_count = 0,
-            lockdown_minutes = 0
+            lockdown_minutes = 0,
+            focus_seconds = COALESCE(?, focus_seconds),
+            clean_seconds = COALESCE(?, clean_seconds),
+            first_distraction_type = ?,
+            pause_count = COALESCE(?, pause_count),
+            paused_seconds = COALESCE(?, paused_seconds),
+            ended_early = COALESCE(?, ended_early),
+            platform = COALESCE(?, platform)
         WHERE id = ?;
       `,
-      [sessionId],
+      [
+        timing?.focusSeconds ?? null,
+        stats?.cleanSeconds ?? null,
+        stats?.firstDistractionType ?? null,
+        stats?.pauseCount ?? null,
+        stats?.pausedSeconds ?? null,
+        timing ? 1 : null,
+        timing?.platform ?? null,
+        sessionId,
+      ],
     );
   } catch (err) {
     console.warn('Could not voidSession in SQLite:', err);
@@ -213,10 +398,12 @@ export async function voidSession(sessionId: number): Promise<void> {
 
 export async function completeSession(
   sessionId: number,
+  timing?: SessionTimingInput,
 ): Promise<CompletedSessionResult> {
   try {
     const database = await getDatabase();
     await ensureSchema(database);
+    const stats = timing ? await deriveSessionStats(sessionId, timing) : null;
 
     const distractionCountRow = await database.getFirstAsync<{ count: number }>(
       `
@@ -292,10 +479,28 @@ export async function completeSession(
           UPDATE sessions
           SET completed = 1,
               distraction_count = ?,
-              lockdown_minutes = ?
+              lockdown_minutes = ?,
+              focus_seconds = COALESCE(?, focus_seconds),
+              clean_seconds = COALESCE(?, clean_seconds),
+              first_distraction_type = ?,
+              pause_count = COALESCE(?, pause_count),
+              paused_seconds = COALESCE(?, paused_seconds),
+              ended_early = COALESCE(?, ended_early),
+              platform = COALESCE(?, platform)
           WHERE id = ?;
         `,
-        [distractionCount, lockdownMinutes, sessionId],
+        [
+          distractionCount,
+          lockdownMinutes,
+          timing?.focusSeconds ?? null,
+          stats?.cleanSeconds ?? null,
+          stats?.firstDistractionType ?? null,
+          stats?.pauseCount ?? null,
+          stats?.pausedSeconds ?? null,
+          timing ? 0 : null,
+          timing?.platform ?? null,
+          sessionId,
+        ],
       );
 
       await database.runAsync(
