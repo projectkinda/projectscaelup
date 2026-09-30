@@ -1,2 +1,3 @@
 export const MAX_PAUSES_PER_SESSION = 2;
 export const MAX_PAUSE_SECONDS = 5 * 60;
+export const PAUSE_OVERRUN_TOLERANCE_SECONDS = 30;

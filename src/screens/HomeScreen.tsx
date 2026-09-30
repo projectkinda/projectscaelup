@@ -226,6 +226,7 @@ export function HomeScreen({
   const activePauseId = useRef<number | null>(null);
   const activePauseStartedAtMs = useRef<number | null>(null);
   const resumeInFlight = useRef(false);
+  const pauseInFlight = useRef(false);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -372,6 +373,7 @@ export function HomeScreen({
     activePauseId.current = null;
     activePauseStartedAtMs.current = null;
     resumeInFlight.current = false;
+    pauseInFlight.current = false;
     setPauseCountUsed(0);
     setRemainingSeconds(durationSeconds);
     setIsPaused(false);
@@ -567,30 +569,39 @@ export function HomeScreen({
       return;
     }
 
-    if (pauseCountUsed >= MAX_PAUSES_PER_SESSION) {
+    if (pauseInFlight.current) {
       return;
     }
 
-    const pausedAt = new Date();
-    closeActiveSegment(pausedAt.getTime());
-    if (activeSessionId !== null) {
-      activePauseId.current = await recordSessionPauseStart(
-        activeSessionId,
-        pausedAt,
+    pauseInFlight.current = true;
+    try {
+      if (pauseCountUsed >= MAX_PAUSES_PER_SESSION) {
+        return;
+      }
+
+      const pausedAt = new Date();
+      closeActiveSegment(pausedAt.getTime());
+      if (activeSessionId !== null) {
+        activePauseId.current = await recordSessionPauseStart(
+          activeSessionId,
+          pausedAt,
+        );
+        activePauseStartedAtMs.current = pausedAt.getTime();
+        setPauseCountUsed(current =>
+          Math.min(MAX_PAUSES_PER_SESSION, current + 1),
+        );
+      }
+      await sessionMonitorUnsubscribe.current?.();
+      sessionMonitorUnsubscribe.current = null;
+      usageMonitorUnsubscribe.current?.();
+      usageMonitorUnsubscribe.current = null;
+      pauseFocusLock().catch(error =>
+        console.warn('Failed to unlock flagged apps for the pause:', error),
       );
-      activePauseStartedAtMs.current = pausedAt.getTime();
-      setPauseCountUsed(current =>
-        Math.min(MAX_PAUSES_PER_SESSION, current + 1),
-      );
+      setIsPaused(true);
+    } finally {
+      pauseInFlight.current = false;
     }
-    await sessionMonitorUnsubscribe.current?.();
-    sessionMonitorUnsubscribe.current = null;
-    usageMonitorUnsubscribe.current?.();
-    usageMonitorUnsubscribe.current = null;
-    pauseFocusLock().catch(error =>
-      console.warn('Failed to unlock flagged apps for the pause:', error),
-    );
-    setIsPaused(true);
   };
 
   const handleEndFromAlarm = () => {
@@ -613,6 +624,7 @@ export function HomeScreen({
     activePauseId.current = null;
     activePauseStartedAtMs.current = null;
     resumeInFlight.current = false;
+    pauseInFlight.current = false;
     setActiveSessionId(null);
     setIsPaused(false);
     setPauseCountUsed(0);

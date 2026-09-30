@@ -1,5 +1,11 @@
 import { ensureSchema, getDatabase } from '../data/database';
 import { LockdownModule } from './lockdownModule';
+import {
+  MAX_PAUSE_SECONDS,
+  PAUSE_OVERRUN_TOLERANCE_SECONDS,
+} from './pauseRules';
+
+type FirstDistractionType = 'camera_absence' | 'app_touched' | 'pause_overrun';
 
 type StreakRow = {
   current_streak: number;
@@ -35,18 +41,19 @@ type SessionRow = {
 };
 
 type FirstDistractionRow = {
-  type: 'camera_absence' | 'app_touched';
+  type: Exclude<FirstDistractionType, 'pause_overrun'>;
   occurred_at: string;
 };
 
 type PauseRow = {
   paused_at: string;
   resumed_at: string | null;
+  auto_resumed: number;
 };
 
 type SessionDerivedStats = {
   cleanSeconds: number;
-  firstDistractionType: 'camera_absence' | 'app_touched' | null;
+  firstDistractionType: FirstDistractionType | null;
   pauseCount: number;
   pausedSeconds: number;
 };
@@ -295,7 +302,7 @@ async function deriveSessionStats(
   );
   const pauses = await database.getAllAsync<PauseRow>(
     `
-      SELECT paused_at, resumed_at
+      SELECT paused_at, resumed_at, auto_resumed
       FROM session_pauses
       WHERE session_id = ?
       ORDER BY paused_at ASC;
@@ -313,7 +320,7 @@ async function deriveSessionStats(
     return total + secondsBetween(pausedAtMs, resumedAtMs);
   }, 0);
 
-  if (!session || !firstDistraction) {
+  if (!session) {
     return {
       cleanSeconds: timing.focusSeconds,
       firstDistractionType: null,
@@ -323,34 +330,71 @@ async function deriveSessionStats(
   }
 
   const startedAtMs = new Date(session.started_at).getTime();
-  const occurredAtMs = new Date(firstDistraction.occurred_at).getTime();
+  const pauseOverrun = pauses.find(pause => {
+    if (pause.auto_resumed !== 1) {
+      return false;
+    }
+
+    const pausedAtMs = new Date(pause.paused_at).getTime();
+    const resumedAtMs = pause.resumed_at
+      ? new Date(pause.resumed_at).getTime()
+      : nowMs;
+    return (
+      secondsBetween(pausedAtMs, resumedAtMs) >
+      MAX_PAUSE_SECONDS + PAUSE_OVERRUN_TOLERANCE_SECONDS
+    );
+  });
+  const pauseOverrunAtMs = pauseOverrun
+    ? new Date(pauseOverrun.paused_at).getTime()
+    : null;
+  const eventOccurredAtMs = firstDistraction
+    ? new Date(firstDistraction.occurred_at).getTime()
+    : null;
+  const usePauseOverrun =
+    pauseOverrunAtMs !== null &&
+    (eventOccurredAtMs === null || pauseOverrunAtMs < eventOccurredAtMs);
+  const distractionAtMs = usePauseOverrun
+    ? pauseOverrunAtMs
+    : eventOccurredAtMs;
+
+  if (distractionAtMs === null) {
+    return {
+      cleanSeconds: timing.focusSeconds,
+      firstDistractionType: null,
+      pauseCount,
+      pausedSeconds,
+    };
+  }
+
   const pausedBeforeDistractionMs = pauses.reduce((total, pause) => {
     const pausedAtMs = new Date(pause.paused_at).getTime();
-    if (pausedAtMs >= occurredAtMs) {
+    if (pausedAtMs >= distractionAtMs) {
       return total;
     }
 
     const resumedAtMs = pause.resumed_at
       ? new Date(pause.resumed_at).getTime()
       : nowMs;
-    return total + Math.max(0, Math.min(resumedAtMs, occurredAtMs) - pausedAtMs);
+    return total + Math.max(0, Math.min(resumedAtMs, distractionAtMs) - pausedAtMs);
   }, 0);
   const graceAdjustmentSeconds =
-    firstDistraction.type === 'camera_absence'
+    !usePauseOverrun && firstDistraction?.type === 'camera_absence'
       ? timing.gracePeriodSeconds
       : 0;
   const cleanSeconds = Math.min(
     timing.focusSeconds,
     Math.max(
       0,
-      Math.round((occurredAtMs - startedAtMs - pausedBeforeDistractionMs) / 1000) -
+      Math.round((distractionAtMs - startedAtMs - pausedBeforeDistractionMs) / 1000) -
         graceAdjustmentSeconds,
     ),
   );
 
   return {
     cleanSeconds,
-    firstDistractionType: firstDistraction.type,
+    firstDistractionType: usePauseOverrun
+      ? 'pause_overrun'
+      : firstDistraction?.type ?? null,
     pauseCount,
     pausedSeconds,
   };
