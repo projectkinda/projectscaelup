@@ -59,6 +59,22 @@ class UsageTrackingBridge(
   }
 
   @ReactMethod
+  fun drainGaps(promise: Promise) {
+    val gaps = AwayTimeStore.drainGaps(reactApplicationContext)
+    val result = Arguments.createArray()
+    for (index in 0 until gaps.length()) {
+      val item = gaps.optJSONObject(index) ?: continue
+      result.pushMap(
+        Arguments.createMap().apply {
+          putDouble("startedMs", item.optLong("startedMs").toDouble())
+          putDouble("endedMs", item.optLong("endedMs").toDouble())
+        },
+      )
+    }
+    promise.resolve(result)
+  }
+
+  @ReactMethod
   fun getLastUsedAt(promise: Promise) {
     val result = Arguments.createMap()
     AwayTimeStore.getLastUsedAt(reactApplicationContext).forEach { (packageName, usedAtMs) ->

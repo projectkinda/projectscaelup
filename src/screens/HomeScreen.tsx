@@ -27,8 +27,8 @@ import { getAppState, setAppState } from '../data/appStateRepository';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadSettingsData } from '../data/settingsRepository';
 import {
-  getAfterSessionAwayDisplay,
   getAwayDisplay,
+  getPreviousSessionAwayDisplay,
   setAwayTrackingEnabled,
   type AwayDisplay,
 } from '../domain/awayTime';
@@ -744,7 +744,7 @@ export function HomeScreen({
       lockdownMinutes = completed.lockdownMinutes;
       touchedApps = completed.touchedApps;
       nextShowingUpDays = completed.showingUpDays;
-      afterSessionAwayText = await getAfterSessionAwayDisplay(
+      afterSessionAwayText = await getPreviousSessionAwayDisplay(
         completed.sessionId,
       );
     } catch (error) {
@@ -765,7 +765,11 @@ export function HomeScreen({
 
     getAppState(AWAY_TRACKING_PROMPTED_KEY)
       .then(prompted => {
-        if (prompted === 'true' || nextCount !== 1) {
+        if (
+          Platform.OS !== 'android' ||
+          prompted === 'true' ||
+          nextCount !== 1
+        ) {
           return;
         }
 

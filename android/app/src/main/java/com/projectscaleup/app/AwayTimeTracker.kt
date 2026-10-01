@@ -16,6 +16,15 @@ class AwayTimeTracker(
   fun arm() {
     runCatching {
       AwayTimeStore.getFlaggedPackages(context)
+      val now = System.currentTimeMillis()
+      val previousHeartbeatMs = AwayTimeStore.getLastHeartbeatMs(context)
+      if (
+        AwayTimeStore.isTrackingEnabled(context) &&
+        previousHeartbeatMs != null &&
+        now - previousHeartbeatMs > STALE_RECONNECT_GAP_MS
+      ) {
+        AwayTimeStore.appendGap(context, previousHeartbeatMs, now)
+      }
       AwayTimeStore.writeHeartbeat(context)
     }.onFailure { error ->
       AwayTimeStore.recordFailure(context, error.message ?: "Away tracker failed to arm")
@@ -117,5 +126,6 @@ class AwayTimeTracker(
   companion object {
     private const val REAL_USE_THRESHOLD_MS = 60_000L
     private const val STILL_IN_USE_INTERVAL_MS = 5 * 60_000L
+    private const val STALE_RECONNECT_GAP_MS = 30 * 60_000L
   }
 }

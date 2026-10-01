@@ -20,6 +20,7 @@ type NativeUsageTrackingBridge = {
   openAccessibilitySettings: () => void;
   setFlaggedPackages: (packages: string[]) => Promise<void>;
   drainUseLog: () => Promise<{ package: string; usedAtMs: number }[]>;
+  drainGaps: () => Promise<{ startedMs: number; endedMs: number }[]>;
   getLastUsedAt: () => Promise<Record<string, number>>;
   setAwayTrackingEnabled: (enabled: boolean) => Promise<void>;
   getLastHeartbeatMs: () => Promise<number | null>;
@@ -69,6 +70,10 @@ export const UsageTrackingModule = {
 
   drainUseLog(): Promise<{ package: string; usedAtMs: number }[]> {
     return UsageTrackingBridge?.drainUseLog() ?? Promise.resolve([]);
+  },
+
+  drainGaps(): Promise<{ startedMs: number; endedMs: number }[]> {
+    return UsageTrackingBridge?.drainGaps() ?? Promise.resolve([]);
   },
 
   getLastUsedAt(): Promise<Record<string, number>> {

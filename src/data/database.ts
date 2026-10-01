@@ -108,6 +108,13 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
       UNIQUE (app_identifier, used_at)
     );
 
+    CREATE TABLE IF NOT EXISTS away_tracking_gaps (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      UNIQUE (started_at, ended_at)
+    );
+
     INSERT OR IGNORE INTO streaks (id, current_streak, best_streak)
     VALUES (1, 0, 0);
   `);

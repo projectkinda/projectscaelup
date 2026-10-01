@@ -755,49 +755,51 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                 </View>
               </View>
 
-              <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Away time</Text>
-                <View style={styles.panelShell}>
-                  <LinearGradient
-                    colors={['#333333', '#141414']}
-                    style={styles.panel}
-                  >
-                    <Pressable
-                      accessibilityRole="switch"
-                      accessibilityState={{ checked: awayTrackingOptedIn }}
-                      onPress={toggleAwayTracking}
-                      style={({ pressed }) => [
-                        styles.row,
-                        pressed && styles.pressed,
-                      ]}
+              {Platform.OS === 'android' ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Away time</Text>
+                  <View style={styles.panelShell}>
+                    <LinearGradient
+                      colors={['#333333', '#141414']}
+                      style={styles.panel}
                     >
-                      <View style={styles.rowTextWrap}>
-                        <Text style={styles.rowTitle}>
-                          Track time away from flagged apps
-                        </Text>
-                        <Text style={styles.rowDetail}>
-                          Records flagged-app use on this device only.
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusPill,
-                          !awayTrackingOptedIn && styles.attentionPill,
+                      <Pressable
+                        accessibilityRole="switch"
+                        accessibilityState={{ checked: awayTrackingOptedIn }}
+                        onPress={toggleAwayTracking}
+                        style={({ pressed }) => [
+                          styles.row,
+                          pressed && styles.pressed,
                         ]}
                       >
-                        <Text
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowTitle}>
+                            Track time away from flagged apps
+                          </Text>
+                          <Text style={styles.rowDetail}>
+                            Records flagged-app use on this device only.
+                          </Text>
+                        </View>
+                        <View
                           style={[
-                            styles.statusPillText,
-                            !awayTrackingOptedIn && styles.attentionPillText,
+                            styles.statusPill,
+                            !awayTrackingOptedIn && styles.attentionPill,
                           ]}
                         >
-                          {awayTrackingOptedIn ? 'On' : 'Off'}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  </LinearGradient>
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              !awayTrackingOptedIn && styles.attentionPillText,
+                            ]}
+                          >
+                            {awayTrackingOptedIn ? 'On' : 'Off'}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    </LinearGradient>
+                  </View>
                 </View>
-              </View>
+              ) : null}
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Subscription</Text>
