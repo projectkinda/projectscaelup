@@ -44,6 +44,10 @@ import {
 import { LockdownModule } from '../domain/lockdownModule';
 import { IosFlaggedApps } from '../components/IosFlaggedApps';
 import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
+import {
+  isAwayTrackingOptedIn,
+  setAwayTrackingEnabled,
+} from '../domain/awayTime';
 import { isPaidUser } from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { colors, layout } from '../theme/tokens';
@@ -181,6 +185,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     string[]
   >([]);
   const [isPickingApp, setIsPickingApp] = useState(false);
+  const [awayTrackingOptedIn, setAwayTrackingOptedIn] = useState(false);
   const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
   const paidUser = isPaidUser();
   const hasLoadedOnceRef = useRef(false);
@@ -195,6 +200,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       cameraPermission,
       usageTrackingEnabled,
       overlayEnabled,
+      awayTrackingEnabled,
     ] = await Promise.all([
       loadSettingsData({ isPaidUser: isPaidUser() }),
       getCameraPermissionAsync(),
@@ -204,6 +210,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       Platform.OS === 'android'
         ? LockdownModule.canDrawOverlays()
         : Promise.resolve(false),
+      isAwayTrackingOptedIn(),
     ]);
 
     const nextPermissions: PermissionRow[] = [
@@ -259,6 +266,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     setFlaggedApps(settingsData.flaggedApps);
     setCustomModes(settingsData.customModes);
     setPermissions(nextPermissions);
+    setAwayTrackingOptedIn(awayTrackingEnabled);
     setScreenTimeStatus(Platform.OS === 'ios' ? ScreenTime.getStatus() : null);
     hasLoadedOnceRef.current = true;
     setIsLoading(false);
@@ -502,6 +510,18 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     }
   };
 
+  const toggleAwayTracking = async () => {
+    const next = !awayTrackingOptedIn;
+    setAwayTrackingOptedIn(next);
+    try {
+      await setAwayTrackingEnabled(next);
+    } catch (error) {
+      setAwayTrackingOptedIn(!next);
+      console.warn('Failed to update away-time tracking:', error);
+      Alert.alert('Unable to update setting', 'Try again in a moment.');
+    }
+  };
+
   const topInsetPadding = insets.top + 50;
   const contentMinHeight = Math.max(
     0,
@@ -732,6 +752,50 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                       </LinearGradient>
                     </Pressable>
                   ))}
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>Away time</Text>
+                <View style={styles.panelShell}>
+                  <LinearGradient
+                    colors={['#333333', '#141414']}
+                    style={styles.panel}
+                  >
+                    <Pressable
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: awayTrackingOptedIn }}
+                      onPress={toggleAwayTracking}
+                      style={({ pressed }) => [
+                        styles.row,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>
+                          Track time away from flagged apps
+                        </Text>
+                        <Text style={styles.rowDetail}>
+                          Records flagged-app use on this device only.
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.statusPill,
+                          !awayTrackingOptedIn && styles.attentionPill,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusPillText,
+                            !awayTrackingOptedIn && styles.attentionPillText,
+                          ]}
+                        >
+                          {awayTrackingOptedIn ? 'On' : 'Off'}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </LinearGradient>
                 </View>
               </View>
 

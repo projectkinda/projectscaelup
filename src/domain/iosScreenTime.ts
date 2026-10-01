@@ -13,8 +13,8 @@ const isActive = Platform.OS === 'ios' && ScreenTime.isAvailable;
 // Distractions are stored with these `app_identifier`s. A tracked app has a
 // stable, opaque key (iOS never reveals which app it is); strict mode's
 // "Open anyway" can't say which flagged app was opened at all.
-const IOS_APP_PREFIX = 'ios.app.';
-const IOS_ANY_FLAGGED_APP = 'ios.flagged-apps';
+export const IOS_APP_PREFIX = 'ios.app.';
+export const IOS_ANY_FLAGGED_APP = 'ios.flagged-apps';
 
 /**
  * The Screen Time key of a tracked iOS app, for `FlaggedAppLabel` to draw its

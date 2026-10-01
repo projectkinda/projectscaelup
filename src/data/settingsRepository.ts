@@ -1,5 +1,6 @@
 import { ensureSchema, getDatabase } from './database';
 import { getInstalledApps } from '../domain/appPicker';
+import { UsageTrackingModule } from '../domain/usageTrackingModule';
 
 export type FlaggedApp = {
   appIdentifier: string;
@@ -50,6 +51,19 @@ const LEGACY_DEFAULT_FLAGGED_APP_IDENTIFIERS = [
   'com.twitter.android',
 ];
 
+async function syncNativeFlaggedPackages() {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  const rows = await database.getAllAsync<{ app_identifier: string }>(
+    'SELECT app_identifier FROM flagged_apps ORDER BY app_identifier ASC;',
+  );
+
+  await UsageTrackingModule.setFlaggedPackages(
+    rows.map(row => row.app_identifier),
+  );
+}
+
 async function clearLegacyDefaultFlaggedApps() {
   const database = await getDatabase();
   await ensureSchema(database);
@@ -96,6 +110,9 @@ export async function loadSettingsData({
     displayName: row.display_name,
     iconBase64: row.icon_base64 ?? undefined,
   }));
+  await UsageTrackingModule.setFlaggedPackages(
+    flaggedApps.map(app => app.appIdentifier),
+  );
   const appsMissingIcons = flaggedApps.some(app => !app.iconBase64);
 
   if (appsMissingIcons) {
@@ -248,6 +265,8 @@ export async function saveFlaggedApp(app: FlaggedApp): Promise<FlaggedApp> {
     [app.appIdentifier, app.displayName, app.iconBase64 ?? null],
   );
 
+  await syncNativeFlaggedPackages();
+
   return app;
 }
 
@@ -259,6 +278,7 @@ export async function removeFlaggedApp(appIdentifier: string) {
     'DELETE FROM flagged_apps WHERE app_identifier = ?;',
     [appIdentifier],
   );
+  await syncNativeFlaggedPackages();
 }
 
 export async function removeCustomMode(id: string) {

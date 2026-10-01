@@ -28,6 +28,7 @@ type SessionTimingInput = {
 };
 
 type CompletedSessionResult = {
+  sessionId: number;
   distractionCount: number;
   events: DistractionEventSummary[];
   lockdownMinutes: number;
@@ -408,6 +409,7 @@ export async function voidSession(
     const database = await getDatabase();
     await ensureSchema(database);
     const stats = timing ? await deriveSessionStats(sessionId, timing) : null;
+    const endedAt = new Date();
 
     await database.runAsync(
       `
@@ -421,7 +423,8 @@ export async function voidSession(
             pause_count = COALESCE(?, pause_count),
             paused_seconds = COALESCE(?, paused_seconds),
             ended_early = COALESCE(?, ended_early),
-            platform = COALESCE(?, platform)
+            platform = COALESCE(?, platform),
+            ended_at = COALESCE(ended_at, ?)
         WHERE id = ?;
       `,
       [
@@ -432,6 +435,7 @@ export async function voidSession(
         stats?.pausedSeconds ?? null,
         timing ? 1 : null,
         timing?.platform ?? null,
+        endedAt.toISOString(),
         sessionId,
       ],
     );
@@ -530,7 +534,8 @@ export async function completeSession(
               pause_count = COALESCE(?, pause_count),
               paused_seconds = COALESCE(?, paused_seconds),
               ended_early = COALESCE(?, ended_early),
-              platform = COALESCE(?, platform)
+              platform = COALESCE(?, platform),
+              ended_at = ?
           WHERE id = ?;
         `,
         [
@@ -543,6 +548,7 @@ export async function completeSession(
           stats?.pausedSeconds ?? null,
           timing ? 0 : null,
           timing?.platform ?? null,
+          completedAt.toISOString(),
           sessionId,
         ],
       );
@@ -576,6 +582,7 @@ export async function completeSession(
     );
 
     return {
+      sessionId,
       distractionCount,
       events,
       lockdownMinutes,
@@ -586,6 +593,7 @@ export async function completeSession(
   } catch (err) {
     console.warn('Could not completeSession in SQLite:', err);
     return {
+      sessionId,
       distractionCount: 0,
       events: [],
       lockdownMinutes: 0,

@@ -100,6 +100,14 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS app_use_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_identifier TEXT NOT NULL,
+      used_at TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      UNIQUE (app_identifier, used_at)
+    );
+
     INSERT OR IGNORE INTO streaks (id, current_streak, best_streak)
     VALUES (1, 0, 0);
   `);
@@ -144,6 +152,19 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
   await addColumnIfMissing(database, 'sessions', 'paused_seconds', 'INTEGER');
   await addColumnIfMissing(database, 'sessions', 'ended_early', 'INTEGER');
   await addColumnIfMissing(database, 'sessions', 'platform', 'TEXT');
+  await addColumnIfMissing(database, 'sessions', 'ended_at', 'TEXT');
+  await addColumnIfMissing(
+    database,
+    'sessions',
+    'after_session_away_seconds',
+    'INTEGER',
+  );
+  await addColumnIfMissing(
+    database,
+    'sessions',
+    'after_session_away_verified',
+    'INTEGER',
+  );
 
   const iconReset = await database.getFirstAsync<{ value: string }>(
     'SELECT value FROM app_state WHERE key = ?;',

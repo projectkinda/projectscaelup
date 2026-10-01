@@ -18,6 +18,12 @@ type AppUsageCallback = (tick: AppUsageTick) => void;
 type NativeUsageTrackingBridge = {
   isAccessibilityServiceEnabled: () => Promise<boolean>;
   openAccessibilitySettings: () => void;
+  setFlaggedPackages: (packages: string[]) => Promise<void>;
+  drainUseLog: () => Promise<{ package: string; usedAtMs: number }[]>;
+  getLastUsedAt: () => Promise<Record<string, number>>;
+  setAwayTrackingEnabled: (enabled: boolean) => Promise<void>;
+  getLastHeartbeatMs: () => Promise<number | null>;
+  getLastFailure: () => Promise<{ message: string; failedAtMs: number } | null>;
   addListener: (eventName: string) => void;
   removeListeners: (count: number) => void;
 };
@@ -54,5 +60,31 @@ export const UsageTrackingModule = {
 
   openSettings(): void {
     UsageTrackingBridge?.openAccessibilitySettings();
+  },
+
+  setFlaggedPackages(packages: string[]): Promise<void> {
+    return UsageTrackingBridge?.setFlaggedPackages(packages) ??
+      Promise.resolve();
+  },
+
+  drainUseLog(): Promise<{ package: string; usedAtMs: number }[]> {
+    return UsageTrackingBridge?.drainUseLog() ?? Promise.resolve([]);
+  },
+
+  getLastUsedAt(): Promise<Record<string, number>> {
+    return UsageTrackingBridge?.getLastUsedAt() ?? Promise.resolve({});
+  },
+
+  setAwayTrackingEnabled(enabled: boolean): Promise<void> {
+    return UsageTrackingBridge?.setAwayTrackingEnabled(enabled) ??
+      Promise.resolve();
+  },
+
+  getLastHeartbeatMs(): Promise<number | null> {
+    return UsageTrackingBridge?.getLastHeartbeatMs() ?? Promise.resolve(null);
+  },
+
+  getLastFailure(): Promise<{ message: string; failedAtMs: number } | null> {
+    return UsageTrackingBridge?.getLastFailure() ?? Promise.resolve(null);
   },
 };

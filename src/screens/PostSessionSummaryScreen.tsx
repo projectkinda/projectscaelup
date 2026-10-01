@@ -38,6 +38,7 @@ type PostSessionSummaryScreenProps = {
   modeGracePeriodSeconds: number;
   lockdownMinutes: number;
   touchedApps: string[];
+  afterSessionAwayText: string | null;
   onContinue: () => void;
 };
 
@@ -49,6 +50,7 @@ export function PostSessionSummaryScreen({
   modeGracePeriodSeconds,
   lockdownMinutes,
   touchedApps,
+  afterSessionAwayText,
   onContinue,
 }: PostSessionSummaryScreenProps) {
   const insets = useSafeAreaInsets();
@@ -145,6 +147,12 @@ export function PostSessionSummaryScreen({
                   ? "This week's set is complete."
                   : `${sessionCount} ${sessionCount === 1 ? 'session' : 'sessions'} total.`}
               </Text>
+              {afterSessionAwayText ? (
+                <Text style={styles.summaryLine}>
+                  Since your last session you stayed away for{' '}
+                  {afterSessionAwayText}
+                </Text>
+              ) : null}
             </View>
           </View>
 

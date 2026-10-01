@@ -27,7 +27,7 @@
 | Deep links | The URL scheme `com.projectscaleup.app` has no handlers, so a link can't trigger any action. |
 | Camera (iOS) | Live frames analysed on device with Vision; no photos, nothing written, no shutter. The camera runs only while the preview is on screen and the session isn't paused. |
 | Screen Time (iOS) | App tokens never reach JavaScript or leave the device. App Group files use `completeFileProtectionUntilFirstUserAuthentication` and are written under `NSFileCoordinator`. |
-| Data at rest | SQLite (sessions, distractions, modes) and App Group JSON, under iOS's default data protection. Nothing sensitive beyond usage statistics. |
+| Data at rest | SQLite (sessions, distractions, modes, `app_use_log`) and App Group JSON, under iOS's default data protection. Android also stores the away-time heartbeat and native buffer in SharedPreferences. Raw `app_use_log` rows are retained for 30 days; derived session away-time metrics remain on the session row. Nothing leaves the device. |
 | Permissions | One usage string (camera), requested in context. No microphone. Screen Time access is requested only from Settings. |
 | Entitlements | Family Controls + App Group on the app and all three extensions; nothing else. |
 | Privacy manifest | `NSPrivacyTracking = false`, no collected data types. Required-reason APIs (UserDefaults, file timestamp, boot time) come from bundled Expo/React Native libraries and are declared. Our own code adds none, and the extensions use none. |

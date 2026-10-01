@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { getAppState, setAppState } from './src/data/appStateRepository';
+import { drainAwayLog, purgeOldAwayLog } from './src/domain/awayTime';
 import { sweepPresencePhotoCacheQuietly } from './src/domain/frameCleanup';
 import { reconcileScreenTime } from './src/domain/iosScreenTime';
 import {
@@ -38,6 +39,9 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     sweepPresencePhotoCacheQuietly();
+    purgeOldAwayLog().catch(error =>
+      console.warn('Failed to purge old away-time rows:', error),
+    );
   }, []);
 
   // iOS: a lock may have been due to change while the app was closed and the
@@ -52,12 +56,18 @@ function App(): React.JSX.Element {
         console.warn('Failed to evaluate onboarding gate:', error),
       );
     };
+    const drainAway = () =>
+      drainAwayLog().catch(error =>
+        console.warn('Failed to drain away-time log:', error),
+      );
     reconcile();
     checkGate();
+    drainAway();
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
         reconcile();
         checkGate();
+        drainAway();
       }
     });
     return () => subscription.remove();

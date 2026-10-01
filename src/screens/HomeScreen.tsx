@@ -23,8 +23,15 @@ import { SessionEndChoiceModal } from '../components/SessionEndChoiceModal';
 import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
+import { getAppState, setAppState } from '../data/appStateRepository';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadSettingsData } from '../data/settingsRepository';
+import {
+  getAfterSessionAwayDisplay,
+  getAwayDisplay,
+  setAwayTrackingEnabled,
+  type AwayDisplay,
+} from '../domain/awayTime';
 import {
   deletePresencePhotoQuietly,
   sweepPresencePhotoCacheQuietly,
@@ -69,7 +76,10 @@ type CompletionSummary = {
   modeGracePeriodSeconds: number;
   lockdownMinutes: number;
   touchedApps: string[];
+  afterSessionAwayText: string | null;
 };
+
+const AWAY_TRACKING_PROMPTED_KEY = 'away_tracking_prompted';
 
 function ActiveSessionCameraPreview({
   samplingActive,
@@ -216,6 +226,9 @@ export function HomeScreen({
   const [revealArmed, setRevealArmed] = useState(false);
   const [completionSummary, setCompletionSummary] =
     useState<CompletionSummary | null>(null);
+  const [awayDisplay, setAwayDisplay] = useState<AwayDisplay>({
+    kind: 'hidden',
+  });
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
   const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
@@ -227,11 +240,36 @@ export function HomeScreen({
   const activePauseStartedAtMs = useRef<number | null>(null);
   const resumeInFlight = useRef(false);
   const pauseInFlight = useRef(false);
+  const hasActiveSession = remainingSeconds !== null;
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
     getShowingUpDayCount().then(setShowingUpDays);
   }, []);
+
+  const refreshAwayDisplay = useCallback(() => {
+    getAwayDisplay()
+      .then(setAwayDisplay)
+      .catch(error => {
+        console.warn('Failed to load away-time display:', error);
+        setAwayDisplay({ kind: 'hidden' });
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!isActive || hasActiveSession) {
+      return;
+    }
+
+    refreshAwayDisplay();
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        refreshAwayDisplay();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [hasActiveSession, isActive, refreshAwayDisplay]);
 
   // Reload whenever Home comes back into view so modes edited in Settings show up.
   useEffect(() => {
@@ -274,7 +312,6 @@ export function HomeScreen({
     34,
     Math.min(58, Math.round(availableContentHeight * 0.07)),
   );
-  const hasActiveSession = remainingSeconds !== null;
   const pausesRemaining = Math.max(
     0,
     MAX_PAUSES_PER_SESSION - pauseCountUsed,
@@ -698,6 +735,7 @@ export function HomeScreen({
     let lockdownMinutes = 0;
     let touchedApps: string[] = [];
     let nextShowingUpDays = showingUpDays || 1;
+    let afterSessionAwayText: string | null = null;
     try {
       const completed = await completeSession(sessionId, timing);
       nextCount = completed.sessionCount;
@@ -706,6 +744,9 @@ export function HomeScreen({
       lockdownMinutes = completed.lockdownMinutes;
       touchedApps = completed.touchedApps;
       nextShowingUpDays = completed.showingUpDays;
+      afterSessionAwayText = await getAfterSessionAwayDisplay(
+        completed.sessionId,
+      );
     } catch (error) {
       console.warn('Failed to complete session in database:', error);
     }
@@ -719,7 +760,37 @@ export function HomeScreen({
       modeGracePeriodSeconds: activeMode.gracePeriodSeconds,
       lockdownMinutes,
       touchedApps,
+      afterSessionAwayText,
     });
+
+    getAppState(AWAY_TRACKING_PROMPTED_KEY)
+      .then(prompted => {
+        if (prompted === 'true' || nextCount !== 1) {
+          return;
+        }
+
+        Alert.alert(
+          'Track time away from flagged apps?',
+          'Project ScaleUp can record when flagged apps are used on this device so it can show how long you stay away after sessions. Nothing leaves your phone.',
+          [
+            {
+              text: 'Not now',
+              style: 'cancel',
+              onPress: () => {
+                void setAppState(AWAY_TRACKING_PROMPTED_KEY, 'true');
+              },
+            },
+            {
+              text: 'Enable',
+              onPress: () => {
+                void setAppState(AWAY_TRACKING_PROMPTED_KEY, 'true');
+                void setAwayTrackingEnabled(true).then(refreshAwayDisplay);
+              },
+            },
+          ],
+        );
+      })
+      .catch(error => console.warn('Failed to show away-time prompt:', error));
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
     if (groupIndex < TALLY_GRID_SIZE) {
@@ -756,6 +827,7 @@ export function HomeScreen({
         modeGracePeriodSeconds={completionSummary.modeGracePeriodSeconds}
         lockdownMinutes={completionSummary.lockdownMinutes}
         touchedApps={completionSummary.touchedApps}
+        afterSessionAwayText={completionSummary.afterSessionAwayText}
         onContinue={() => {
           setCompletionSummary(null);
           setRevealArmed(false);
@@ -962,6 +1034,11 @@ export function HomeScreen({
                 Ready: {sessionMessage}
               </Text>
             ) : null}
+            {awayDisplay.kind !== 'hidden' ? (
+              <Text style={styles.awayLine}>
+                Away from your flagged apps: {awayDisplay.text}
+              </Text>
+            ) : null}
           </Animated.View>
 
           <View style={[styles.tallySection, { marginTop: tallyGap }]}>
@@ -1162,6 +1239,13 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.55 },
   textPressed: { opacity: 0.55 },
   sessionMessage: { position: 'absolute', width: 1, height: 1, opacity: 0 },
+  awayLine: {
+    color: colors.muted,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
 });
 
 function PauseGlyph() {
