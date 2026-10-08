@@ -838,7 +838,7 @@ export function HomeScreen({
   };
 
   const suggestionMinutes = paidUser
-    ? focusCoach?.paid.suggestionMinutes ?? null
+    ? focusCoach?.suggestionMinutes ?? null
     : null;
   const handleSuggestionPress = () => {
     if (suggestionMinutes === null) {
@@ -1306,12 +1306,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   suggestionChip: {
-    minHeight: 34,
-    borderRadius: 17,
+    minHeight: 38,
+    borderRadius: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: colors.module,
   },

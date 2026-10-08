@@ -21,6 +21,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BottomNavigation } from '../components/BottomNavigation';
 import {
+  clearSeededCoachSessions,
+  seedCoachSessions,
+  type CoachSeedPattern,
+} from '../data/coachSeedRepository';
+import {
   AppPickerList,
   SelectionMark,
   filterAppsForPicker,
@@ -522,6 +527,27 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     }
   };
 
+  const seedCoach = async (pattern: CoachSeedPattern) => {
+    try {
+      await clearSeededCoachSessions();
+      await seedCoachSessions(pattern);
+      Alert.alert('Coach seeded', `${pattern.replace('_', ' ')} sessions added.`);
+    } catch (error) {
+      console.warn('Failed to seed coach sessions:', error);
+      Alert.alert('Unable to seed coach sessions', 'Try again in a moment.');
+    }
+  };
+
+  const clearCoachSeed = async () => {
+    try {
+      await clearSeededCoachSessions();
+      Alert.alert('Seeded sessions cleared');
+    } catch (error) {
+      console.warn('Failed to clear seeded coach sessions:', error);
+      Alert.alert('Unable to clear seeded sessions', 'Try again in a moment.');
+    }
+  };
+
   const topInsetPadding = insets.top + 50;
   const contentMinHeight = Math.max(
     0,
@@ -795,6 +821,51 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                             {awayTrackingOptedIn ? 'On' : 'Off'}
                           </Text>
                         </View>
+                      </Pressable>
+                    </LinearGradient>
+                  </View>
+                </View>
+              ) : null}
+
+              {__DEV__ ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Coach dev seeding</Text>
+                  <View style={styles.panelShell}>
+                    <LinearGradient
+                      colors={['#333333', '#141414']}
+                      style={styles.panel}
+                    >
+                      {(
+                        [
+                          'rising',
+                          'plateau',
+                          'slipping',
+                          'early_breaker',
+                        ] as CoachSeedPattern[]
+                      ).map(pattern => (
+                        <Pressable
+                          key={pattern}
+                          accessibilityRole="button"
+                          onPress={() => seedCoach(pattern)}
+                          style={({ pressed }) => [
+                            styles.row,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.addText}>
+                            Seed {pattern.replace('_', ' ')}
+                          </Text>
+                        </Pressable>
+                      ))}
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={clearCoachSeed}
+                        style={({ pressed }) => [
+                          styles.row,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.addText}>Clear seeded sessions</Text>
                       </Pressable>
                     </LinearGradient>
                   </View>

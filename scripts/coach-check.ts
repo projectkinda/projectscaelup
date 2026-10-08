@@ -1,19 +1,42 @@
-import { evaluateFocusCoach, type FocusCoachSession } from '../src/domain/focusCoach';
+import {
+  evaluateFocusCoach,
+  type FocusCoachDistractionType,
+  type FocusCoachSession,
+} from '../src/domain/focusCoach';
 
 function session(
-  override: Partial<FocusCoachSession> & { id: number; startedAt: string },
+  index: number,
+  override: Partial<FocusCoachSession> = {},
 ): FocusCoachSession {
   return {
-    cleanSeconds: 0,
-    focusSeconds: 300,
+    id: index + 1,
+    startedAt: new Date(Date.UTC(2026, 9, index + 1, 10)).toISOString(),
+    cleanSeconds: 20 * 60,
+    focusSeconds: 30 * 60,
     firstDistractionType: null,
     pauseCount: 0,
     endedEarly: false,
-    durationSeconds: 300,
+    durationSeconds: 30 * 60,
     modeId: 'deep-work',
     platform: 'android',
     ...override,
   };
+}
+
+function many(
+  count: number,
+  clean: (index: number) => number,
+  extra: (index: number) => Partial<FocusCoachSession> = () => ({}),
+) {
+  return Array.from({ length: count }, (_, index) =>
+    session(index, { cleanSeconds: clean(index), ...extra(index) }),
+  );
+}
+
+const cases: Array<{ name: string; run: () => void }> = [];
+
+function test(name: string, run: () => void) {
+  cases.push({ name, run });
 }
 
 function assert(condition: unknown, message: string) {
@@ -22,93 +45,131 @@ function assert(condition: unknown, message: string) {
   }
 }
 
-const mixedPlatforms = evaluateFocusCoach([
-  session({
-    id: 1,
-    startedAt: '2026-10-01T10:00:00.000Z',
-    cleanSeconds: 600,
-    durationSeconds: 600,
-    platform: 'ios',
-  }),
-  session({
-    id: 2,
-    startedAt: '2026-10-02T10:00:00.000Z',
-    cleanSeconds: 180,
-    durationSeconds: 300,
-    platform: 'android',
-    firstDistractionType: 'app_touched',
-  }),
-]);
+function assertSuggestionShape(value: number | null) {
+  assert(value !== null, 'suggestion should exist');
+  const minutes = value ?? 0;
+  assert(minutes >= 10 && minutes <= 59, 'suggestion should be within 10..59');
+  assert(minutes % 5 === 0, 'suggestion should be a multiple of 5');
+}
 
-assert(
-  mixedPlatforms.baseline.latestPlatform === 'android',
-  'Coach should use only the latest platform history.',
-);
-assert(
-  mixedPlatforms.baseline.eligibleSessionCount === 1,
-  'Older platform sessions should be ignored.',
-);
-assert(
-  mixedPlatforms.paid.suggestionMinutes === 5,
-  'A below-threshold clean ratio should suggest the current clean length rounded to 5 minutes.',
-);
+test('3 valid sessions -> building_baseline, suggestion null', () => {
+  const result = evaluateFocusCoach(many(3, () => 20 * 60));
+  assert(result.state === 'building_baseline', `got ${result.state}`);
+  assert(result.suggestionMinutes === null, 'suggestion should be null');
+});
 
-const addedTime = evaluateFocusCoach([
-  session({
-    id: 3,
-    startedAt: '2026-10-03T10:00:00.000Z',
-    cleanSeconds: 1620,
-    focusSeconds: 1620,
-    durationSeconds: 1500,
-  }),
-]);
+test('7 valid sessions -> steady', () => {
+  const result = evaluateFocusCoach(many(7, () => 20 * 60));
+  assert(result.state === 'steady', `got ${result.state}`);
+});
 
-assert(
-  addedTime.baseline.currentCleanRatio !== null &&
-    addedTime.baseline.currentCleanRatio > 1,
-  'Add-time sessions may have clean ratios above 1.',
-);
-assert(
-  addedTime.paid.suggestionMinutes === 30,
-  'A clean 25 minute session should step up to 30 minutes.',
-);
+test('20 sessions steady at 22 min -> plateau', () => {
+  const result = evaluateFocusCoach(many(20, () => 22 * 60));
+  assert(result.state === 'plateau', `got ${result.state}`);
+});
 
-const earlyEnd = evaluateFocusCoach([
-  session({
-    id: 4,
-    startedAt: '2026-10-04T10:00:00.000Z',
-    cleanSeconds: 140,
-    focusSeconds: 140,
-    durationSeconds: 900,
-    endedEarly: true,
-  }),
-]);
+test('10 sessions rising 20 -> 26 min -> improving', () => {
+  const result = evaluateFocusCoach(
+    many(10, index => (index < 5 ? 20 * 60 : 26 * 60)),
+  );
+  assert(result.state === 'improving', `got ${result.state}`);
+});
 
-assert(
-  earlyEnd.baseline.eligibleSessionCount === 1,
-  'End Early should count when focus_seconds is at least 120.',
-);
+test('10 sessions falling 30 -> 22 min -> slipping', () => {
+  const result = evaluateFocusCoach(
+    many(10, index => (index < 5 ? 30 * 60 : 22 * 60)),
+  );
+  assert(result.state === 'slipping', `got ${result.state}`);
+});
 
-const pauseOverrun = evaluateFocusCoach([
-  session({
-    id: 5,
-    startedAt: '2026-10-05T10:00:00.000Z',
-    cleanSeconds: 240,
-    durationSeconds: 600,
-    firstDistractionType: 'pause_overrun',
-  }),
-  session({
-    id: 6,
-    startedAt: '2026-10-06T10:00:00.000Z',
-    cleanSeconds: 240,
-    durationSeconds: 600,
-    firstDistractionType: 'pause_overrun',
-  }),
-]);
+test('8 broken sessions under 25% planned -> early_breaker', () => {
+  const result = evaluateFocusCoach(
+    many(8, () => 5 * 60, () => ({
+      firstDistractionType: 'app_touched',
+      durationSeconds: 30 * 60,
+    })),
+  );
+  assert(result.diagnosis === 'early_breaker', `got ${result.diagnosis}`);
+});
 
-assert(
-  pauseOverrun.paid.primaryPattern === 'pause_overrun',
-  'Pause overruns should be available as first-break patterns.',
-);
+test('sessions with null clean_seconds ignored', () => {
+  const result = evaluateFocusCoach([
+    ...many(5, () => 20 * 60),
+    session(6, { cleanSeconds: null, focusSeconds: 30 * 60 }),
+  ]);
+  assert(result.validCount === 5, `got ${result.validCount}`);
+});
 
-console.log('Focus coach fixtures passed.');
+test('pause_overrun counts for clean length, excluded from diagnosis', () => {
+  const result = evaluateFocusCoach(
+    many(6, () => 16 * 60, () => ({
+      firstDistractionType: 'pause_overrun' as FocusCoachDistractionType,
+    })),
+  );
+  assert(result.validCount === 6, `got ${result.validCount}`);
+  assert(result.currentCleanSeconds === 16 * 60, 'clean median should count');
+  assert(result.diagnosis === null, `got ${result.diagnosis}`);
+});
+
+test('one great session after 4 poor ones does not jump suggestion by more than 5 min', () => {
+  const result = evaluateFocusCoach([
+    ...many(4, () => 8 * 60),
+    session(4, { cleanSeconds: 30 * 60 }),
+  ]);
+  assert(result.suggestionMinutes !== null, 'suggestion should exist');
+  const suggestion = result.suggestionMinutes ?? 0;
+  assert(suggestion <= 35, `got ${suggestion}`);
+});
+
+test('suggestion always within 10..59 and a multiple of 5', () => {
+  const high = evaluateFocusCoach(
+    many(6, () => 90 * 60, () => ({
+      durationSeconds: 90 * 60,
+      focusSeconds: 90 * 60,
+    })),
+  );
+  const low = evaluateFocusCoach(many(6, () => 60));
+  assertSuggestionShape(high.suggestionMinutes);
+  assertSuggestionShape(low.suggestionMinutes);
+});
+
+test('mixed platforms use only the latest platform', () => {
+  const result = evaluateFocusCoach([
+    ...many(5, () => 25 * 60, () => ({ platform: 'ios' })),
+    session(8, {
+      startedAt: '2026-10-20T10:00:00.000Z',
+      cleanSeconds: 15 * 60,
+      platform: 'android',
+    }),
+  ]);
+  assert(result.latestPlatform === 'android', `got ${result.latestPlatform}`);
+  assert(result.validCount === 1, `got ${result.validCount}`);
+});
+
+test('end early counts when focus_seconds is at least 120', () => {
+  const result = evaluateFocusCoach([
+    session(0, {
+      cleanSeconds: 140,
+      focusSeconds: 140,
+      durationSeconds: 900,
+      endedEarly: true,
+    }),
+  ]);
+  assert(result.validCount === 1, `got ${result.validCount}`);
+});
+
+let failed = 0;
+for (const item of cases) {
+  try {
+    item.run();
+    console.log(`PASS ${item.name}`);
+  } catch (error) {
+    failed += 1;
+    const message = error instanceof Error ? error.message : String(error);
+    console.log(`FAIL ${item.name}: ${message}`);
+  }
+}
+
+if (failed > 0) {
+  process.exit(1);
+}

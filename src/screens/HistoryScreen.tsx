@@ -22,7 +22,9 @@ import {
   type HistoryTrendPoint,
   loadHistoryData,
 } from '../data/historyRepository';
+import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { FlaggedAppLabel } from '../../modules/screen-time';
+import type { FocusCoachResult } from '../domain/focusCoach';
 import { iosAppKey } from '../domain/iosScreenTime';
 import { isPaidUser } from '../domain/paywall';
 import { formatDuration } from '../domain/sessionHistory';
@@ -270,65 +272,73 @@ function StatRows({ history }: { history: HistoryData }) {
   );
 }
 
-function formatPercent(value: number | null) {
-  if (value === null) {
-    return 'No data';
-  }
-
-  return `${Math.round(value * 100)}%`;
-}
-
 function FocusCoachCard({
-  history,
+  coach,
   paidUser,
+  onUpgrade,
 }: {
-  history: HistoryData;
+  coach: FocusCoachResult;
   paidUser: boolean;
+  onUpgrade: () => void;
 }) {
-  const baseline = history.focusCoach.baseline;
-  const paid = history.focusCoach.paid;
-  const hasCleanLength = baseline.currentCleanSeconds !== null;
+  const hasCleanLength = coach.currentCleanSeconds !== null;
 
   return (
-    <LinearGradient colors={['#333333', '#141414']} style={styles.coachCard}>
+    <View style={styles.coachCard}>
       <Text style={styles.coachEyebrow}>Focus coach</Text>
       <Text style={styles.coachTitle}>
         {hasCleanLength
-          ? `${formatDuration(baseline.currentCleanSeconds ?? 0)} clean`
-          : 'Clean length starts after 2 minutes'}
+          ? `${formatDuration(coach.currentCleanSeconds ?? 0)} clean`
+          : `${coach.validCount} of ${coach.baselineTarget}`}
       </Text>
       <Text style={styles.coachCopy}>
         {paidUser
-          ? paid.historyCopy
+          ? coach.historyCopy
           : hasCleanLength
             ? `Current clean length is ${formatDuration(
-                baseline.currentCleanSeconds ?? 0,
+                coach.currentCleanSeconds ?? 0,
               )}.`
-            : 'Complete a session to see your current clean length.'}
+            : `${coach.validCount} of ${coach.baselineTarget} sessions to find your baseline.`}
       </Text>
       {paidUser ? (
         <View style={styles.coachStats}>
           <View style={styles.coachStat}>
             <Text style={styles.coachStatValue}>
-              {paid.bestCleanSeconds !== null
-                ? formatDuration(paid.bestCleanSeconds)
-                : 'No data'}
+              {coach.beforeCleanSeconds !== null
+                ? formatDuration(coach.beforeCleanSeconds)
+                : 'Building'}
             </Text>
-            <Text style={styles.coachStatLabel}>Best clean</Text>
+            <Text style={styles.coachStatLabel}>Before</Text>
           </View>
           <View style={styles.coachStat}>
             <Text style={styles.coachStatValue}>
-              {formatPercent(paid.averageCleanRatio)}
+              {coach.suggestionMinutes !== null
+                ? `${coach.suggestionMinutes} min`
+                : 'Soon'}
             </Text>
-            <Text style={styles.coachStatLabel}>Recent ratio</Text>
+            <Text style={styles.coachStatLabel}>Suggested</Text>
           </View>
           <View style={styles.coachStat}>
-            <Text style={styles.coachStatValue}>{paid.cleanSessionCount}</Text>
-            <Text style={styles.coachStatLabel}>Clean sessions</Text>
+            <Text style={styles.coachStatValue}>
+              {coach.diagnosis ? coach.diagnosis.replace('_', ' ') : 'Steady'}
+            </Text>
+            <Text style={styles.coachStatLabel}>Pattern</Text>
           </View>
         </View>
-      ) : null}
-    </LinearGradient>
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Upgrade to unlock focus coach"
+          onPress={onUpgrade}
+          style={({ pressed }) => [
+            styles.lockedCoachRow,
+            pressed && styles.textActionPressed,
+          ]}
+        >
+          <Text style={styles.lockedCoachText}>Unlock coach insights</Text>
+        </Pressable>
+      )}
+    </View>
   );
 }
 
@@ -515,6 +525,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const [history, setHistory] = useState<HistoryData | null>(null);
+  const [focusCoach, setFocusCoach] = useState<FocusCoachResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [visibleSessionCount, setVisibleSessionCount] = useState(
@@ -539,9 +550,13 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
       setErrorMessage(null);
 
       try {
-        const data = await loadHistoryData({ isPaidUser: isPaidUser() });
+        const [data, coach] = await Promise.all([
+          loadHistoryData({ isPaidUser: isPaidUser() }),
+          loadFocusCoachData(),
+        ]);
         if (!cancelled) {
           setHistory(data);
+          setFocusCoach(coach);
         }
       } catch (error) {
         if (!cancelled) {
@@ -643,9 +658,15 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
             <>
               <StatRows history={history} />
 
-              <View style={styles.section}>
-                <FocusCoachCard history={history} paidUser={isPaidUser()} />
-              </View>
+              {focusCoach && focusCoach.validCount > 0 ? (
+                <View style={styles.section}>
+                  <FocusCoachCard
+                    coach={focusCoach}
+                    paidUser={isPaidUser()}
+                    onUpgrade={() => onNavigate('paywall')}
+                  />
+                </View>
+              ) : null}
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Most-used modes</Text>
@@ -858,6 +879,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.module,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.13,
@@ -911,6 +933,21 @@ const styles = StyleSheet.create({
     lineHeight: 13,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  lockedCoachRow: {
+    minHeight: 42,
+    marginTop: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  lockedCoachText: {
+    color: colors.ink,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   modeBreakdown: {
     marginTop: 12,

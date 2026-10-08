@@ -1,10 +1,5 @@
 import { iosAppKey } from '../domain/iosScreenTime';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
-import {
-  evaluateFocusCoach,
-  type FocusCoachDistractionType,
-  type FocusCoachResult,
-} from '../domain/focusCoach';
 import { ensureSchema, getDatabase } from './database';
 
 export type HistorySession = {
@@ -42,7 +37,6 @@ export type HistoryData = {
   sessions: HistorySession[];
   trend: HistoryTrendPoint[];
   modeBreakdown: HistoryModeBreakdown[];
-  focusCoach: FocusCoachResult;
   currentStreak: number;
   bestStreak: number;
   totalSessionsCompleted: number;
@@ -82,19 +76,6 @@ type ModeBreakdownRow = {
 type CustomModeNameRow = {
   id: string;
   name: string;
-};
-
-type FocusCoachRow = {
-  id: number;
-  started_at: string;
-  clean_seconds: number | null;
-  focus_seconds: number | null;
-  first_distraction_type: FocusCoachDistractionType | null;
-  pause_count: number | null;
-  ended_early: number | null;
-  duration_seconds: number;
-  mode_id: string;
-  platform: string | null;
 };
 
 const UNNAMED_APP = 'A flagged app';
@@ -271,25 +252,6 @@ export async function loadHistoryData({
     `,
   );
 
-  const focusCoachRows = await database.getAllAsync<FocusCoachRow>(
-    `
-      SELECT id,
-             started_at,
-             clean_seconds,
-             focus_seconds,
-             first_distraction_type,
-             pause_count,
-             ended_early,
-             duration_seconds,
-             mode_id,
-             platform
-      FROM sessions
-      WHERE focus_seconds >= 120
-        AND clean_seconds IS NOT NULL
-      ORDER BY started_at ASC;
-    `,
-  );
-
   const hiddenHistory = cutoffDate
     ? await database.getFirstAsync<{ count: number }>(
         `
@@ -320,20 +282,6 @@ export async function loadHistoryData({
         modeBreakdownRows.find(row => row.mode_id === mode.id)
           ?.session_count ?? 0,
     })),
-    focusCoach: evaluateFocusCoach(
-      focusCoachRows.map(row => ({
-        id: row.id,
-        startedAt: row.started_at,
-        cleanSeconds: row.clean_seconds,
-        focusSeconds: row.focus_seconds,
-        firstDistractionType: row.first_distraction_type,
-        pauseCount: row.pause_count,
-        endedEarly: row.ended_early === 1,
-        durationSeconds: row.duration_seconds,
-        modeId: row.mode_id,
-        platform: row.platform,
-      })),
-    ),
     currentStreak: streak?.current_streak ?? 0,
     bestStreak: streak?.best_streak ?? 0,
     totalSessionsCompleted:

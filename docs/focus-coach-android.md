@@ -1,10 +1,10 @@
 # Focus Coach: Android Notes
 
-The coach rules engine, copy, History card, and Home suggestion chip are shared TypeScript. They are gated by the existing paid-user stub, `DEV_FLAGS.forcePaidUser`; no Android-specific engine or native coach code is required.
+The coach rules engine, copy, History card, and Home suggestion chip are shared TypeScript. Paid coach surfaces stay behind `isPaidUser()` / `DEV_FLAGS.forcePaidUser`; no Android-specific coach engine or native code is required.
 
 ## Data Read By The Coach
 
-The coach reads only fields already present on `main`:
+The shared repository uses one coach query and reads only:
 
 - `clean_seconds`
 - `focus_seconds`
@@ -15,13 +15,31 @@ The coach reads only fields already present on `main`:
 - `mode_id`
 - `platform`
 
-The shared engine filters to eligible sessions with `focus_seconds >= 120`, then uses only the latest platform's sessions so iOS and Android histories are never mixed.
+A valid session has `clean_seconds IS NOT NULL` and `focus_seconds >= 120`. The engine filters to the latest platform before computing state, suggestions, and diagnosis, so Android and iOS histories are never mixed.
+
+## Engine Behavior
+
+- Current clean length is the median `clean_seconds` from the last 5 valid sessions.
+- Previous clean length is the median of the 5 valid sessions before that.
+- State is `building_baseline`, `steady`, `slipping`, `improving`, or `plateau`.
+- Suggestions are based on the last 3 clean/planned ratios and are rounded to 5 minutes, clamped to the timer range of 10..59 minutes.
+- `pause_overrun` counts toward clean length but is excluded from diagnosis and most-common-break tallies.
+- Diagnosis can identify early breaks, late breaks, better time windows, flagged-app-heavy breaks, or camera-heavy breaks. Weak evidence is softened in copy.
+- Weekly experiments are stored in `app_state` under `coach_experiment`; after 7 days the coach compares sessions since the experiment to the 5 before it.
 
 ## Android Differences
 
-- Android app-touch timing is more precise because the session usage monitor waits for a 30 second flagged-app visit and the accessibility service sees window changes.
-- Package names are known on Android, but the current coach intentionally keeps copy platform-neutral.
-- Add-time sessions can produce `clean_seconds / duration_seconds` ratios above `1`. The engine treats `0.9` or higher as clean and steps the suggestion up.
+- Android app-touch timing is more precise because the usage monitor waits for a 30 second flagged-app visit and the accessibility service sees window changes.
+- Android knows package names, but coach copy remains platform-neutral and never names an app.
+- Add-time sessions can produce `clean_seconds / duration_seconds` above `1`; the engine accepts that.
+
+## UI Behavior
+
+- The coach is hidden when there are no valid sessions.
+- Free users see baseline progress and, once ready, current clean length, plus a locked row that opens the paywall.
+- Paid users see coach copy, state details, diagnosis, experiment copy, and the Home suggestion chip.
+- The suggestion chip only sets the timer minutes on tap. It must not start or mutate an active session.
+- Dev-only Settings seeding can insert and clear marked fake coach sessions for rising, plateau, slipping, and early-breaker patterns.
 
 ## Real-Phone Release Checks
 
@@ -32,5 +50,4 @@ The shared engine filters to eligible sessions with `focus_seconds >= 120`, then
 - Long backgrounded pause records `first_distraction_type = 'pause_overrun'` and clean time ends at pause start. Check once with Doze or battery saver enabled.
 - Five minute session with a flagged app for 60 seconds about 2 minutes in should record `clean_seconds` near 2 minutes plus 30 seconds. Camera absence should be within the mode grace.
 - End Early keeps `ended_early = 1`, fills `clean_seconds`, and counts for coach if `focus_seconds >= 120`.
-- History card and "Suggested: 25 min" chip fit on small and large Android screens with gesture and 3-button navigation.
-- The chip only sets minutes when tapped. It must not start or mutate an active session.
+- History card and suggestion chip fit on small and large Android screens with gesture and 3-button navigation.
