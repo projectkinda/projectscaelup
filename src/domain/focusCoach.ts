@@ -55,6 +55,8 @@ export type FocusCoachExperiment = {
   id: FocusCoachExperimentId;
   startedAt: string;
   result: FocusCoachExperimentStatus | null;
+  lastResult?: FocusCoachExperimentStatus | null;
+  lastResultAt?: string | null;
 };
 
 export type FocusCoachResult = {

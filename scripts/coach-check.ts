@@ -1,8 +1,14 @@
 import {
   evaluateFocusCoach,
   type FocusCoachDistractionType,
+  type FocusCoachExperiment,
   type FocusCoachSession,
 } from '../src/domain/focusCoach';
+import {
+  safeCopyLine,
+  selectCoachVariantIndex,
+} from '../src/domain/focusCoachCopyRules';
+import { judgeExperimentResult } from '../src/domain/focusCoachExperiment';
 
 function session(
   index: number,
@@ -156,6 +162,93 @@ test('end early counts when focus_seconds is at least 120', () => {
     }),
   ]);
   assert(result.validCount === 1, `got ${result.validCount}`);
+});
+
+function experimentSession(
+  index: number,
+  cleanSeconds: number,
+  startedAt: string,
+) {
+  return session(index, {
+    cleanSeconds,
+    focusSeconds: 30 * 60,
+    durationSeconds: 30 * 60,
+    startedAt,
+  });
+}
+
+function experimentCase(sinceClean: number[], nowDay = 20) {
+  const experiment: FocusCoachExperiment = {
+    id: 'five_minute_break',
+    startedAt: '2026-10-10T10:00:00.000Z',
+    result: null,
+  };
+  const before = Array.from({ length: 5 }, (_, index) =>
+    experimentSession(
+      index,
+      20 * 60,
+      new Date(Date.UTC(2026, 9, index + 1, 10)).toISOString(),
+    ),
+  );
+  const since = sinceClean.map((cleanSeconds, index) =>
+    experimentSession(
+      index + 10,
+      cleanSeconds,
+      new Date(Date.UTC(2026, 9, 10 + index, 10)).toISOString(),
+    ),
+  );
+
+  return judgeExperimentResult({
+    sessions: [...before, ...since],
+    experiment,
+    nowMs: Date.UTC(2026, 9, nowDay, 10),
+  });
+}
+
+test('experiment judging: +15% and +150 s -> worked', () => {
+  assert(
+    experimentCase([23 * 60, 23 * 60, 23 * 60]) === 'worked',
+    'expected worked',
+  );
+});
+
+test('experiment judging: -20% -> didnt_work', () => {
+  assert(
+    experimentCase([16 * 60, 16 * 60, 16 * 60]) === 'didnt_work',
+    'expected didnt_work',
+  );
+});
+
+test('experiment judging: +5% -> unclear', () => {
+  assert(
+    experimentCase([21 * 60, 21 * 60, 21 * 60]) === 'unclear',
+    'expected unclear',
+  );
+});
+
+test('experiment judging: fewer than 3 sessions since -> unclear', () => {
+  assert(experimentCase([25 * 60, 25 * 60]) === 'unclear', 'expected unclear');
+});
+
+test('copy line containing a disallowed word falls back without throwing', () => {
+  const copy = safeCopyLine('This failed badly.', 'Current clean length is 20 min.');
+  assert(copy === 'Current clean length is 20 min.', `got ${copy}`);
+});
+
+test('same state and validCount returns the same variant twice in a row', () => {
+  const first = selectCoachVariantIndex({
+    stored: { index: 1, validCount: 8 },
+    validCount: 8,
+    variantCount: 3,
+    stateChanged: false,
+  });
+  const second = selectCoachVariantIndex({
+    stored: { index: first, validCount: 8 },
+    validCount: 8,
+    variantCount: 3,
+    stateChanged: false,
+  });
+  assert(first === second, `${first} !== ${second}`);
 });
 
 let failed = 0;

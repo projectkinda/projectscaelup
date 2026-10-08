@@ -25,7 +25,8 @@ A valid session has `clean_seconds IS NOT NULL` and `focus_seconds >= 120`. The 
 - Suggestions are based on the last 3 clean/planned ratios and are rounded to 5 minutes, clamped to the timer range of 10..59 minutes.
 - `pause_overrun` counts toward clean length but is excluded from diagnosis and most-common-break tallies.
 - Diagnosis can identify early breaks, late breaks, better time windows, flagged-app-heavy breaks, or camera-heavy breaks. Weak evidence is softened in copy.
-- Weekly experiments are stored in `app_state` under `coach_experiment`; after 7 days the coach compares sessions since the experiment to the 5 before it.
+- Coach copy variants are stored by state and `validCount`, so reloads reuse the same line until a new valid session lands or the state changes.
+- Weekly experiments are stored in `app_state` under `coach_experiment`; they do not start while the baseline is still building. After 7 days, the coach compares latest-platform sessions since the experiment to the 5 before it and keeps the last result visible on the next experiment.
 
 ## Android Differences
 
@@ -39,7 +40,7 @@ A valid session has `clean_seconds IS NOT NULL` and `focus_seconds >= 120`. The 
 - Free users see baseline progress and, once ready, current clean length, plus a locked row that opens the paywall.
 - Paid users see coach copy, state details, diagnosis, experiment copy, and the Home suggestion chip.
 - The suggestion chip only sets the timer minutes on tap. It must not start or mutate an active session.
-- Dev-only Settings seeding can insert and clear marked fake coach sessions for rising, plateau, slipping, and early-breaker patterns.
+- Dev-only Settings seeding can insert and clear marked fake coach sessions for rising, plateau, slipping, and early-breaker patterns. Seeded rows use the current platform, vary time of day, stay out of History lists and mode breakdowns, and clearing them also clears coach experiment and variant state.
 
 ## Real-Phone Release Checks
 

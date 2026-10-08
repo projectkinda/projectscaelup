@@ -4,11 +4,11 @@ import {
   type FocusCoachDistractionType,
   type FocusCoachExperiment,
   type FocusCoachExperimentId,
-  type FocusCoachExperimentStatus,
   type FocusCoachResult,
-  median,
+  MIN_BASELINE_SESSIONS,
 } from '../domain/focusCoach';
 import { buildFocusCoachCopy } from '../domain/focusCoachCopy';
+import { judgeExperimentResult } from '../domain/focusCoachExperiment';
 import { getAppState, setAppState } from './appStateRepository';
 import { ensureSchema, getDatabase } from './database';
 
@@ -26,7 +26,6 @@ type FocusCoachRow = {
 };
 
 const COACH_EXPERIMENT_KEY = 'coach_experiment';
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function parseExperiment(value: string | null): FocusCoachExperiment | null {
   if (!value) {
@@ -37,51 +36,22 @@ function parseExperiment(value: string | null): FocusCoachExperiment | null {
     const parsed = JSON.parse(value) as {
       id?: FocusCoachExperimentId;
       startedAt?: string;
+      lastResult?: FocusCoachExperiment['lastResult'];
+      lastResultAt?: string | null;
     };
     if (!parsed.id || !parsed.startedAt) {
       return null;
     }
-    return { id: parsed.id, startedAt: parsed.startedAt, result: null };
+    return {
+      id: parsed.id,
+      startedAt: parsed.startedAt,
+      result: null,
+      lastResult: parsed.lastResult ?? null,
+      lastResultAt: parsed.lastResultAt ?? null,
+    };
   } catch {
     return null;
   }
-}
-
-function compareExperiment(
-  sessions: ReturnType<typeof mapRows>,
-  experiment: FocusCoachExperiment,
-): FocusCoachExperimentStatus | null {
-  const startedAtMs = new Date(experiment.startedAt).getTime();
-  if (Date.now() - startedAtMs < SEVEN_DAYS_MS) {
-    return null;
-  }
-
-  const since = sessions.filter(
-    session => new Date(session.startedAt).getTime() >= startedAtMs,
-  );
-  if (since.length < 3) {
-    return 'unclear';
-  }
-
-  const before = sessions
-    .filter(session => new Date(session.startedAt).getTime() < startedAtMs)
-    .slice(-5);
-  const sinceMedian = median(
-    since
-      .map(session => session.cleanSeconds)
-      .filter((value): value is number => value !== null),
-  );
-  const beforeMedian = median(
-    before
-      .map(session => session.cleanSeconds)
-      .filter((value): value is number => value !== null),
-  );
-
-  if (sinceMedian === null || beforeMedian === null) {
-    return 'unclear';
-  }
-
-  return sinceMedian > beforeMedian ? 'worked' : 'didnt_work';
 }
 
 function mapRows(rows: FocusCoachRow[]) {
@@ -102,7 +72,12 @@ function mapRows(rows: FocusCoachRow[]) {
 async function resolveExperiment(
   rows: ReturnType<typeof mapRows>,
   diagnosis: FocusCoachResult['diagnosis'],
+  validCount: number,
 ) {
+  if (validCount < MIN_BASELINE_SESSIONS) {
+    return null;
+  }
+
   const stored = parseExperiment(await getAppState(COACH_EXPERIMENT_KEY));
   const now = new Date().toISOString();
 
@@ -111,15 +86,22 @@ async function resolveExperiment(
       id: experimentForDiagnosis(diagnosis),
       startedAt: now,
       result: null,
+      lastResult: null,
+      lastResultAt: null,
     };
     await setAppState(
       COACH_EXPERIMENT_KEY,
-      JSON.stringify({ id: next.id, startedAt: next.startedAt }),
+      JSON.stringify({
+        id: next.id,
+        startedAt: next.startedAt,
+        lastResult: next.lastResult,
+        lastResultAt: next.lastResultAt,
+      }),
     );
     return next;
   }
 
-  const result = compareExperiment(rows, stored);
+  const result = judgeExperimentResult({ sessions: rows, experiment: stored });
   if (result === null) {
     return stored;
   }
@@ -127,11 +109,18 @@ async function resolveExperiment(
   const next = {
     id: experimentForDiagnosis(diagnosis),
     startedAt: now,
-    result,
+    result: null,
+    lastResult: result,
+    lastResultAt: now,
   };
   await setAppState(
     COACH_EXPERIMENT_KEY,
-    JSON.stringify({ id: next.id, startedAt: next.startedAt }),
+    JSON.stringify({
+      id: next.id,
+      startedAt: next.startedAt,
+      lastResult: next.lastResult,
+      lastResultAt: next.lastResultAt,
+    }),
   );
   return next;
 }
@@ -165,7 +154,11 @@ export async function loadFocusCoachData(): Promise<FocusCoachResult> {
     return firstPass;
   }
 
-  const experiment = await resolveExperiment(sessions, firstPass.diagnosis);
+  const experiment = await resolveExperiment(
+    sessions,
+    firstPass.diagnosis,
+    firstPass.validCount,
+  );
   const result = evaluateFocusCoach(sessions, experiment);
   const copy = await buildFocusCoachCopy(result);
 

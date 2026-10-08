@@ -6,9 +6,13 @@ import {
   type FocusCoachResult,
   type FocusCoachState,
 } from './focusCoach';
+import {
+  coachVariantKey,
+  safeCopyLine,
+  selectCoachVariantIndex,
+  type StoredCoachVariant,
+} from './focusCoachCopyRules';
 import { formatDuration } from './sessionHistory';
-
-const DISALLOWED_WORDS = /\b(failed|lazy|bad)\b/i;
 
 type Slots = {
   now: string;
@@ -50,7 +54,7 @@ const DIAGNOSIS_COPY: Record<FocusCoachDiagnosis, string> = {
   early_breaker:
     'The first break tends to arrive early, so shorter sessions may be easier to protect.',
   late_breaker:
-    'The first break tends to arrive late, so the session length is close to useful.',
+    'The first break tends to come late, so you are close to finishing most sessions clean.',
   best_window:
     'Some times of day are cleaner than others, so timing may matter.',
   app_heavy:
@@ -62,14 +66,14 @@ const DIAGNOSIS_COPY: Record<FocusCoachDiagnosis, string> = {
 const EXPERIMENT_COPY: Record<FocusCoachExperimentId, string> = {
   morning_session: 'try one morning session',
   shorter_sessions: 'try a slightly shorter session',
-  phone_out_of_reach: 'put flagged apps out of reach',
+  phone_out_of_reach: 'put your phone out of reach',
   five_minute_break: 'take a 5 minute break between sessions',
 };
 
 const EXPERIMENT_RESULT_COPY: Record<FocusCoachExperimentStatus, string> = {
-  worked: 'Last week’s experiment helped.',
-  didnt_work: 'Last week’s experiment did not clearly help.',
-  unclear: 'Last week’s experiment needs more sessions before it says much.',
+  worked: "Last week's experiment helped.",
+  didnt_work: "Last week's experiment did not clearly help.",
+  unclear: "Last week's experiment needs more sessions before it says much.",
 };
 
 function fillTemplate(template: string, slots: Slots) {
@@ -78,18 +82,48 @@ function fillTemplate(template: string, slots: Slots) {
   );
 }
 
-function assertAllowed(copy: string) {
-  if (DISALLOWED_WORDS.test(copy)) {
-    throw new Error('Focus coach copy contains a disallowed word.');
+function parseStoredVariant(value: string | null): StoredCoachVariant | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value) as Partial<StoredCoachVariant>;
+    if (
+      typeof parsed.index !== 'number' ||
+      typeof parsed.validCount !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      index: parsed.index,
+      validCount: parsed.validCount,
+    };
+  } catch {
+    return null;
   }
 }
 
-async function nextVariantIndex(state: FocusCoachState, count: number) {
-  const key = `coach_last_variant_${state}`;
-  const stored = await getAppState(key);
-  const previous = stored === null ? -1 : Number.parseInt(stored, 10);
-  const next = Number.isFinite(previous) ? (previous + 1) % count : 0;
-  await setAppState(key, String(next));
+async function nextVariantIndex(
+  state: FocusCoachState,
+  validCount: number,
+  count: number,
+) {
+  const key = coachVariantKey(state);
+  const lastStateKey = 'coach_variant_last_state';
+  const [storedValue, lastState] = await Promise.all([
+    getAppState(key),
+    getAppState(lastStateKey),
+  ]);
+  const next = selectCoachVariantIndex({
+    stored: parseStoredVariant(storedValue),
+    validCount,
+    variantCount: count,
+    stateChanged: lastState !== null && lastState !== state,
+  });
+  await setAppState(key, JSON.stringify({ index: next, validCount }));
+  await setAppState(lastStateKey, state);
   return next;
 }
 
@@ -101,7 +135,11 @@ export async function buildFocusCoachCopy(
   result: FocusCoachResult,
 ): Promise<Pick<FocusCoachResult, 'historyCopy' | 'suggestionCopy'>> {
   const variants = STATE_VARIANTS[result.state];
-  const variantIndex = await nextVariantIndex(result.state, variants.length);
+  const variantIndex = await nextVariantIndex(
+    result.state,
+    result.validCount,
+    variants.length,
+  );
   const now =
     result.currentCleanSeconds !== null
       ? formatDuration(result.currentCleanSeconds)
@@ -130,21 +168,30 @@ export async function buildFocusCoachCopy(
         result.diagnosis
       ].replace(/^./, char => char.toLowerCase())}`
     : null;
-  const experimentResultCopy = result.experiment?.result
-    ? EXPERIMENT_RESULT_COPY[result.experiment.result]
+  const experimentResult =
+    result.experiment?.result ?? result.experiment?.lastResult;
+  const experimentResultCopy = experimentResult
+    ? EXPERIMENT_RESULT_COPY[experimentResult]
     : null;
-  const historyCopy = [stateCopy, diagnosisCopy, experimentResultCopy]
-    .filter(Boolean)
-    .join(' ');
+  const fallbackCopy = `Current clean length is ${now}.`;
+  const historyCopy = safeCopyLine(
+    [stateCopy, diagnosisCopy, experimentResultCopy]
+      .filter(Boolean)
+      .join(' '),
+    fallbackCopy,
+  );
   const suggestionCopy =
     result.suggestionMinutes !== null
       ? `Suggested: ${result.suggestionMinutes} min`
       : null;
 
-  assertAllowed(historyCopy);
-  if (suggestionCopy) {
-    assertAllowed(suggestionCopy);
-  }
-
-  return { historyCopy, suggestionCopy };
+  return {
+    historyCopy,
+    suggestionCopy: suggestionCopy
+      ? safeCopyLine(
+          suggestionCopy,
+          `Suggested: ${result.suggestionMinutes} min`,
+        )
+      : null,
+  };
 }

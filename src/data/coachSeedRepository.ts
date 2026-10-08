@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import { ensureSchema, getDatabase } from './database';
 
 export type CoachSeedPattern = 'rising' | 'plateau' | 'slipping' | 'early_breaker';
@@ -5,16 +7,24 @@ export type CoachSeedPattern = 'rising' | 'plateau' | 'slipping' | 'early_breake
 const SEED_MODE_PREFIX = '__coach_seed__';
 
 function cleanSecondsFor(pattern: CoachSeedPattern, index: number) {
+  const hourBucket = index % 3;
   switch (pattern) {
     case 'rising':
       return 20 * 60 + index * 40;
     case 'plateau':
-      return 22 * 60 + (index % 3) * 15;
+      return hourBucket === 0 ? 28 * 60 : 18 * 60 + hourBucket * 60;
     case 'slipping':
       return 30 * 60 - index * 45;
     case 'early_breaker':
       return 4 * 60 + (index % 2) * 20;
   }
+}
+
+function seededStartedAt(now: number, index: number) {
+  const hours = [9, 14, 20];
+  const date = new Date(now - (15 - index) * 86400000);
+  date.setHours(hours[index % hours.length], 0, 0, 0);
+  return date.toISOString();
 }
 
 export async function seedCoachSessions(pattern: CoachSeedPattern) {
@@ -25,7 +35,7 @@ export async function seedCoachSessions(pattern: CoachSeedPattern) {
 
   await database.withTransactionAsync(async () => {
     for (let index = 0; index < 15; index += 1) {
-      const startedAt = new Date(now - (15 - index) * 86400000).toISOString();
+      const startedAt = seededStartedAt(now, index);
       const cleanSeconds = cleanSecondsFor(pattern, index);
       const firstDistractionType =
         pattern === 'early_breaker' ? 'app_touched' : index % 4 === 0 ? 'camera_absence' : null;
@@ -58,7 +68,7 @@ export async function seedCoachSessions(pattern: CoachSeedPattern) {
           durationSeconds,
           cleanSeconds,
           firstDistractionType,
-          'android',
+          Platform.OS,
           new Date(new Date(startedAt).getTime() + durationSeconds * 1000)
             .toISOString(),
         ],
@@ -77,5 +87,15 @@ export async function clearSeededCoachSessions() {
       WHERE mode_id LIKE ?;
     `,
     [`${SEED_MODE_PREFIX}%`],
+  );
+
+  await database.runAsync(
+    `
+      DELETE FROM app_state
+      WHERE key = ?
+         OR key LIKE ?
+         OR key LIKE ?;
+    `,
+    ['coach_experiment', 'coach_variant_%', 'coach_last_variant_%'],
   );
 }

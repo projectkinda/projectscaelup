@@ -282,6 +282,22 @@ function FocusCoachCard({
   onUpgrade: () => void;
 }) {
   const hasCleanLength = coach.currentCleanSeconds !== null;
+  const diagnosisLabel = (() => {
+    switch (coach.diagnosis) {
+      case 'early_breaker':
+        return 'Early breaks';
+      case 'late_breaker':
+        return 'Late breaks';
+      case 'best_window':
+        return 'Best time of day';
+      case 'app_heavy':
+        return 'App breaks';
+      case 'camera_heavy':
+        return 'Camera breaks';
+      case null:
+        return '-';
+    }
+  })();
 
   return (
     <View style={styles.coachCard}>
@@ -320,7 +336,7 @@ function FocusCoachCard({
           </View>
           <View style={styles.coachStat}>
             <Text style={styles.coachStatValue}>
-              {coach.diagnosis ? coach.diagnosis.replace('_', ' ') : 'Steady'}
+              {diagnosisLabel}
             </Text>
             <Text style={styles.coachStatLabel}>Pattern</Text>
           </View>
@@ -550,13 +566,9 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
       setErrorMessage(null);
 
       try {
-        const [data, coach] = await Promise.all([
-          loadHistoryData({ isPaidUser: isPaidUser() }),
-          loadFocusCoachData(),
-        ]);
+        const data = await loadHistoryData({ isPaidUser: isPaidUser() });
         if (!cancelled) {
           setHistory(data);
-          setFocusCoach(coach);
         }
       } catch (error) {
         if (!cancelled) {
@@ -568,6 +580,18 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
         if (!cancelled) {
           hasLoadedOnceRef.current = true;
           setIsLoading(false);
+        }
+      }
+
+      try {
+        const coach = await loadFocusCoachData();
+        if (!cancelled) {
+          setFocusCoach(coach);
+        }
+      } catch (error) {
+        console.warn('Failed to load focus coach:', error);
+        if (!cancelled) {
+          setFocusCoach(null);
         }
       }
     }

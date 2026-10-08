@@ -79,6 +79,7 @@ type CustomModeNameRow = {
 };
 
 const UNNAMED_APP = 'A flagged app';
+const SEED_MODE_PREFIX = '__coach_seed__';
 
 const builtInModeNameById = new Map(
   BUILT_IN_MODES.map(mode => [mode.id, mode.name]),
@@ -129,6 +130,7 @@ export async function loadHistoryData({
       SELECT id, started_at, mode_id, duration_seconds, distraction_count
       FROM sessions
       WHERE completed = 1
+        AND mode_id NOT LIKE '${SEED_MODE_PREFIX}%'
         ${cutoffWhere}
       ORDER BY started_at ASC;
     `,
@@ -140,6 +142,7 @@ export async function loadHistoryData({
       SELECT mode_id, COUNT(*) as session_count
       FROM sessions
       WHERE completed = 1
+        AND mode_id NOT LIKE '${SEED_MODE_PREFIX}%'
         ${cutoffWhere}
       GROUP BY mode_id
       ORDER BY session_count DESC;
@@ -179,6 +182,7 @@ export async function loadHistoryData({
              s.lockdown_minutes
       FROM sessions s
       WHERE s.completed = 1
+        AND s.mode_id NOT LIKE '${SEED_MODE_PREFIX}%'
         ${cutoffDate ? 'AND s.started_at >= ?' : ''}
       ORDER BY s.started_at DESC;
     `,
@@ -198,6 +202,7 @@ export async function loadHistoryData({
       LEFT JOIN flagged_apps fa
         ON fa.app_identifier = de.app_identifier
       WHERE s.completed = 1
+        AND s.mode_id NOT LIKE '${SEED_MODE_PREFIX}%'
         ${cutoffDate ? 'AND s.started_at >= ?' : ''}
       ORDER BY de.occurred_at ASC;
     `,
