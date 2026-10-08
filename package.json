@@ -25,6 +25,7 @@
     "@bacons/apple-targets": "^5.0.0",
     "@types/react": "~19.2.2",
     "react-native-svg-transformer": "^1.5.3",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.3"
   },
   "scripts": {

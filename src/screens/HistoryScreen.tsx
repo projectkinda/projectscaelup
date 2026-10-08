@@ -270,6 +270,68 @@ function StatRows({ history }: { history: HistoryData }) {
   );
 }
 
+function formatPercent(value: number | null) {
+  if (value === null) {
+    return 'No data';
+  }
+
+  return `${Math.round(value * 100)}%`;
+}
+
+function FocusCoachCard({
+  history,
+  paidUser,
+}: {
+  history: HistoryData;
+  paidUser: boolean;
+}) {
+  const baseline = history.focusCoach.baseline;
+  const paid = history.focusCoach.paid;
+  const hasCleanLength = baseline.currentCleanSeconds !== null;
+
+  return (
+    <LinearGradient colors={['#333333', '#141414']} style={styles.coachCard}>
+      <Text style={styles.coachEyebrow}>Focus coach</Text>
+      <Text style={styles.coachTitle}>
+        {hasCleanLength
+          ? `${formatDuration(baseline.currentCleanSeconds ?? 0)} clean`
+          : 'Clean length starts after 2 minutes'}
+      </Text>
+      <Text style={styles.coachCopy}>
+        {paidUser
+          ? paid.historyCopy
+          : hasCleanLength
+            ? `Current clean length is ${formatDuration(
+                baseline.currentCleanSeconds ?? 0,
+              )}.`
+            : 'Complete a session to see your current clean length.'}
+      </Text>
+      {paidUser ? (
+        <View style={styles.coachStats}>
+          <View style={styles.coachStat}>
+            <Text style={styles.coachStatValue}>
+              {paid.bestCleanSeconds !== null
+                ? formatDuration(paid.bestCleanSeconds)
+                : 'No data'}
+            </Text>
+            <Text style={styles.coachStatLabel}>Best clean</Text>
+          </View>
+          <View style={styles.coachStat}>
+            <Text style={styles.coachStatValue}>
+              {formatPercent(paid.averageCleanRatio)}
+            </Text>
+            <Text style={styles.coachStatLabel}>Recent ratio</Text>
+          </View>
+          <View style={styles.coachStat}>
+            <Text style={styles.coachStatValue}>{paid.cleanSessionCount}</Text>
+            <Text style={styles.coachStatLabel}>Clean sessions</Text>
+          </View>
+        </View>
+      ) : null}
+    </LinearGradient>
+  );
+}
+
 function ModeBreakdown({
   breakdown,
 }: {
@@ -582,6 +644,10 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
               <StatRows history={history} />
 
               <View style={styles.section}>
+                <FocusCoachCard history={history} paidUser={isPaidUser()} />
+              </View>
+
+              <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Most-used modes</Text>
                 <ModeBreakdown breakdown={history.modeBreakdown} />
               </View>
@@ -786,6 +852,66 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   rewardValue: { color: colors.rewardAmber },
+  coachCard: {
+    borderRadius: 18,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.13,
+    shadowRadius: 10,
+    elevation: 7,
+  },
+  coachEyebrow: {
+    color: colors.rewardAmber,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  coachTitle: {
+    marginTop: 3,
+    color: colors.white,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  coachCopy: {
+    marginTop: 6,
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  coachStats: {
+    marginTop: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  coachStat: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+  },
+  coachStatValue: {
+    color: colors.white,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  coachStatLabel: {
+    marginTop: 3,
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   modeBreakdown: {
     marginTop: 12,
     flexDirection: 'row',

@@ -24,8 +24,10 @@ import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { getAppState, setAppState } from '../data/appStateRepository';
+import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadSettingsData } from '../data/settingsRepository';
+import type { FocusCoachResult } from '../domain/focusCoach';
 import {
   getAwayDisplay,
   getPreviousSessionAwayDisplay,
@@ -229,6 +231,7 @@ export function HomeScreen({
   const [awayDisplay, setAwayDisplay] = useState<AwayDisplay>({
     kind: 'hidden',
   });
+  const [focusCoach, setFocusCoach] = useState<FocusCoachResult | null>(null);
   const contentProgress = useRef(new Animated.Value(1)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
   const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
@@ -270,6 +273,31 @@ export function HomeScreen({
 
     return () => subscription.remove();
   }, [hasActiveSession, isActive, refreshAwayDisplay]);
+
+  useEffect(() => {
+    if (!isActive || hasActiveSession) {
+      return;
+    }
+
+    let cancelled = false;
+
+    loadFocusCoachData()
+      .then(data => {
+        if (!cancelled) {
+          setFocusCoach(data);
+        }
+      })
+      .catch(error => {
+        console.warn('Failed to load focus coach:', error);
+        if (!cancelled) {
+          setFocusCoach(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasActiveSession, isActive]);
 
   // Reload whenever Home comes back into view so modes edited in Settings show up.
   useEffect(() => {
@@ -809,6 +837,18 @@ export function HomeScreen({
     onNavigate('paywall');
   };
 
+  const suggestionMinutes = paidUser
+    ? focusCoach?.paid.suggestionMinutes ?? null
+    : null;
+  const handleSuggestionPress = () => {
+    if (suggestionMinutes === null) {
+      return;
+    }
+
+    setMinutes(suggestionMinutes);
+    setSeconds(0);
+  };
+
   const modeContentStyle = {
     opacity: contentProgress,
     transform: [
@@ -1003,6 +1043,21 @@ export function HomeScreen({
               { marginTop: timerGap },
             ]}
           >
+            {suggestionMinutes !== null ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Use suggested ${suggestionMinutes} minute session`}
+                onPress={handleSuggestionPress}
+                style={({ pressed }) => [
+                  styles.suggestionChip,
+                  pressed && styles.textPressed,
+                ]}
+              >
+                <Text style={styles.suggestionText}>
+                  Suggested: {suggestionMinutes} min
+                </Text>
+              </Pressable>
+            ) : null}
             <TimerSelector
               minutes={minutes}
               seconds={seconds}
@@ -1249,6 +1304,22 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  suggestionChip: {
+    minHeight: 34,
+    borderRadius: 17,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: colors.module,
+  },
+  suggestionText: {
+    color: colors.rewardAmber,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
   },
 });
 
