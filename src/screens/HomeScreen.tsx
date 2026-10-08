@@ -24,6 +24,7 @@ import { TallyCard } from '../components/TallyCard';
 import { TALLY_GROUP_SIZE } from '../components/TallyGroupMark';
 import { TimerSelector } from '../components/TimerSelector';
 import { getAppState, setAppState } from '../data/appStateRepository';
+import { ensureSchema, getDatabase } from '../data/database';
 import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadSettingsData } from '../data/settingsRepository';
@@ -82,6 +83,15 @@ type CompletionSummary = {
 };
 
 const AWAY_TRACKING_PROMPTED_KEY = 'away_tracking_prompted';
+
+async function loadFlaggedAppIdentifiersDirectly() {
+  const database = await getDatabase();
+  await ensureSchema(database);
+  const rows = await database.getAllAsync<{ app_identifier: string }>(
+    'SELECT app_identifier FROM flagged_apps ORDER BY app_identifier ASC;',
+  );
+  return rows.map(row => row.app_identifier);
+}
 
 function ActiveSessionCameraPreview({
   samplingActive,
@@ -480,7 +490,16 @@ export function HomeScreen({
         );
       } catch (error) {
         console.warn('Failed to load flagged apps for usage monitor:', error);
-        activeFlaggedAppIdentifiers.current = [];
+        try {
+          activeFlaggedAppIdentifiers.current =
+            await loadFlaggedAppIdentifiersDirectly();
+        } catch (fallbackError) {
+          console.warn(
+            'Failed to load flagged apps directly for usage monitor:',
+            fallbackError,
+          );
+          activeFlaggedAppIdentifiers.current = [];
+        }
       }
       usageMonitorUnsubscribe.current = startUsageMonitor(
         sessionId,

@@ -59,9 +59,13 @@ async function syncNativeFlaggedPackages() {
     'SELECT app_identifier FROM flagged_apps ORDER BY app_identifier ASC;',
   );
 
-  await UsageTrackingModule.setFlaggedPackages(
-    rows.map(row => row.app_identifier),
-  );
+  try {
+    await UsageTrackingModule.setFlaggedPackages(
+      rows.map(row => row.app_identifier),
+    );
+  } catch (error) {
+    console.warn('Could not sync native flagged packages:', error);
+  }
 }
 
 async function clearLegacyDefaultFlaggedApps() {
@@ -110,9 +114,13 @@ export async function loadSettingsData({
     displayName: row.display_name,
     iconBase64: row.icon_base64 ?? undefined,
   }));
-  await UsageTrackingModule.setFlaggedPackages(
-    flaggedApps.map(app => app.appIdentifier),
-  );
+  try {
+    await UsageTrackingModule.setFlaggedPackages(
+      flaggedApps.map(app => app.appIdentifier),
+    );
+  } catch (error) {
+    console.warn('Could not sync native flagged packages:', error);
+  }
   const appsMissingIcons = flaggedApps.some(app => !app.iconBase64);
 
   if (appsMissingIcons) {

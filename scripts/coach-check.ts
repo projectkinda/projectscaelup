@@ -8,6 +8,10 @@ import {
   safeCopyLine,
   selectCoachVariantIndex,
 } from '../src/domain/focusCoachCopyRules';
+import {
+  buildFocusCoachAway,
+  safeLoadFocusCoachAway,
+} from '../src/domain/focusCoachAway';
 import { judgeExperimentResult } from '../src/domain/focusCoachExperiment';
 
 function session(
@@ -17,14 +21,18 @@ function session(
   return {
     id: index + 1,
     startedAt: new Date(Date.UTC(2026, 9, index + 1, 10)).toISOString(),
+    endedAt: new Date(Date.UTC(2026, 9, index + 1, 10, 30)).toISOString(),
     cleanSeconds: 20 * 60,
     focusSeconds: 30 * 60,
     firstDistractionType: null,
     pauseCount: 0,
+    pausedSeconds: 0,
     endedEarly: false,
     durationSeconds: 30 * 60,
     modeId: 'deep-work',
     platform: 'android',
+    afterSessionAwaySeconds: null,
+    afterSessionAwayVerified: null,
     ...override,
   };
 }
@@ -39,9 +47,9 @@ function many(
   );
 }
 
-const cases: Array<{ name: string; run: () => void }> = [];
+const cases: Array<{ name: string; run: () => void | Promise<void> }> = [];
 
-function test(name: string, run: () => void) {
+function test(name: string, run: () => void | Promise<void>) {
   cases.push({ name, run });
 }
 
@@ -62,6 +70,31 @@ test('3 valid sessions -> building_baseline, suggestion null', () => {
   const result = evaluateFocusCoach(many(3, () => 20 * 60));
   assert(result.state === 'building_baseline', `got ${result.state}`);
   assert(result.suggestionMinutes === null, 'suggestion should be null');
+});
+
+test('0 valid sessions expose no trend or last session', () => {
+  const result = evaluateFocusCoach([]);
+  assert(result.validCount === 0, `got ${result.validCount}`);
+  assert(result.cleanTrend === null, 'cleanTrend should be null');
+  assert(result.lastSession === null, 'lastSession should be null');
+});
+
+test('5 valid sessions expose trend without delta', () => {
+  const result = evaluateFocusCoach(many(5, () => 20 * 60));
+  assert(result.validCount === 5, `got ${result.validCount}`);
+  assert(result.cleanTrend?.points.length === 5, 'expected 5 trend points');
+  assert(result.cleanTrend?.deltaSeconds === null, 'delta should be null');
+});
+
+test('8 valid sessions expose last up to 8 trend points', () => {
+  const result = evaluateFocusCoach(many(8, index => (20 + index) * 60));
+  assert(result.cleanTrend?.points.length === 8, 'expected 8 trend points');
+});
+
+test('12 valid sessions expose last 8 trend points only', () => {
+  const result = evaluateFocusCoach(many(12, index => (20 + index) * 60));
+  assert(result.cleanTrend?.points.length === 8, 'expected 8 trend points');
+  assert(result.cleanTrend?.points[0].sessionId === 5, 'expected point 5 first');
 });
 
 test('7 valid sessions -> steady', () => {
@@ -86,6 +119,30 @@ test('10 sessions falling 30 -> 22 min -> slipping', () => {
     many(10, index => (index < 5 ? 30 * 60 : 22 * 60)),
   );
   assert(result.state === 'slipping', `got ${result.state}`);
+});
+
+test('improving trend delta uses recent 3 minus previous 3', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => (index < 3 ? 20 * 60 : 26 * 60)),
+  );
+  assert(result.cleanTrend?.deltaSeconds === 6 * 60, `got ${result.cleanTrend?.deltaSeconds}`);
+});
+
+test('declining trend delta uses recent 3 minus previous 3', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => (index < 3 ? 26 * 60 : 20 * 60)),
+  );
+  assert(result.cleanTrend?.deltaSeconds === -6 * 60, `got ${result.cleanTrend?.deltaSeconds}`);
+});
+
+test('steady trend delta can be zero', () => {
+  const result = evaluateFocusCoach(many(6, () => 22 * 60));
+  assert(result.cleanTrend?.deltaSeconds === 0, `got ${result.cleanTrend?.deltaSeconds}`);
+});
+
+test('fewer than 6 valid sessions have no trend delta', () => {
+  const result = evaluateFocusCoach(many(5, () => 22 * 60));
+  assert(result.cleanTrend?.deltaSeconds === null, 'delta should be null');
 });
 
 test('8 broken sessions under 25% planned -> early_breaker', () => {
@@ -150,6 +207,7 @@ test('mixed platforms use only the latest platform', () => {
   ]);
   assert(result.latestPlatform === 'android', `got ${result.latestPlatform}`);
   assert(result.validCount === 1, `got ${result.validCount}`);
+  assert(result.cleanTrend === null, 'single latest-platform session has no trend');
 });
 
 test('end early counts when focus_seconds is at least 120', () => {
@@ -162,6 +220,115 @@ test('end early counts when focus_seconds is at least 120', () => {
     }),
   ]);
   assert(result.validCount === 1, `got ${result.validCount}`);
+});
+
+test('ended-early latest session is exposed as lastSession', () => {
+  const result = evaluateFocusCoach([
+    ...many(5, () => 20 * 60),
+    session(8, {
+      cleanSeconds: 180,
+      focusSeconds: 180,
+      durationSeconds: 900,
+      endedEarly: true,
+      firstDistractionType: 'app_touched',
+      pauseCount: 2,
+      pausedSeconds: 60,
+      endedAt: '2026-10-20T10:03:00.000Z',
+    }),
+  ]);
+  assert(result.lastSession?.endedEarly === true, 'expected endedEarly');
+  assert(result.lastSession?.firstDistractionAtSeconds === 180, 'expected distraction time');
+  assert(result.lastSession?.pauseCount === 2, 'expected pause count');
+});
+
+test('best_window can trigger from clean sessions', () => {
+  const result = evaluateFocusCoach([
+    ...many(3, () => 30 * 60, index => ({
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 8)).toISOString(),
+    })),
+    ...many(3, () => 15 * 60, index => ({
+      id: 10 + index,
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 14)).toISOString(),
+    })),
+    ...many(3, () => 15 * 60, index => ({
+      id: 20 + index,
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 20)).toISOString(),
+    })),
+  ]);
+  assert(result.diagnosis === 'best_window', `got ${result.diagnosis}`);
+});
+
+test('away hidden maps to null', () => {
+  const away = buildFocusCoachAway({
+    display: { kind: 'hidden' },
+    latestSession: session(1),
+    platform: 'android',
+  });
+  assert(away === null, 'expected null');
+});
+
+test('away at_least maps through with verified after-session value', () => {
+  const away = buildFocusCoachAway({
+    display: { kind: 'at_least', seconds: 3600, text: 'at least 1 h' },
+    latestSession: session(1, {
+      afterSessionAwaySeconds: 7200,
+      afterSessionAwayVerified: true,
+    }),
+    platform: 'android',
+  });
+  assert(away?.display === 'at_least', `got ${away?.display}`);
+  assert(away?.afterSessionSeconds === 7200, 'expected verified after seconds');
+});
+
+test('away about maps through', () => {
+  const away = buildFocusCoachAway({
+    display: { kind: 'about', seconds: 1800, text: 'about 30 min' },
+    latestSession: session(1),
+    platform: 'android',
+  });
+  assert(away?.display === 'about', `got ${away?.display}`);
+  assert(away?.sinceLastUseSeconds === 1800, 'expected since seconds');
+});
+
+test('iOS away maps to null', () => {
+  const away = buildFocusCoachAway({
+    display: { kind: 'about', seconds: 1800, text: 'about 30 min' },
+    latestSession: session(1, { platform: 'ios' }),
+    platform: 'ios',
+  });
+  assert(away === null, 'expected null');
+});
+
+test('9 verified away sessions produce no awayInsight', () => {
+  const result = evaluateFocusCoach(
+    many(9, () => 20 * 60, index => ({
+      afterSessionAwaySeconds: index % 2 === 0 ? 90 * 60 : 20 * 60,
+      afterSessionAwayVerified: true,
+    })),
+  );
+  assert(result.awayInsight === null, 'expected null');
+});
+
+test('10 verified away sessions produce awayInsight', () => {
+  const result = evaluateFocusCoach(
+    many(10, index => (index < 5 ? 25 * 60 : 18 * 60), index => ({
+      afterSessionAwaySeconds: index < 5 ? 90 * 60 : 20 * 60,
+      afterSessionAwayVerified: true,
+    })),
+  );
+  assert(result.awayInsight?.verifiedSessionCount === 10, 'expected 10 verified');
+  assert(result.awayInsight?.typeLine === 'longer_breaks_cleaner', `got ${result.awayInsight?.typeLine}`);
+});
+
+test('away code throwing returns null', async () => {
+  const away = await safeLoadFocusCoachAway({
+    loadDisplay: async () => {
+      throw new Error('boom');
+    },
+    latestSession: session(1),
+    platform: 'android',
+  });
+  assert(away === null, 'expected null');
 });
 
 function experimentSession(
@@ -251,18 +418,22 @@ test('same state and validCount returns the same variant twice in a row', () => 
   assert(first === second, `${first} !== ${second}`);
 });
 
-let failed = 0;
-for (const item of cases) {
-  try {
-    item.run();
-    console.log(`PASS ${item.name}`);
-  } catch (error) {
-    failed += 1;
-    const message = error instanceof Error ? error.message : String(error);
-    console.log(`FAIL ${item.name}: ${message}`);
+async function main() {
+  let failed = 0;
+  for (const item of cases) {
+    try {
+      await item.run();
+      console.log(`PASS ${item.name}`);
+    } catch (error) {
+      failed += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`FAIL ${item.name}: ${message}`);
+    }
+  }
+
+  if (failed > 0) {
+    process.exit(1);
   }
 }
 
-if (failed > 0) {
-  process.exit(1);
-}
+void main();

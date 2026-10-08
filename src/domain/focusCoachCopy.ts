@@ -1,6 +1,7 @@
 import { getAppState, setAppState } from '../data/appStateRepository';
 import {
   type FocusCoachDiagnosis,
+  type FocusCoachAwayInsightType,
   type FocusCoachExperimentId,
   type FocusCoachExperimentStatus,
   type FocusCoachResult,
@@ -76,6 +77,36 @@ const EXPERIMENT_RESULT_COPY: Record<FocusCoachExperimentStatus, string> = {
   unclear: "Last week's experiment needs more sessions before it says much.",
 };
 
+const AWAY_INSIGHT_COPY: Record<FocusCoachAwayInsightType, string[]> = {
+  longer_breaks_cleaner: [
+    'Sessions after a longer break ran about {diff} cleaner.',
+    'Longer breaks are pairing with about {diff} more clean focus.',
+  ],
+  shorter_breaks_cleaner: [
+    'Sessions after shorter breaks ran about {diff} cleaner.',
+    'Shorter breaks are pairing with about {diff} more clean focus.',
+  ],
+  break_lengths_similar: [
+    'Clean focus looks similar after shorter and longer breaks.',
+    'Break length is not showing a clear clean-focus difference yet.',
+  ],
+};
+
+const HEADLINE_VARIANTS = {
+  up: [
+    'Your clean focus is up {delta} over your last 5 sessions.',
+    'Clean focus is up {delta} across your latest sessions.',
+  ],
+  down: [
+    'Your clean focus is down {delta} over your last 5 sessions.',
+    'Clean focus is lower by {delta} across your latest sessions.',
+  ],
+  steady: [
+    'Your clean focus is steady over your last 5 sessions.',
+    'Clean focus is holding steady across your latest sessions.',
+  ],
+} as const;
+
 function fillTemplate(template: string, slots: Slots) {
   return template.replace(/\{(now|before|suggested|experiment|n)\}/g, (_, key) =>
     slots[key as keyof Slots],
@@ -127,13 +158,25 @@ async function nextVariantIndex(
   return next;
 }
 
+async function nextCopyVariantIndex(key: string, validCount: number, count: number) {
+  const storedValue = await getAppState(key);
+  const next = selectCoachVariantIndex({
+    stored: parseStoredVariant(storedValue),
+    validCount,
+    variantCount: count,
+    stateChanged: false,
+  });
+  await setAppState(key, JSON.stringify({ index: next, validCount }));
+  return next;
+}
+
 export function experimentLabel(id: FocusCoachExperimentId | null) {
   return id ? EXPERIMENT_COPY[id] : EXPERIMENT_COPY.five_minute_break;
 }
 
 export async function buildFocusCoachCopy(
   result: FocusCoachResult,
-): Promise<Pick<FocusCoachResult, 'historyCopy' | 'suggestionCopy'>> {
+): Promise<Pick<FocusCoachResult, 'historyHeadline' | 'historyCopy' | 'suggestionCopy'>> {
   const variants = STATE_VARIANTS[result.state];
   const variantIndex = await nextVariantIndex(
     result.state,
@@ -173,19 +216,55 @@ export async function buildFocusCoachCopy(
   const experimentResultCopy = experimentResult
     ? EXPERIMENT_RESULT_COPY[experimentResult]
     : null;
+  const awayInsightCopy = result.awayInsight
+    ? (() => {
+        const variants = AWAY_INSIGHT_COPY[result.awayInsight.typeLine];
+        const index = Math.min(
+          variants.length - 1,
+          Math.abs(result.awayInsight.verifiedSessionCount) % variants.length,
+        );
+        return variants[index].replace(
+          '{diff}',
+          formatDuration(Math.abs(result.awayInsight.differenceSeconds)),
+        );
+      })()
+    : null;
   const fallbackCopy = `Current clean length is ${now}.`;
   const historyCopy = safeCopyLine(
-    [stateCopy, diagnosisCopy, experimentResultCopy]
+    [stateCopy, diagnosisCopy, experimentResultCopy, awayInsightCopy]
       .filter(Boolean)
       .join(' '),
     fallbackCopy,
   );
+  const historyHeadline =
+    result.cleanTrend?.deltaSeconds !== null &&
+    result.cleanTrend?.deltaSeconds !== undefined
+      ? await (async () => {
+          const delta = result.cleanTrend?.deltaSeconds ?? 0;
+          const direction =
+            Math.abs(delta) < 60 ? 'steady' : delta > 0 ? 'up' : 'down';
+          const variants = HEADLINE_VARIANTS[direction];
+          const index = await nextCopyVariantIndex(
+            `coach_headline_${direction}`,
+            result.validCount,
+            variants.length,
+          );
+          return safeCopyLine(
+            variants[index].replace(
+              '{delta}',
+              formatDuration(Math.abs(delta)),
+            ),
+            `Current clean length is ${now}.`,
+          );
+        })()
+      : null;
   const suggestionCopy =
     result.suggestionMinutes !== null
       ? `Suggested: ${result.suggestionMinutes} min`
       : null;
 
   return {
+    historyHeadline,
     historyCopy,
     suggestionCopy: suggestionCopy
       ? safeCopyLine(

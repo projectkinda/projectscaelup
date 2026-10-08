@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 import {
   experimentForDiagnosis,
   evaluateFocusCoach,
@@ -7,6 +9,8 @@ import {
   type FocusCoachResult,
   MIN_BASELINE_SESSIONS,
 } from '../domain/focusCoach';
+import { getAwayDisplay } from '../domain/awayTime';
+import { safeLoadFocusCoachAway } from '../domain/focusCoachAway';
 import { buildFocusCoachCopy } from '../domain/focusCoachCopy';
 import { judgeExperimentResult } from '../domain/focusCoachExperiment';
 import { getAppState, setAppState } from './appStateRepository';
@@ -19,10 +23,14 @@ type FocusCoachRow = {
   focus_seconds: number | null;
   first_distraction_type: FocusCoachDistractionType | null;
   pause_count: number | null;
+  paused_seconds: number | null;
   ended_early: number | null;
   duration_seconds: number;
   mode_id: string;
   platform: string | null;
+  ended_at: string | null;
+  after_session_away_seconds: number | null;
+  after_session_away_verified: number | null;
 };
 
 const COACH_EXPERIMENT_KEY = 'coach_experiment';
@@ -58,15 +66,34 @@ function mapRows(rows: FocusCoachRow[]) {
   return rows.map(row => ({
     id: row.id,
     startedAt: row.started_at,
+    endedAt: row.ended_at,
     cleanSeconds: row.clean_seconds,
     focusSeconds: row.focus_seconds,
     firstDistractionType: row.first_distraction_type,
     pauseCount: row.pause_count,
+    pausedSeconds: row.paused_seconds,
     endedEarly: row.ended_early === 1,
     durationSeconds: row.duration_seconds,
     modeId: row.mode_id,
     platform: row.platform,
+    afterSessionAwaySeconds: row.after_session_away_seconds,
+    afterSessionAwayVerified: row.after_session_away_verified === 1,
   }));
+}
+
+function latestSessionForAway(
+  rows: ReturnType<typeof mapRows>,
+  latestPlatform: string | null,
+) {
+  return rows
+    .filter(row => !latestPlatform || row.platform === latestPlatform)
+    .filter(row => row.endedAt)
+    .sort(
+      (a, b) =>
+        new Date(a.endedAt ?? '').getTime() -
+        new Date(b.endedAt ?? '').getTime(),
+    )
+    .at(-1);
 }
 
 async function resolveExperiment(
@@ -137,13 +164,16 @@ export async function loadFocusCoachData(): Promise<FocusCoachResult> {
              focus_seconds,
              first_distraction_type,
              pause_count,
+             paused_seconds,
              ended_early,
              duration_seconds,
              mode_id,
-             platform
+             platform,
+             ended_at,
+             after_session_away_seconds,
+             after_session_away_verified
       FROM sessions
-      WHERE focus_seconds >= 120
-        AND clean_seconds IS NOT NULL
+      WHERE focus_seconds IS NOT NULL
       ORDER BY started_at ASC;
     `,
   );
@@ -159,7 +189,12 @@ export async function loadFocusCoachData(): Promise<FocusCoachResult> {
     firstPass.diagnosis,
     firstPass.validCount,
   );
-  const result = evaluateFocusCoach(sessions, experiment);
+  const away = await safeLoadFocusCoachAway({
+    loadDisplay: getAwayDisplay,
+    latestSession: latestSessionForAway(sessions, firstPass.latestPlatform) ?? null,
+    platform: Platform.OS,
+  });
+  const result = evaluateFocusCoach(sessions, experiment, away);
   const copy = await buildFocusCoachCopy(result);
 
   return { ...result, ...copy };

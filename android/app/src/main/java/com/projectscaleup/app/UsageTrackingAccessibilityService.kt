@@ -16,14 +16,15 @@ class UsageTrackingAccessibilityService : AccessibilityService() {
     awayTimeTracker = AwayTimeTracker(applicationContext, packageName).also { tracker ->
       tracker.arm()
     }
-    screenReceiver = object : BroadcastReceiver() {
+    val receiver = object : BroadcastReceiver() {
       override fun onReceive(context: Context?, intent: Intent?) {
         when (intent?.action) {
           Intent.ACTION_SCREEN_ON -> awayTimeTracker?.handleScreenOn()
           Intent.ACTION_SCREEN_OFF -> awayTimeTracker?.handleScreenOff()
         }
       }
-    }.also { receiver ->
+    }
+    runCatching {
       registerReceiver(
         receiver,
         IntentFilter().apply {
@@ -31,6 +32,10 @@ class UsageTrackingAccessibilityService : AccessibilityService() {
           addAction(Intent.ACTION_SCREEN_OFF)
         },
       )
+    }.onSuccess {
+      screenReceiver = receiver
+    }.onFailure { error ->
+      android.util.Log.w("UsageTrackingService", "Failed to register screen receiver", error)
     }
   }
 
@@ -42,8 +47,12 @@ class UsageTrackingAccessibilityService : AccessibilityService() {
     val packageName = event.packageName?.toString() ?: return
     val className = event.className?.toString()
     UsageTrackingBridge.emitForegroundAppChanged(packageName)
-    awayTimeTracker?.handleWindowChanged(packageName)
     LockdownOverlayService.handleForegroundAppChanged(applicationContext, packageName, className)
+    runCatching {
+      awayTimeTracker?.handleWindowChanged(packageName)
+    }.onFailure { error ->
+      android.util.Log.w("UsageTrackingService", "Away-time tracker failed", error)
+    }
   }
 
   override fun onInterrupt() {
