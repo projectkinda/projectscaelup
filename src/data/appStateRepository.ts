@@ -24,3 +24,10 @@ export async function setAppState(
     [key, value],
   );
 }
+
+export async function removeAppState(key: string): Promise<void> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+
+  await database.runAsync('DELETE FROM app_state WHERE key = ?;', [key]);
+}

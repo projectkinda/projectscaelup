@@ -38,7 +38,6 @@ import {
   deletePresencePhotoQuietly,
   sweepPresencePhotoCacheQuietly,
 } from '../domain/frameCleanup';
-import { isPaidUser } from '../domain/paywall';
 import {
   MAX_PAUSE_SECONDS,
   MAX_PAUSES_PER_SESSION,
@@ -64,6 +63,7 @@ import {
   startSession,
   voidSession,
 } from '../domain/sessionHistory';
+import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { PreSessionReadinessScreen } from './PreSessionReadinessScreen';
 import { PostSessionSummaryScreen } from './PostSessionSummaryScreen';
 import { colors, layout } from '../theme/tokens';
@@ -205,7 +205,7 @@ export function HomeScreen({
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
-  const paidUser = isPaidUser();
+  const paidUser = useIsPaidUser();
   const fallbackModes = useMemo(() => getHomeModes(paidUser), [paidUser]);
   const [homeModes, setHomeModes] = useState(fallbackModes);
   const [activeModeId, setActiveModeId] = useState(fallbackModes[0].id);
@@ -297,7 +297,7 @@ export function HomeScreen({
     return () => {
       cancelled = true;
     };
-  }, [hasActiveSession, isActive]);
+  }, [hasActiveSession, isActive, paidUser]);
 
   // Reload whenever Home comes back into view so modes edited in Settings show up.
   useEffect(() => {

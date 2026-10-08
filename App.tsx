@@ -3,7 +3,11 @@ import { AppState, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { getAppState, setAppState } from './src/data/appStateRepository';
+import {
+  getAppState,
+  removeAppState,
+  setAppState,
+} from './src/data/appStateRepository';
 import { drainAwayLog, purgeOldAwayLog } from './src/domain/awayTime';
 import { sweepPresencePhotoCacheQuietly } from './src/domain/frameCleanup';
 import { reconcileScreenTime } from './src/domain/iosScreenTime';
@@ -11,7 +15,12 @@ import {
   getRequiredPermissionStatus,
   type RequiredPermissionStatus,
 } from './src/domain/onboardingState';
-import { DEV_FLAGS } from './src/domain/paywall';
+import {
+  DEV_FLAGS,
+  TIER_SWITCHER_ENABLED,
+  setTestTierOverride,
+  type TestTierOverride,
+} from './src/domain/paywall';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { OnboardingFlow } from './src/screens/onboarding/OnboardingFlow';
@@ -25,6 +34,11 @@ type LaunchGate = 'loading' | 'onboarding' | 'permissions' | 'ready';
 
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
 const ONBOARDING_STEP_KEY = 'onboarding_step';
+const TEST_TIER_OVERRIDE_KEY = 'test_tier_override';
+
+function parseStoredTier(value: string | null): TestTierOverride {
+  return value === 'free' || value === 'paid' ? value : null;
+}
 
 function App(): React.JSX.Element {
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
@@ -32,6 +46,7 @@ function App(): React.JSX.Element {
     useState<MainScreen>('home');
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [gate, setGate] = useState<LaunchGate>('loading');
+  const [tierReady, setTierReady] = useState(false);
   const [requiredPermissions, setRequiredPermissions] =
     useState<RequiredPermissionStatus | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
@@ -42,6 +57,36 @@ function App(): React.JSX.Element {
     purgeOldAwayLog().catch(error =>
       console.warn('Failed to purge old away-time rows:', error),
     );
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTestTierOverride() {
+      try {
+        if (!TIER_SWITCHER_ENABLED) {
+          setTestTierOverride(null);
+          await removeAppState(TEST_TIER_OVERRIDE_KEY);
+          return;
+        }
+
+        const stored = parseStoredTier(await getAppState(TEST_TIER_OVERRIDE_KEY));
+        setTestTierOverride(stored);
+      } catch (error) {
+        console.warn('Failed to load test tier override:', error);
+        setTestTierOverride(null);
+      } finally {
+        if (!cancelled) {
+          setTierReady(true);
+        }
+      }
+    }
+
+    loadTestTierOverride();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // iOS: a lock may have been due to change while the app was closed and the
@@ -139,7 +184,7 @@ function App(): React.JSX.Element {
     }
   };
 
-  if (gate === 'loading') {
+  if (gate === 'loading' || !tierReady) {
     return (
       <GestureHandlerRootView style={styles.root}>
         <SafeAreaProvider>

@@ -25,6 +25,7 @@ import {
   seedCoachSessions,
   type CoachSeedPattern,
 } from '../data/coachSeedRepository';
+import { setAppState } from '../data/appStateRepository';
 import {
   AppPickerList,
   SelectionMark,
@@ -53,8 +54,15 @@ import {
   isAwayTrackingOptedIn,
   setAwayTrackingEnabled,
 } from '../domain/awayTime';
-import { isPaidUser } from '../domain/paywall';
+import {
+  TIER_SWITCHER_ENABLED,
+  getTestTierOverride,
+  setTestTierOverride,
+  subscribeToTier,
+  type TestTierOverride,
+} from '../domain/paywall';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
+import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { colors, layout } from '../theme/tokens';
 
 type SettingsScreenProps = {
@@ -87,6 +95,7 @@ type PermissionRow = {
 const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 const MIN_GRACE_SECONDS = 3;
 const MAX_GRACE_SECONDS = 90;
+const TEST_TIER_OVERRIDE_KEY = 'test_tier_override';
 
 function formatGracePeriod(seconds: number) {
   if (seconds < 60) {
@@ -192,8 +201,18 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const [isPickingApp, setIsPickingApp] = useState(false);
   const [awayTrackingOptedIn, setAwayTrackingOptedIn] = useState(false);
   const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
-  const paidUser = isPaidUser();
+  const [testTierOverride, setLocalTestTierOverride] =
+    useState<TestTierOverride>(() => getTestTierOverride());
+  const paidUser = useIsPaidUser();
   const hasLoadedOnceRef = useRef(false);
+
+  useEffect(
+    () =>
+      subscribeToTier(tier => {
+        setLocalTestTierOverride(tier);
+      }),
+    [],
+  );
 
   const load = useCallback(async () => {
     if (!hasLoadedOnceRef.current) {
@@ -207,7 +226,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       overlayEnabled,
       awayTrackingEnabled,
     ] = await Promise.all([
-      loadSettingsData({ isPaidUser: isPaidUser() }),
+      loadSettingsData({ isPaidUser: paidUser }),
       getCameraPermissionAsync(),
       Platform.OS === 'android'
         ? UsageTrackingModule.isEnabled()
@@ -275,7 +294,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     setScreenTimeStatus(Platform.OS === 'ios' ? ScreenTime.getStatus() : null);
     hasLoadedOnceRef.current = true;
     setIsLoading(false);
-  }, []);
+  }, [paidUser]);
 
   useEffect(() => {
     load();
@@ -362,7 +381,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   );
 
   const handleAddApp = async () => {
-    const canAdd = await canAddAnotherFlaggedApp(isPaidUser());
+    const canAdd = await canAddAnotherFlaggedApp(paidUser);
     if (!canAdd) {
       onNavigate('paywall');
       return;
@@ -545,6 +564,16 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     } catch (error) {
       console.warn('Failed to clear seeded coach sessions:', error);
       Alert.alert('Unable to clear seeded sessions', 'Try again in a moment.');
+    }
+  };
+
+  const setTestTier = async (tier: Exclude<TestTierOverride, null>) => {
+    setLocalTestTierOverride(tier);
+    setTestTierOverride(tier);
+    try {
+      await setAppState(TEST_TIER_OVERRIDE_KEY, tier);
+    } catch (error) {
+      console.warn('Failed to save test tier override:', error);
     }
   };
 
@@ -879,6 +908,49 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
+                    {TIER_SWITCHER_ENABLED ? (
+                      <View style={styles.row}>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowTitle}>
+                            Test tier (testing only)
+                          </Text>
+                          <Text style={styles.rowDetail}>
+                            {testTierOverride
+                              ? `TEST: ${testTierOverride.toUpperCase()}`
+                              : 'No test override set'}
+                          </Text>
+                        </View>
+                        <View style={styles.tierSwitcher}>
+                          {(['free', 'paid'] as const).map(tier => {
+                            const selected =
+                              (testTierOverride ??
+                                (paidUser ? 'paid' : 'free')) === tier;
+                            return (
+                              <Pressable
+                                key={tier}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                onPress={() => setTestTier(tier)}
+                                style={({ pressed }) => [
+                                  styles.tierOption,
+                                  selected && styles.tierOptionSelected,
+                                  pressed && styles.pressed,
+                                ]}
+                              >
+                                <Text
+                                  style={[
+                                    styles.tierOptionText,
+                                    selected && styles.tierOptionTextSelected,
+                                  ]}
+                                >
+                                  {tier === 'free' ? 'Free' : 'Paid'}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ) : null}
                     <View style={styles.row}>
                       <View style={styles.rowTextWrap}>
                         <Text style={styles.rowTitle}>Current tier</Text>
@@ -1577,6 +1649,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   premiumText: { color: colors.rewardAmber },
+  tierSwitcher: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    overflow: 'hidden',
+  },
+  tierOption: {
+    minWidth: 58,
+    minHeight: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.module,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderRightColor: CARD_BORDER,
+  },
+  tierOptionSelected: {
+    backgroundColor: colors.ink,
+  },
+  tierOptionText: {
+    color: colors.ink,
+    fontSize: 13,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  tierOptionTextSelected: {
+    color: colors.background,
+  },
   pressed: { opacity: 0.55 },
   modalBackdrop: {
     flex: 1,

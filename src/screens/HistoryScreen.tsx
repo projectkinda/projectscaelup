@@ -26,8 +26,8 @@ import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { FlaggedAppLabel } from '../../modules/screen-time';
 import type { FocusCoachResult } from '../domain/focusCoach';
 import { iosAppKey } from '../domain/iosScreenTime';
-import { isPaidUser } from '../domain/paywall';
 import { formatDuration } from '../domain/sessionHistory';
+import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { colors, layout } from '../theme/tokens';
 
 type HistoryScreenProps = {
@@ -548,6 +548,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
     INITIAL_VISIBLE_SESSIONS,
   );
   const hasLoadedOnceRef = useRef(false);
+  const paidUser = useIsPaidUser();
 
   // Loads on mount, then silently revalidates whenever the tab comes back
   // into view -- never re-blanks the screen to a spinner on a revisit, since
@@ -566,7 +567,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
       setErrorMessage(null);
 
       try {
-        const data = await loadHistoryData({ isPaidUser: isPaidUser() });
+        const data = await loadHistoryData({ isPaidUser: paidUser });
         if (!cancelled) {
           setHistory(data);
         }
@@ -601,7 +602,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
     return () => {
       cancelled = true;
     };
-  }, [isActive]);
+  }, [isActive, paidUser]);
 
   const hasSessions = (history?.sessions.length ?? 0) > 0;
   const isFirstRunHistory =
@@ -616,7 +617,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
       return;
     }
 
-    if (!isPaidUser() && history.hasHiddenHistory) {
+    if (!paidUser && history.hasHiddenHistory) {
       onNavigate('paywall');
       return;
     }
@@ -686,7 +687,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
                 <View style={styles.section}>
                   <FocusCoachCard
                     coach={focusCoach}
-                    paidUser={isPaidUser()}
+                    paidUser={paidUser}
                     onUpgrade={() => onNavigate('paywall')}
                   />
                 </View>
