@@ -15,7 +15,7 @@ import {
   selectCoachVariantIndex,
   type StoredCoachVariant,
 } from './focusCoachCopyRules';
-import { formatDuration } from './sessionHistory';
+import { formatDuration } from './durationFormat';
 
 type Slots = {
   now: string;

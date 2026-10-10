@@ -38,6 +38,10 @@ import {
   experimentLabel,
   formatAwayInsightCopy,
 } from '../domain/focusCoachCopy';
+import {
+  formatDiagnosisDetail,
+  lockedTeaserCopy,
+} from '../domain/focusCoachCopyRules';
 import { formatAwayTime } from '../domain/awayTime';
 import { iosAppKey } from '../domain/iosScreenTime';
 import { DEV_FLAGS } from '../domain/paywall';
@@ -395,23 +399,6 @@ function sectionTitle(id: FocusCoachCardSectionId) {
   }
 }
 
-function diagnosisLine(coach: FocusCoachResult) {
-  switch (coach.diagnosis) {
-    case 'early_breaker':
-      return 'The first break tends to arrive early.';
-    case 'late_breaker':
-      return 'The first break tends to come late.';
-    case 'best_window':
-      return 'Some times of day are cleaner than others.';
-    case 'app_heavy':
-      return 'Flagged apps are the most common first break.';
-    case 'camera_heavy':
-      return 'Camera absence is the most common first break.';
-    case null:
-      return null;
-  }
-}
-
 function endedByLine(coach: FocusCoachResult) {
   switch (coach.lastSession?.endedBy) {
     case 'camera_absence':
@@ -449,25 +436,6 @@ function awayLine(coach: FocusCoachResult) {
   return `Away since your last use: ${
     coach.away.display === 'at_least' ? 'at least' : 'about'
   } ${formatAwayTime(coach.away.sinceLastUseSeconds)}`;
-}
-
-function lockedTeaser(id: FocusCoachCardSectionId, coach: FocusCoachResult) {
-  switch (id) {
-    case 'clean_trend':
-      return coach.cleanTrend
-        ? `Last ${coach.cleanTrend.points.length} sessions`
-        : null;
-    case 'last_session':
-      return coach.lastSession
-        ? `${formatDuration(coach.lastSession.cleanSeconds)} clean`
-        : null;
-    case 'away':
-      return awayLine(coach);
-    case 'diagnosis':
-      return diagnosisLine(coach);
-    case 'experiment':
-      return coach.experiment ? experimentLabel(coach.experiment.id) : null;
-  }
 }
 
 function LockIcon() {
@@ -518,7 +486,7 @@ function LockedCoachSection({
   coach: FocusCoachResult;
   onPress: () => void;
 }) {
-  const teaser = lockedTeaser(id, coach);
+  const teaser = lockedTeaserCopy(id, coach);
   if (!teaser) {
     return null;
   }
@@ -616,7 +584,9 @@ function PaidCoachSection({
       );
     }
     case 'diagnosis': {
-      const line = diagnosisLine(coach);
+      const line = coach.diagnosisDetail
+        ? formatDiagnosisDetail(coach.diagnosisDetail, coach.weakEvidence)
+        : null;
       if (!line) return null;
       return (
         <View style={styles.coachDetailCard}>

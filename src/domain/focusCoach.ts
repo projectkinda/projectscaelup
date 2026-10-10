@@ -32,6 +32,8 @@ export type FocusCoachDiagnosis =
   | 'app_heavy'
   | 'camera_heavy';
 
+export type FocusCoachWindow = 'morning' | 'afternoon' | 'evening';
+
 export type FocusCoachExperimentId =
   | 'morning_session'
   | 'shorter_sessions'
@@ -78,6 +80,7 @@ export type FocusCoachResult = {
   away: FocusCoachAway | null;
   awayInsight: FocusCoachAwayInsight | null;
   diagnosis: FocusCoachDiagnosis | null;
+  diagnosisDetail: FocusCoachDiagnosisDetail | null;
   weakEvidence: boolean;
   primaryBreak: Exclude<FocusCoachDistractionType, 'pause_overrun'> | null;
   experiment: FocusCoachExperiment | null;
@@ -126,6 +129,37 @@ export type FocusCoachAwayInsight = {
   differenceSeconds: number;
   differencePct: number;
 };
+
+export type FocusCoachDiagnosisDetail =
+  | {
+      kind: 'early_breaker';
+      typicalFirstBreakSeconds: number;
+      typicalPlannedSeconds: number;
+      brokenCount: number;
+    }
+  | {
+      kind: 'late_breaker';
+      typicalFirstBreakSeconds: number;
+      typicalPlannedSeconds: number;
+      brokenCount: number;
+    }
+  | {
+      kind: 'best_window';
+      window: FocusCoachWindow;
+      windowMedianCleanSeconds: number;
+      overallMedianCleanSeconds: number;
+      sessionsInWindow: number;
+    }
+  | {
+      kind: 'app_heavy';
+      sharePct: number;
+      brokenCount: number;
+    }
+  | {
+      kind: 'camera_heavy';
+      sharePct: number;
+      brokenCount: number;
+    };
 
 type ValidSession = FocusCoachSession & {
   cleanSeconds: number;
@@ -204,12 +238,41 @@ function getLocalHour(startedAt: string) {
   return new Date(startedAt).getHours();
 }
 
-function diagnose(valid: ValidSession[]): DiagnosisCandidate | null {
-  const broken = valid.filter(
+function getSessionWindow(startedAt: string): FocusCoachWindow {
+  const hour = getLocalHour(startedAt);
+  if (hour < 12) {
+    return 'morning';
+  }
+  if (hour < 17) {
+    return 'afternoon';
+  }
+  return 'evening';
+}
+
+function getBrokenSessions(valid: ValidSession[]) {
+  return valid.filter(
     session =>
       session.firstDistractionType !== null &&
       session.firstDistractionType !== 'pause_overrun',
   );
+}
+
+function getTimeBuckets(valid: ValidSession[]) {
+  const buckets: Record<FocusCoachWindow, ValidSession[]> = {
+    morning: [],
+    afternoon: [],
+    evening: [],
+  };
+
+  for (const session of valid) {
+    buckets[getSessionWindow(session.startedAt)].push(session);
+  }
+
+  return buckets;
+}
+
+function diagnose(valid: ValidSession[]): DiagnosisCandidate | null {
+  const broken = getBrokenSessions(valid);
 
   if (broken.length >= DIAG_MIN_SESSIONS) {
     const earlyCount = broken.filter(
@@ -227,21 +290,7 @@ function diagnose(valid: ValidSession[]): DiagnosisCandidate | null {
     }
   }
 
-  const buckets = {
-    morning: [] as ValidSession[],
-    afternoon: [] as ValidSession[],
-    evening: [] as ValidSession[],
-  };
-  for (const session of valid) {
-    const hour = getLocalHour(session.startedAt);
-    if (hour < 12) {
-      buckets.morning.push(session);
-    } else if (hour < 17) {
-      buckets.afternoon.push(session);
-    } else {
-      buckets.evening.push(session);
-    }
-  }
+  const buckets = getTimeBuckets(valid);
 
   const overallMedian = medianCleanSeconds(valid);
   const bucketMedians = Object.values(buckets)
@@ -274,6 +323,93 @@ function diagnose(valid: ValidSession[]): DiagnosisCandidate | null {
   ).length;
   if (cameraBreaks / broken.length >= 0.7) {
     return { diagnosis: 'camera_heavy', evidenceCount: broken.length };
+  }
+
+  return null;
+}
+
+function buildDiagnosisDetail(
+  valid: ValidSession[],
+  diagnosis: FocusCoachDiagnosis | null,
+): FocusCoachDiagnosisDetail | null {
+  if (diagnosis === null) {
+    return null;
+  }
+
+  const broken = getBrokenSessions(valid);
+  if (diagnosis === 'early_breaker' || diagnosis === 'late_breaker') {
+    const typicalFirstBreakSeconds = median(
+      broken.map(session => session.cleanSeconds),
+    );
+    const typicalPlannedSeconds = median(
+      broken.map(session => session.durationSeconds),
+    );
+    if (
+      typicalFirstBreakSeconds === null ||
+      typicalPlannedSeconds === null
+    ) {
+      return null;
+    }
+
+    return {
+      kind: diagnosis,
+      typicalFirstBreakSeconds,
+      typicalPlannedSeconds,
+      brokenCount: broken.length,
+    };
+  }
+
+  if (diagnosis === 'best_window') {
+    const buckets = getTimeBuckets(valid);
+    const overallMedianCleanSeconds = medianCleanSeconds(valid);
+    const bucketDetails = (Object.keys(buckets) as FocusCoachWindow[])
+      .map(window => ({
+        window,
+        sessions: buckets[window],
+        medianCleanSeconds: medianCleanSeconds(buckets[window]),
+      }))
+      .filter(
+        (
+          detail,
+        ): detail is {
+          window: FocusCoachWindow;
+          sessions: ValidSession[];
+          medianCleanSeconds: number;
+        } =>
+          detail.sessions.length >= 3 &&
+          detail.medianCleanSeconds !== null,
+      );
+
+    if (overallMedianCleanSeconds === null || bucketDetails.length === 0) {
+      return null;
+    }
+
+    const best = bucketDetails.reduce((currentBest, detail) =>
+      detail.medianCleanSeconds > currentBest.medianCleanSeconds
+        ? detail
+        : currentBest,
+    );
+
+    return {
+      kind: 'best_window',
+      window: best.window,
+      windowMedianCleanSeconds: best.medianCleanSeconds,
+      overallMedianCleanSeconds,
+      sessionsInWindow: best.sessions.length,
+    };
+  }
+
+  if (diagnosis === 'app_heavy' || diagnosis === 'camera_heavy') {
+    const target =
+      diagnosis === 'app_heavy' ? 'app_touched' : 'camera_absence';
+    const matching = broken.filter(
+      session => session.firstDistractionType === target,
+    ).length;
+    return {
+      kind: diagnosis,
+      sharePct: broken.length > 0 ? (matching / broken.length) * 100 : 0,
+      brokenCount: broken.length,
+    };
   }
 
   return null;
@@ -533,6 +669,7 @@ export function evaluateFocusCoach(
   }
 
   const diagnosed = diagnose(valid);
+  const diagnosis = diagnosed?.diagnosis ?? null;
   const suggestionMinutes = suggestMinutes(valid, state);
   const cleanTrend = buildCleanTrend(valid);
 
@@ -548,7 +685,8 @@ export function evaluateFocusCoach(
     lastSession: buildLastSession(platformSessions),
     away,
     awayInsight: buildAwayInsight(valid),
-    diagnosis: diagnosed?.diagnosis ?? null,
+    diagnosis,
+    diagnosisDetail: buildDiagnosisDetail(valid, diagnosis),
     weakEvidence: diagnosed ? diagnosed.evidenceCount < 8 : false,
     primaryBreak: mostCommonBreak(valid),
     experiment,

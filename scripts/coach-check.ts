@@ -7,6 +7,8 @@ import {
 } from '../src/domain/focusCoach';
 import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
+  formatDiagnosisDetail,
+  lockedTeaserCopy,
   safeCopyLine,
   selectHistoryHeadlineCopy,
   selectCoachVariantIndex,
@@ -126,6 +128,11 @@ function coachResult(
       differencePct: 15,
     },
     diagnosis: 'app_heavy',
+    diagnosisDetail: {
+      kind: 'app_heavy',
+      sharePct: 70,
+      brokenCount: 10,
+    },
     weakEvidence: false,
     primaryBreak: 'app_touched',
     experiment: {
@@ -394,18 +401,164 @@ test("lastSession endedBy distinguishes pause_overrun", () => {
 test('best_window can trigger from clean sessions', () => {
   const result = evaluateFocusCoach([
     ...many(3, () => 30 * 60, index => ({
-      startedAt: new Date(Date.UTC(2026, 9, index + 1, 8)).toISOString(),
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 2)).toISOString(),
     })),
     ...many(3, () => 15 * 60, index => ({
       id: 10 + index,
-      startedAt: new Date(Date.UTC(2026, 9, index + 1, 14)).toISOString(),
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 8)).toISOString(),
     })),
     ...many(3, () => 15 * 60, index => ({
       id: 20 + index,
-      startedAt: new Date(Date.UTC(2026, 9, index + 1, 20)).toISOString(),
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 15)).toISOString(),
     })),
   ]);
   assert(result.diagnosis === 'best_window', `got ${result.diagnosis}`);
+});
+
+test('diagnosisDetail is null when diagnosis is null', () => {
+  const result = evaluateFocusCoach(many(6, () => 20 * 60));
+  assert(result.diagnosis === null, `got ${result.diagnosis}`);
+  assert(result.diagnosisDetail === null, 'expected null detail');
+});
+
+test('early_breaker diagnosisDetail medians match fixture', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => [4, 6, 8, 4, 6, 8][index] * 60, index => ({
+      firstDistractionType: 'app_touched',
+      durationSeconds: [20, 30, 40, 20, 30, 40][index] * 60,
+      focusSeconds: [20, 30, 40, 20, 30, 40][index] * 60,
+    })),
+  );
+  assert(result.diagnosis === 'early_breaker', `got ${result.diagnosis}`);
+  assert(result.diagnosisDetail?.kind === 'early_breaker', `got ${result.diagnosisDetail?.kind}`);
+  if (result.diagnosisDetail?.kind !== 'early_breaker') return;
+  assert(result.diagnosisDetail.typicalFirstBreakSeconds === 6 * 60, `got ${result.diagnosisDetail.typicalFirstBreakSeconds}`);
+  assert(result.diagnosisDetail.typicalPlannedSeconds === 30 * 60, `got ${result.diagnosisDetail.typicalPlannedSeconds}`);
+  assert(result.diagnosisDetail.brokenCount === 6, `got ${result.diagnosisDetail.brokenCount}`);
+});
+
+test('late_breaker diagnosisDetail medians match fixture', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => [18, 20, 22, 18, 20, 22][index] * 60, () => ({
+      firstDistractionType: 'camera_absence',
+      durationSeconds: 25 * 60,
+      focusSeconds: 25 * 60,
+    })),
+  );
+  assert(result.diagnosis === 'late_breaker', `got ${result.diagnosis}`);
+  assert(result.diagnosisDetail?.kind === 'late_breaker', `got ${result.diagnosisDetail?.kind}`);
+  if (result.diagnosisDetail?.kind !== 'late_breaker') return;
+  assert(result.diagnosisDetail.typicalFirstBreakSeconds === 20 * 60, `got ${result.diagnosisDetail.typicalFirstBreakSeconds}`);
+  assert(result.diagnosisDetail.typicalPlannedSeconds === 25 * 60, `got ${result.diagnosisDetail.typicalPlannedSeconds}`);
+  assert(result.diagnosisDetail.brokenCount === 6, `got ${result.diagnosisDetail.brokenCount}`);
+});
+
+test('best_window diagnosisDetail names the right window and medians', () => {
+  const result = evaluateFocusCoach([
+    ...many(3, () => 30 * 60, index => ({
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 2)).toISOString(),
+    })),
+    ...many(3, () => 15 * 60, index => ({
+      id: 10 + index,
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 8)).toISOString(),
+    })),
+    ...many(3, () => 15 * 60, index => ({
+      id: 20 + index,
+      startedAt: new Date(Date.UTC(2026, 9, index + 1, 15)).toISOString(),
+    })),
+  ]);
+  assert(result.diagnosisDetail?.kind === 'best_window', `got ${result.diagnosisDetail?.kind}`);
+  if (result.diagnosisDetail?.kind !== 'best_window') return;
+  assert(result.diagnosisDetail.window === 'morning', `got ${result.diagnosisDetail.window}`);
+  assert(result.diagnosisDetail.windowMedianCleanSeconds === 30 * 60, `got ${result.diagnosisDetail.windowMedianCleanSeconds}`);
+  assert(result.diagnosisDetail.overallMedianCleanSeconds === 15 * 60, `got ${result.diagnosisDetail.overallMedianCleanSeconds}`);
+  assert(result.diagnosisDetail.sessionsInWindow === 3, `got ${result.diagnosisDetail.sessionsInWindow}`);
+});
+
+test('app_heavy diagnosisDetail sharePct matches fixture', () => {
+  const result = evaluateFocusCoach(
+    many(10, () => 15 * 60, index => ({
+      firstDistractionType: index < 7 ? 'app_touched' : 'camera_absence',
+      durationSeconds: 30 * 60,
+    })),
+  );
+  assert(result.diagnosis === 'app_heavy', `got ${result.diagnosis}`);
+  assert(result.diagnosisDetail?.kind === 'app_heavy', `got ${result.diagnosisDetail?.kind}`);
+  if (result.diagnosisDetail?.kind !== 'app_heavy') return;
+  assert(result.diagnosisDetail.sharePct === 70, `got ${result.diagnosisDetail.sharePct}`);
+  assert(result.diagnosisDetail.brokenCount === 10, `got ${result.diagnosisDetail.brokenCount}`);
+});
+
+test('camera_heavy diagnosisDetail sharePct matches fixture', () => {
+  const result = evaluateFocusCoach(
+    many(10, () => 15 * 60, index => ({
+      firstDistractionType: index < 7 ? 'camera_absence' : 'app_touched',
+      durationSeconds: 30 * 60,
+    })),
+  );
+  assert(result.diagnosis === 'camera_heavy', `got ${result.diagnosis}`);
+  assert(result.diagnosisDetail?.kind === 'camera_heavy', `got ${result.diagnosisDetail?.kind}`);
+  if (result.diagnosisDetail?.kind !== 'camera_heavy') return;
+  assert(result.diagnosisDetail.sharePct === 70, `got ${result.diagnosisDetail.sharePct}`);
+  assert(result.diagnosisDetail.brokenCount === 10, `got ${result.diagnosisDetail.brokenCount}`);
+});
+
+test('formatDiagnosisDetail includes evidence count and weak signal copy only when weak', () => {
+  const details = [
+    {
+      detail: {
+        kind: 'early_breaker' as const,
+        typicalFirstBreakSeconds: 6 * 60,
+        typicalPlannedSeconds: 25 * 60,
+        brokenCount: 6,
+      },
+      count: 6,
+    },
+    {
+      detail: {
+        kind: 'late_breaker' as const,
+        typicalFirstBreakSeconds: 21 * 60,
+        typicalPlannedSeconds: 25 * 60,
+        brokenCount: 7,
+      },
+      count: 7,
+    },
+    {
+      detail: {
+        kind: 'best_window' as const,
+        window: 'morning' as const,
+        windowMedianCleanSeconds: 30 * 60,
+        overallMedianCleanSeconds: 21 * 60,
+        sessionsInWindow: 3,
+      },
+      count: 3,
+    },
+    {
+      detail: {
+        kind: 'app_heavy' as const,
+        sharePct: 70,
+        brokenCount: 10,
+      },
+      count: 10,
+    },
+    {
+      detail: {
+        kind: 'camera_heavy' as const,
+        sharePct: 70,
+        brokenCount: 10,
+      },
+      count: 10,
+    },
+  ];
+
+  for (const item of details) {
+    const strong = formatDiagnosisDetail(item.detail, false);
+    const weak = formatDiagnosisDetail(item.detail, true);
+    assert(strong.includes(`Based on ${item.count} sessions.`), strong);
+    assert(!strong.includes('Early signal'), strong);
+    assert(weak.includes(`Based on ${item.count} sessions.`), weak);
+    assert(weak.includes('Early signal'), weak);
+  }
 });
 
 test('away hidden maps to null', () => {
@@ -702,6 +855,35 @@ test('coach card selector: no lastSession hides last session section', () => {
     platform: 'android',
   });
   assert(!selected.sections.some(section => section.id === 'last_session'), 'last session should be hidden');
+});
+
+test('locked teasers do not leak diagnosis paid content', () => {
+  const result = coachResult();
+  const teaser = lockedTeaserCopy('diagnosis', result);
+  const paidText = result.diagnosisDetail
+    ? formatDiagnosisDetail(result.diagnosisDetail, result.weakEvidence)
+    : null;
+  assert(teaser !== null, 'expected teaser');
+  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
+  assert(teaser !== paidText, 'teaser matched paid text');
+});
+
+test('locked teasers do not leak experiment paid content', () => {
+  const result = coachResult();
+  const teaser = lockedTeaserCopy('experiment', result);
+  const paidText = 'put your phone out of reach';
+  assert(teaser !== null, 'expected teaser');
+  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
+  assert(teaser !== paidText, 'teaser matched paid text');
+});
+
+test('locked teasers do not leak away paid content', () => {
+  const result = coachResult();
+  const teaser = lockedTeaserCopy('away', result);
+  const paidText = 'Away since your last use: about 1 h 30 min';
+  assert(teaser !== null, 'expected teaser');
+  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
+  assert(teaser !== paidText, 'teaser matched paid text');
 });
 
 async function main() {
