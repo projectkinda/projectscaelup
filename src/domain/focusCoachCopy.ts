@@ -1,6 +1,7 @@
 import { getAppState, setAppState } from '../data/appStateRepository';
 import {
   type FocusCoachDiagnosis,
+  type FocusCoachAwayInsight,
   type FocusCoachAwayInsightType,
   type FocusCoachExperimentId,
   type FocusCoachExperimentStatus,
@@ -10,6 +11,7 @@ import {
 import {
   coachVariantKey,
   safeCopyLine,
+  selectHistoryHeadlineCopy,
   selectCoachVariantIndex,
   type StoredCoachVariant,
 } from './focusCoachCopyRules';
@@ -80,32 +82,17 @@ const EXPERIMENT_RESULT_COPY: Record<FocusCoachExperimentStatus, string> = {
 const AWAY_INSIGHT_COPY: Record<FocusCoachAwayInsightType, string[]> = {
   longer_breaks_cleaner: [
     'Sessions after a longer break ran about {diff} cleaner.',
-    'Longer breaks are pairing with about {diff} more clean focus.',
+    'Longer breaks are pairing with about {diff} cleaner focus.',
   ],
   shorter_breaks_cleaner: [
     'Sessions after shorter breaks ran about {diff} cleaner.',
-    'Shorter breaks are pairing with about {diff} more clean focus.',
+    'Shorter breaks are pairing with about {diff} cleaner focus.',
   ],
   break_lengths_similar: [
     'Clean focus looks similar after shorter and longer breaks.',
     'Break length is not showing a clear clean-focus difference yet.',
   ],
 };
-
-const HEADLINE_VARIANTS = {
-  up: [
-    'Your clean focus is up {delta} over your last 5 sessions.',
-    'Clean focus is up {delta} across your latest sessions.',
-  ],
-  down: [
-    'Your clean focus is down {delta} over your last 5 sessions.',
-    'Clean focus is lower by {delta} across your latest sessions.',
-  ],
-  steady: [
-    'Your clean focus is steady over your last 5 sessions.',
-    'Clean focus is holding steady across your latest sessions.',
-  ],
-} as const;
 
 function fillTemplate(template: string, slots: Slots) {
   return template.replace(/\{(now|before|suggested|experiment|n)\}/g, (_, key) =>
@@ -158,20 +145,47 @@ async function nextVariantIndex(
   return next;
 }
 
-async function nextCopyVariantIndex(key: string, validCount: number, count: number) {
+async function nextHistoryHeadline(deltaSeconds: number, validCount: number) {
+  const probe = selectHistoryHeadlineCopy({
+    deltaSeconds,
+    stored: null,
+    validCount,
+    formatDelta: formatDuration,
+  });
+  if (!probe) {
+    return null;
+  }
+
+  const key = `coach_headline_${probe.direction}`;
   const storedValue = await getAppState(key);
-  const next = selectCoachVariantIndex({
+  const selected = selectHistoryHeadlineCopy({
+    deltaSeconds,
     stored: parseStoredVariant(storedValue),
     validCount,
-    variantCount: count,
-    stateChanged: false,
+    formatDelta: formatDuration,
   });
-  await setAppState(key, JSON.stringify({ index: next, validCount }));
-  return next;
+  if (!selected) {
+    return null;
+  }
+
+  await setAppState(key, JSON.stringify({ index: selected.index, validCount }));
+  return selected.text;
 }
 
 export function experimentLabel(id: FocusCoachExperimentId | null) {
   return id ? EXPERIMENT_COPY[id] : EXPERIMENT_COPY.five_minute_break;
+}
+
+export function formatAwayInsightCopy(insight: FocusCoachAwayInsight) {
+  const variants = AWAY_INSIGHT_COPY[insight.typeLine];
+  const index = Math.min(
+    variants.length - 1,
+    Math.abs(insight.verifiedSessionCount) % variants.length,
+  );
+  return variants[index].replace(
+    '{diff}',
+    `${Math.round(Math.abs(insight.differencePct))}%`,
+  );
 }
 
 export async function buildFocusCoachCopy(
@@ -217,17 +231,7 @@ export async function buildFocusCoachCopy(
     ? EXPERIMENT_RESULT_COPY[experimentResult]
     : null;
   const awayInsightCopy = result.awayInsight
-    ? (() => {
-        const variants = AWAY_INSIGHT_COPY[result.awayInsight.typeLine];
-        const index = Math.min(
-          variants.length - 1,
-          Math.abs(result.awayInsight.verifiedSessionCount) % variants.length,
-        );
-        return variants[index].replace(
-          '{diff}',
-          formatDuration(Math.abs(result.awayInsight.differenceSeconds)),
-        );
-      })()
+    ? formatAwayInsightCopy(result.awayInsight)
     : null;
   const fallbackCopy = `Current clean length is ${now}.`;
   const historyCopy = safeCopyLine(
@@ -241,19 +245,9 @@ export async function buildFocusCoachCopy(
     result.cleanTrend?.deltaSeconds !== undefined
       ? await (async () => {
           const delta = result.cleanTrend?.deltaSeconds ?? 0;
-          const direction =
-            Math.abs(delta) < 60 ? 'steady' : delta > 0 ? 'up' : 'down';
-          const variants = HEADLINE_VARIANTS[direction];
-          const index = await nextCopyVariantIndex(
-            `coach_headline_${direction}`,
-            result.validCount,
-            variants.length,
-          );
+          const headline = await nextHistoryHeadline(delta, result.validCount);
           return safeCopyLine(
-            variants[index].replace(
-              '{delta}',
-              formatDuration(Math.abs(delta)),
-            ),
+            headline ?? `Current clean length is ${now}.`,
             `Current clean length is ${now}.`,
           );
         })()

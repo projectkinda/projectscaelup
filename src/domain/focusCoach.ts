@@ -10,6 +10,8 @@ export const STEP_MINUTES = 5;
 export const MIN_SUGGEST_MIN = 10;
 export const MAX_SUGGEST_MIN = 59;
 export const DIAG_MIN_SESSIONS = 6;
+export const AWAY_BREAK_SPLIT_SECONDS = 60 * 60;
+export const AWAY_SIMILAR_THRESHOLD_PCT = 10;
 
 export type FocusCoachDistractionType =
   | 'camera_absence'
@@ -94,6 +96,7 @@ export type FocusCoachLastSession = {
   plannedSeconds: number | null;
   focusSeconds: number;
   cleanSeconds: number;
+  endedBy: FocusCoachDistractionType | null;
   firstDistractionType: 'camera_absence' | 'app_touched' | null;
   firstDistractionAtSeconds: number | null;
   pauseCount: number;
@@ -118,7 +121,10 @@ export type FocusCoachAwayInsight = {
   typeLine: FocusCoachAwayInsightType;
   longBreakMedianCleanSeconds: number;
   shortBreakMedianCleanSeconds: number;
+  longBreakMedianCleanRatio: number;
+  shortBreakMedianCleanRatio: number;
   differenceSeconds: number;
+  differencePct: number;
 };
 
 type ValidSession = FocusCoachSession & {
@@ -370,7 +376,7 @@ function buildLastSession(
   const latest = [...sessions]
     .filter(
       (session): session is FocusSessionWithClean & { endedAt: string } =>
-        session.focusSeconds !== null &&
+        (session.focusSeconds ?? 0) >= MIN_FOCUS_SECONDS &&
         session.cleanSeconds !== null &&
         typeof session.endedAt === 'string' &&
         session.endedAt.length > 0,
@@ -396,6 +402,7 @@ function buildLastSession(
     plannedSeconds: latest.durationSeconds ?? null,
     focusSeconds: latest.focusSeconds,
     cleanSeconds: latest.cleanSeconds,
+    endedBy: latest.firstDistractionType,
     firstDistractionType,
     firstDistractionAtSeconds: firstDistractionType ? latest.cleanSeconds : null,
     pauseCount: latest.pauseCount ?? 0,
@@ -417,10 +424,10 @@ function buildAwayInsight(valid: ValidSession[]): FocusCoachAwayInsight | null {
   }
 
   const longBreaks = verified.filter(
-    session => (session.afterSessionAwaySeconds ?? 0) >= 60 * 60,
+    session => (session.afterSessionAwaySeconds ?? 0) >= AWAY_BREAK_SPLIT_SECONDS,
   );
   const shortBreaks = verified.filter(
-    session => (session.afterSessionAwaySeconds ?? 0) < 60 * 60,
+    session => (session.afterSessionAwaySeconds ?? 0) < AWAY_BREAK_SPLIT_SECONDS,
   );
 
   if (longBreaks.length < 3 || shortBreaks.length < 3) {
@@ -432,12 +439,22 @@ function buildAwayInsight(valid: ValidSession[]): FocusCoachAwayInsight | null {
   if (longMedian === null || shortMedian === null) {
     return null;
   }
+  const longMedianRatio = median(
+    longBreaks.map(session => session.cleanSeconds / session.durationSeconds),
+  );
+  const shortMedianRatio = median(
+    shortBreaks.map(session => session.cleanSeconds / session.durationSeconds),
+  );
+  if (longMedianRatio === null || shortMedianRatio === null) {
+    return null;
+  }
 
   const differenceSeconds = longMedian - shortMedian;
+  const differencePct = (longMedianRatio - shortMedianRatio) * 100;
   const typeLine: FocusCoachAwayInsightType =
-    Math.abs(differenceSeconds) < IMPROVE_MIN_SECONDS
+    Math.abs(differencePct) < AWAY_SIMILAR_THRESHOLD_PCT
       ? 'break_lengths_similar'
-      : differenceSeconds > 0
+      : differencePct > 0
         ? 'longer_breaks_cleaner'
         : 'shorter_breaks_cleaner';
 
@@ -446,7 +463,10 @@ function buildAwayInsight(valid: ValidSession[]): FocusCoachAwayInsight | null {
     typeLine,
     longBreakMedianCleanSeconds: longMedian,
     shortBreakMedianCleanSeconds: shortMedian,
+    longBreakMedianCleanRatio: longMedianRatio,
+    shortBreakMedianCleanRatio: shortMedianRatio,
     differenceSeconds,
+    differencePct,
   };
 }
 

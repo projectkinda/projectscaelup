@@ -1,11 +1,14 @@
 import {
   evaluateFocusCoach,
+  type FocusCoachResult,
   type FocusCoachDistractionType,
   type FocusCoachExperiment,
   type FocusCoachSession,
 } from '../src/domain/focusCoach';
+import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
   safeCopyLine,
+  selectHistoryHeadlineCopy,
   selectCoachVariantIndex,
 } from '../src/domain/focusCoachCopyRules';
 import {
@@ -64,6 +67,77 @@ function assertSuggestionShape(value: number | null) {
   const minutes = value ?? 0;
   assert(minutes >= 10 && minutes <= 59, 'suggestion should be within 10..59');
   assert(minutes % 5 === 0, 'suggestion should be a multiple of 5');
+}
+
+function headlineFor(deltaSeconds: number | null | undefined, validCount: number) {
+  return selectHistoryHeadlineCopy({
+    deltaSeconds,
+    stored: null,
+    validCount,
+    formatDelta: seconds => `${Math.round(seconds / 60)} min`,
+  })?.text ?? null;
+}
+
+function coachResult(
+  override: Partial<FocusCoachResult> = {},
+): FocusCoachResult {
+  return {
+    latestPlatform: 'android',
+    validCount: 5,
+    baselineTarget: 5,
+    state: 'steady',
+    currentCleanSeconds: 20 * 60,
+    beforeCleanSeconds: null,
+    suggestionMinutes: 25,
+    cleanTrend: {
+      points: many(5, index => (18 + index) * 60).map(item => ({
+        sessionId: item.id,
+        endedAt: item.endedAt ?? item.startedAt,
+        cleanSeconds: item.cleanSeconds ?? 0,
+      })),
+      deltaSeconds: null,
+    },
+    lastSession: {
+      endedAt: '2026-10-20T10:30:00.000Z',
+      plannedSeconds: 30 * 60,
+      focusSeconds: 30 * 60,
+      cleanSeconds: 20 * 60,
+      endedBy: 'app_touched',
+      firstDistractionType: 'app_touched',
+      firstDistractionAtSeconds: 20 * 60,
+      pauseCount: 1,
+      pausedSeconds: 60,
+      endedEarly: false,
+    },
+    away: {
+      sinceLastUseSeconds: 90 * 60,
+      display: 'about',
+      afterSessionSeconds: 45 * 60,
+      afterSessionVerified: true,
+    },
+    awayInsight: {
+      verifiedSessionCount: 10,
+      typeLine: 'longer_breaks_cleaner',
+      longBreakMedianCleanSeconds: 25 * 60,
+      shortBreakMedianCleanSeconds: 20 * 60,
+      longBreakMedianCleanRatio: 0.8,
+      shortBreakMedianCleanRatio: 0.65,
+      differenceSeconds: 5 * 60,
+      differencePct: 15,
+    },
+    diagnosis: 'app_heavy',
+    weakEvidence: false,
+    primaryBreak: 'app_touched',
+    experiment: {
+      id: 'phone_out_of_reach',
+      startedAt: '2026-10-20T10:00:00.000Z',
+      result: null,
+    },
+    historyHeadline: 'Clean focus is up 5 min lately.',
+    historyCopy: 'Current clean length is 20 min.',
+    suggestionCopy: 'Suggested: 25 min',
+    ...override,
+  };
 }
 
 test('3 valid sessions -> building_baseline, suggestion null', () => {
@@ -143,6 +217,53 @@ test('steady trend delta can be zero', () => {
 test('fewer than 6 valid sessions have no trend delta', () => {
   const result = evaluateFocusCoach(many(5, () => 22 * 60));
   assert(result.cleanTrend?.deltaSeconds === null, 'delta should be null');
+});
+
+test('historyHeadline is null with fewer than 6 valid sessions', () => {
+  const result = evaluateFocusCoach(many(5, () => 22 * 60));
+  const headline = headlineFor(result.cleanTrend?.deltaSeconds, result.validCount);
+  assert(headline === null, `got ${headline}`);
+});
+
+test('historyHeadline is stable on two loads with the same validCount', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => (index < 3 ? 20 * 60 : 26 * 60)),
+  );
+  const first = selectHistoryHeadlineCopy({
+    deltaSeconds: result.cleanTrend?.deltaSeconds,
+    stored: null,
+    validCount: result.validCount,
+    formatDelta: seconds => `${Math.round(seconds / 60)} min`,
+  });
+  const second = selectHistoryHeadlineCopy({
+    deltaSeconds: result.cleanTrend?.deltaSeconds,
+    stored: first ? { index: first.index, validCount: result.validCount } : null,
+    validCount: result.validCount,
+    formatDelta: seconds => `${Math.round(seconds / 60)} min`,
+  });
+  assert(first?.text === second?.text, `${first?.text} !== ${second?.text}`);
+});
+
+test('historyHeadline says up for rising fixtures', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => (index < 3 ? 20 * 60 : 26 * 60)),
+  );
+  const headline = headlineFor(result.cleanTrend?.deltaSeconds, result.validCount);
+  assert(headline?.includes('up'), `got ${headline}`);
+});
+
+test('historyHeadline says down for falling fixtures', () => {
+  const result = evaluateFocusCoach(
+    many(6, index => (index < 3 ? 26 * 60 : 20 * 60)),
+  );
+  const headline = headlineFor(result.cleanTrend?.deltaSeconds, result.validCount);
+  assert(headline?.includes('down'), `got ${headline}`);
+});
+
+test('historyHeadline says steady for flat fixtures', () => {
+  const result = evaluateFocusCoach(many(6, () => 22 * 60));
+  const headline = headlineFor(result.cleanTrend?.deltaSeconds, result.validCount);
+  assert(headline?.includes('steady'), `got ${headline}`);
 });
 
 test('8 broken sessions under 25% planned -> early_breaker', () => {
@@ -241,6 +362,35 @@ test('ended-early latest session is exposed as lastSession', () => {
   assert(result.lastSession?.pauseCount === 2, 'expected pause count');
 });
 
+test('lastSession ignores a latest session with focus_seconds under 120', () => {
+  const result = evaluateFocusCoach([
+    ...many(5, () => 20 * 60),
+    session(8, {
+      startedAt: '2026-10-20T10:00:00.000Z',
+      endedAt: '2026-10-20T10:01:00.000Z',
+      cleanSeconds: 60,
+      focusSeconds: 60,
+      durationSeconds: 900,
+    }),
+  ]);
+  assert(result.lastSession?.cleanSeconds === 20 * 60, `got ${result.lastSession?.cleanSeconds}`);
+});
+
+test("lastSession endedBy distinguishes pause_overrun", () => {
+  const result = evaluateFocusCoach([
+    ...many(5, () => 20 * 60),
+    session(8, {
+      cleanSeconds: 180,
+      focusSeconds: 180,
+      durationSeconds: 900,
+      firstDistractionType: 'pause_overrun',
+      endedAt: '2026-10-20T10:03:00.000Z',
+    }),
+  ]);
+  assert(result.lastSession?.endedBy === 'pause_overrun', `got ${result.lastSession?.endedBy}`);
+  assert(result.lastSession?.firstDistractionType === null, `got ${result.lastSession?.firstDistractionType}`);
+});
+
 test('best_window can trigger from clean sessions', () => {
   const result = evaluateFocusCoach([
     ...many(3, () => 30 * 60, index => ({
@@ -318,6 +468,30 @@ test('10 verified away sessions produce awayInsight', () => {
   );
   assert(result.awayInsight?.verifiedSessionCount === 10, 'expected 10 verified');
   assert(result.awayInsight?.typeLine === 'longer_breaks_cleaner', `got ${result.awayInsight?.typeLine}`);
+  assert(result.awayInsight?.differencePct !== undefined, 'expected differencePct');
+});
+
+test('awayInsight is null when either bucket has fewer than 3 sessions', () => {
+  const result = evaluateFocusCoach(
+    many(10, () => 20 * 60, index => ({
+      afterSessionAwaySeconds: index < 8 ? 90 * 60 : 20 * 60,
+      afterSessionAwayVerified: true,
+    })),
+  );
+  assert(result.awayInsight === null, 'expected null');
+});
+
+test('awayInsight uses clean ratio, not raw clean seconds', () => {
+  const result = evaluateFocusCoach(
+    many(10, index => (index < 5 ? 30 * 60 : 15 * 60), index => ({
+      durationSeconds: index < 5 ? 60 * 60 : 30 * 60,
+      focusSeconds: index < 5 ? 60 * 60 : 30 * 60,
+      afterSessionAwaySeconds: index < 5 ? 90 * 60 : 20 * 60,
+      afterSessionAwayVerified: true,
+    })),
+  );
+  assert(result.awayInsight?.typeLine === 'break_lengths_similar', `got ${result.awayInsight?.typeLine}`);
+  assert(Math.abs(result.awayInsight?.differencePct ?? 999) < 1, `got ${result.awayInsight?.differencePct}`);
 });
 
 test('away code throwing returns null', async () => {
@@ -416,6 +590,118 @@ test('same state and validCount returns the same variant twice in a row', () => 
     stateChanged: false,
   });
   assert(first === second, `${first} !== ${second}`);
+});
+
+test('coach card selector: baseline 0/5 has no locked sections', () => {
+  const selected = selectCoachCardSections({
+    isPaid: false,
+    result: coachResult({
+      validCount: 0,
+      state: 'building_baseline',
+      currentCleanSeconds: null,
+      cleanTrend: null,
+      lastSession: null,
+      away: null,
+      awayInsight: null,
+      diagnosis: null,
+      experiment: null,
+    }),
+    platform: 'android',
+  });
+  assert(selected.state === 'baseline', `got ${selected.state}`);
+  assert(selected.sections.length === 0, 'expected no sections');
+  assert(selected.lockedSections.length === 0, 'expected no locks');
+});
+
+test('coach card selector: baseline 3/5 free and paid are identical', () => {
+  const result = coachResult({
+    validCount: 3,
+    state: 'building_baseline',
+    suggestionMinutes: null,
+    experiment: null,
+  });
+  const free = selectCoachCardSections({ isPaid: false, result, platform: 'android' });
+  const paid = selectCoachCardSections({ isPaid: true, result, platform: 'android' });
+  assert(JSON.stringify(free) === JSON.stringify(paid), 'expected identical baseline state');
+});
+
+test('coach card selector: 5/5 free locks available sections', () => {
+  const selected = selectCoachCardSections({
+    isPaid: false,
+    result: coachResult(),
+    platform: 'android',
+  });
+  assert(selected.state === 'ready_free', `got ${selected.state}`);
+  assert(selected.lockedSections.length === 5, `got ${selected.lockedSections.length}`);
+});
+
+test('coach card selector: 5/5 paid unlocks available sections', () => {
+  const selected = selectCoachCardSections({
+    isPaid: true,
+    result: coachResult(),
+    platform: 'android',
+  });
+  assert(selected.state === 'ready_paid', `got ${selected.state}`);
+  assert(selected.sections.length === 5, `got ${selected.sections.length}`);
+  assert(selected.lockedSections.length === 0, 'expected no locks');
+});
+
+test('coach card selector: paid with away null hides away', () => {
+  const selected = selectCoachCardSections({
+    isPaid: true,
+    result: coachResult({ away: null }),
+    platform: 'android',
+  });
+  assert(!selected.sections.some(section => section.id === 'away'), 'away should be hidden');
+});
+
+test('coach card selector: paid on iOS hides away', () => {
+  const selected = selectCoachCardSections({
+    isPaid: true,
+    result: coachResult(),
+    platform: 'ios',
+  });
+  assert(!selected.sections.some(section => section.id === 'away'), 'away should be hidden');
+});
+
+test('coach card selector: free on iOS has no away locked row', () => {
+  const selected = selectCoachCardSections({
+    isPaid: false,
+    result: coachResult(),
+    platform: 'ios',
+  });
+  assert(!selected.lockedSections.includes('away'), 'away should not lock on iOS');
+});
+
+test('coach card selector: pause_overrun lastSession keeps last session section', () => {
+  const selected = selectCoachCardSections({
+    isPaid: true,
+    result: coachResult({
+      lastSession: {
+        endedAt: '2026-10-20T10:30:00.000Z',
+        plannedSeconds: 30 * 60,
+        focusSeconds: 30 * 60,
+        cleanSeconds: 12 * 60,
+        endedBy: 'pause_overrun',
+        firstDistractionType: null,
+        firstDistractionAtSeconds: null,
+        pauseCount: 1,
+        pausedSeconds: 420,
+        endedEarly: false,
+      },
+    }),
+    platform: 'android',
+  });
+  assert(selected.sections.some(section => section.id === 'last_session'), 'expected last session');
+});
+
+test('coach card selector: no lastSession hides last session section', () => {
+  const selected = selectCoachCardSections({
+    isPaid: true,
+    result: coachResult({ lastSession: null }),
+    platform: 'android',
+  });
+  assert(!selected.sections.some(section => section.id === 'last_session'), 'last session should be hidden');
 });
 
 async function main() {

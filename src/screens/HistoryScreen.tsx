@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -24,8 +26,21 @@ import {
 } from '../data/historyRepository';
 import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { FlaggedAppLabel } from '../../modules/screen-time';
-import type { FocusCoachResult } from '../domain/focusCoach';
+import {
+  MIN_FOCUS_SECONDS,
+  type FocusCoachResult,
+} from '../domain/focusCoach';
+import {
+  type FocusCoachCardSectionId,
+  selectCoachCardSections,
+} from '../domain/focusCoachCardSections';
+import {
+  experimentLabel,
+  formatAwayInsightCopy,
+} from '../domain/focusCoachCopy';
+import { formatAwayTime } from '../domain/awayTime';
 import { iosAppKey } from '../domain/iosScreenTime';
+import { DEV_FLAGS } from '../domain/paywall';
 import { formatDuration } from '../domain/sessionHistory';
 import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { colors, layout } from '../theme/tokens';
@@ -275,85 +290,479 @@ function StatRows({ history }: { history: HistoryData }) {
 function FocusCoachCard({
   coach,
   paidUser,
-  onUpgrade,
+  onLockedSection,
 }: {
   coach: FocusCoachResult;
   paidUser: boolean;
-  onUpgrade: () => void;
+  onLockedSection: () => void;
 }) {
-  const hasCleanLength = coach.currentCleanSeconds !== null;
-  const diagnosisLabel = (() => {
-    switch (coach.diagnosis) {
-      case 'early_breaker':
-        return 'Early breaks';
-      case 'late_breaker':
-        return 'Late breaks';
-      case 'best_window':
-        return 'Best time of day';
-      case 'app_heavy':
-        return 'App breaks';
-      case 'camera_heavy':
-        return 'Camera breaks';
-      case null:
-        return '-';
-    }
-  })();
+  const selection = selectCoachCardSections({
+    isPaid: paidUser,
+    result: coach,
+    platform: Platform.OS,
+  });
+  const headline = coach.historyHeadline ?? coach.historyCopy;
+  const bestCleanSeconds = getBestCleanSeconds(coach);
 
   return (
     <View style={styles.coachCard}>
       <Text style={styles.coachEyebrow}>Focus coach</Text>
-      <Text style={styles.coachTitle}>
-        {hasCleanLength
-          ? `${formatDuration(coach.currentCleanSeconds ?? 0)} clean`
-          : `${coach.validCount} of ${coach.baselineTarget}`}
-      </Text>
-      <Text style={styles.coachCopy}>
-        {paidUser
-          ? coach.historyCopy
-          : hasCleanLength
-            ? `Current clean length is ${formatDuration(
-                coach.currentCleanSeconds ?? 0,
-              )}.`
-            : `${coach.validCount} of ${coach.baselineTarget} sessions to find your baseline.`}
-      </Text>
-      {paidUser ? (
-        <View style={styles.coachStats}>
-          <View style={styles.coachStat}>
-            <Text style={styles.coachStatValue}>
-              {coach.beforeCleanSeconds !== null
-                ? formatDuration(coach.beforeCleanSeconds)
-                : 'Building'}
-            </Text>
-            <Text style={styles.coachStatLabel}>Before</Text>
+      {selection.state === 'baseline' ? (
+        <>
+          <Text style={styles.coachTitle}>
+            Your coach unlocks after {coach.baselineTarget} focus sessions
+          </Text>
+          <View style={styles.coachProgressTrack}>
+            <View
+              style={[
+                styles.coachProgressFill,
+                {
+                  width: `${Math.min(
+                    100,
+                    (coach.validCount / coach.baselineTarget) * 100,
+                  )}%`,
+                },
+              ]}
+            />
           </View>
-          <View style={styles.coachStat}>
-            <Text style={styles.coachStatValue}>
-              {coach.suggestionMinutes !== null
-                ? `${coach.suggestionMinutes} min`
-                : 'Soon'}
+          <Text style={styles.coachCopy}>
+            {coach.validCount} of {coach.baselineTarget} done
+          </Text>
+          {coach.validCount >= 1 && bestCleanSeconds !== null ? (
+            <Text style={styles.coachMetricLine}>
+              Best clean focus so far: {formatDuration(bestCleanSeconds)}
             </Text>
-            <Text style={styles.coachStatLabel}>Suggested</Text>
-          </View>
-          <View style={styles.coachStat}>
-            <Text style={styles.coachStatValue}>
-              {diagnosisLabel}
-            </Text>
-            <Text style={styles.coachStatLabel}>Pattern</Text>
-          </View>
-        </View>
+          ) : null}
+          <Text style={styles.coachFootnote}>
+            Sessions shorter than {formatDuration(MIN_FOCUS_SECONDS)} don't
+            count toward your coach.
+          </Text>
+        </>
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Upgrade to unlock focus coach"
-          onPress={onUpgrade}
-          style={({ pressed }) => [
-            styles.lockedCoachRow,
-            pressed && styles.textActionPressed,
-          ]}
-        >
-          <Text style={styles.lockedCoachText}>Unlock coach insights</Text>
-        </Pressable>
+        <>
+          {headline ? <Text style={styles.coachHeadline}>{headline}</Text> : null}
+          {coach.currentCleanSeconds !== null ? (
+            <Text style={styles.coachBigNumber}>
+              {formatDuration(coach.currentCleanSeconds)}
+            </Text>
+          ) : null}
+          {coach.suggestionCopy ? (
+            <Text style={styles.coachSuggestion}>{coach.suggestionCopy}</Text>
+          ) : null}
+          <View style={styles.coachSectionStack}>
+            {selection.sections.map(section =>
+              paidUser ? (
+                <PaidCoachSection
+                  key={section.id}
+                  id={section.id}
+                  coach={coach}
+                />
+              ) : (
+                <LockedCoachSection
+                  key={section.id}
+                  id={section.id}
+                  coach={coach}
+                  onPress={onLockedSection}
+                />
+              ),
+            )}
+          </View>
+        </>
       )}
+    </View>
+  );
+}
+
+function getBestCleanSeconds(coach: FocusCoachResult) {
+  const trendBest = coach.cleanTrend?.points.length
+    ? Math.max(...coach.cleanTrend.points.map(point => point.cleanSeconds))
+    : null;
+  return trendBest ?? coach.currentCleanSeconds;
+}
+
+function sectionTitle(id: FocusCoachCardSectionId) {
+  switch (id) {
+    case 'clean_trend':
+      return 'Clean-focus trend';
+    case 'last_session':
+      return 'Last session';
+    case 'away':
+      return 'Away from flagged apps';
+    case 'diagnosis':
+      return 'Your pattern';
+    case 'experiment':
+      return "This week's experiment";
+  }
+}
+
+function diagnosisLine(coach: FocusCoachResult) {
+  switch (coach.diagnosis) {
+    case 'early_breaker':
+      return 'The first break tends to arrive early.';
+    case 'late_breaker':
+      return 'The first break tends to come late.';
+    case 'best_window':
+      return 'Some times of day are cleaner than others.';
+    case 'app_heavy':
+      return 'Flagged apps are the most common first break.';
+    case 'camera_heavy':
+      return 'Camera absence is the most common first break.';
+    case null:
+      return null;
+  }
+}
+
+function endedByLine(coach: FocusCoachResult) {
+  switch (coach.lastSession?.endedBy) {
+    case 'camera_absence':
+      return 'You stepped away from the camera';
+    case 'app_touched':
+      return 'You opened a flagged app';
+    case 'pause_overrun':
+      return 'A pause ran over';
+    case null:
+    case undefined:
+      return 'No distractions';
+  }
+}
+
+function experimentStatusLine(coach: FocusCoachResult) {
+  const status = coach.experiment?.result ?? coach.experiment?.lastResult;
+  switch (status) {
+    case 'worked':
+      return "Last week's experiment helped.";
+    case 'didnt_work':
+      return "Last week's experiment did not clearly help.";
+    case 'unclear':
+      return "Last week's experiment needs more sessions.";
+    case null:
+    case undefined:
+      return 'In progress this week.';
+  }
+}
+
+function awayLine(coach: FocusCoachResult) {
+  if (!coach.away || coach.away.sinceLastUseSeconds === null) {
+    return null;
+  }
+
+  return `Away since your last use: ${
+    coach.away.display === 'at_least' ? 'at least' : 'about'
+  } ${formatAwayTime(coach.away.sinceLastUseSeconds)}`;
+}
+
+function lockedTeaser(id: FocusCoachCardSectionId, coach: FocusCoachResult) {
+  switch (id) {
+    case 'clean_trend':
+      return coach.cleanTrend
+        ? `Last ${coach.cleanTrend.points.length} sessions`
+        : null;
+    case 'last_session':
+      return coach.lastSession
+        ? `${formatDuration(coach.lastSession.cleanSeconds)} clean`
+        : null;
+    case 'away':
+      return awayLine(coach);
+    case 'diagnosis':
+      return diagnosisLine(coach);
+    case 'experiment':
+      return coach.experiment ? experimentLabel(coach.experiment.id) : null;
+  }
+}
+
+function LockIcon() {
+  return (
+    <Svg width={15} height={15} viewBox="0 0 24 24">
+      <Rect
+        x={5}
+        y={10}
+        width={14}
+        height={10}
+        rx={2}
+        fill="none"
+        stroke={colors.ink}
+        strokeWidth={2}
+      />
+      <Path
+        d="M8 10 V7 C8 4.8 9.8 3 12 3 C14.2 3 16 4.8 16 7 V10"
+        fill="none"
+        stroke={colors.ink}
+        strokeLinecap="round"
+        strokeWidth={2}
+      />
+    </Svg>
+  );
+}
+
+function CheckMark() {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24">
+      <Path
+        d="M5 12.5 L10 17 L19 7"
+        fill="none"
+        stroke={colors.ink}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={3}
+      />
+    </Svg>
+  );
+}
+
+function LockedCoachSection({
+  id,
+  coach,
+  onPress,
+}: {
+  id: FocusCoachCardSectionId;
+  coach: FocusCoachResult;
+  onPress: () => void;
+}) {
+  const teaser = lockedTeaser(id, coach);
+  if (!teaser) {
+    return null;
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Unlock ${sectionTitle(id)}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.coachLockedRow,
+        pressed && styles.textActionPressed,
+      ]}
+    >
+      {id === 'clean_trend' && coach.cleanTrend ? (
+        <View style={styles.coachLockedChartBackground}>
+          <CleanFocusTrendChart coach={coach} compact dimmed />
+        </View>
+      ) : null}
+      <View style={styles.coachLockedContent}>
+        <View style={styles.coachLockedTitleRow}>
+          <Text style={styles.coachLockedTitle}>{sectionTitle(id)}</Text>
+          <LockIcon />
+        </View>
+        <Text style={styles.coachLockedTeaser}>{teaser}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function PaidCoachSection({
+  id,
+  coach,
+}: {
+  id: FocusCoachCardSectionId;
+  coach: FocusCoachResult;
+}) {
+  switch (id) {
+    case 'clean_trend':
+      if (!coach.cleanTrend) return null;
+      return (
+        <View style={styles.coachDetailCard}>
+          <Text style={styles.coachDetailTitle}>Clean-focus trend</Text>
+          <CleanFocusTrendChart coach={coach} />
+        </View>
+      );
+    case 'last_session':
+      if (!coach.lastSession) return null;
+      return (
+        <View style={styles.coachDetailCard}>
+          <Text style={styles.coachDetailTitle}>Last session</Text>
+          <View style={styles.coachDetailGrid}>
+            <CoachFact
+              label="Focus"
+              value={formatDuration(coach.lastSession.focusSeconds)}
+            />
+            <CoachFact
+              label="Clean"
+              value={formatDuration(coach.lastSession.cleanSeconds)}
+            />
+          </View>
+          <Text style={styles.coachDetailText}>{endedByLine(coach)}</Text>
+          {coach.lastSession.endedBy ? (
+            <Text style={styles.coachDetailSubtext}>
+              First break at {formatDuration(coach.lastSession.cleanSeconds)}
+            </Text>
+          ) : null}
+          <Text style={styles.coachDetailSubtext}>
+            {coach.lastSession.pauseCount}{' '}
+            {coach.lastSession.pauseCount === 1 ? 'pause' : 'pauses'} used
+            {coach.lastSession.endedEarly ? '; ended early' : ''}
+          </Text>
+        </View>
+      );
+    case 'away': {
+      const line = awayLine(coach);
+      if (!line || !coach.away) return null;
+      return (
+        <View style={styles.coachDetailCard}>
+          <Text style={styles.coachDetailTitle}>Away from flagged apps</Text>
+          <Text style={styles.coachDetailText}>{line}</Text>
+          {coach.away.afterSessionVerified &&
+          coach.away.afterSessionSeconds !== null ? (
+            <Text style={styles.coachDetailSubtext}>
+              After your last session you stayed away about{' '}
+              {formatAwayTime(coach.away.afterSessionSeconds)}
+            </Text>
+          ) : null}
+          {coach.awayInsight ? (
+            <Text style={styles.coachDetailSubtext}>
+              {formatAwayInsightCopy(coach.awayInsight)}
+            </Text>
+          ) : null}
+        </View>
+      );
+    }
+    case 'diagnosis': {
+      const line = diagnosisLine(coach);
+      if (!line) return null;
+      return (
+        <View style={styles.coachDetailCard}>
+          <Text style={styles.coachDetailTitle}>Your pattern</Text>
+          <Text style={styles.coachDetailText}>{line}</Text>
+        </View>
+      );
+    }
+    case 'experiment':
+      if (!coach.experiment) return null;
+      return (
+        <View style={styles.coachDetailCard}>
+          <Text style={styles.coachDetailTitle}>This week's experiment</Text>
+          <Text style={styles.coachDetailText}>
+            {experimentLabel(coach.experiment.id)}
+          </Text>
+          <Text style={styles.coachDetailSubtext}>
+            {experimentStatusLine(coach)}
+          </Text>
+        </View>
+      );
+  }
+}
+
+function CoachFact({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.coachFact}>
+      <Text style={styles.coachFactValue}>{value}</Text>
+      <Text style={styles.coachFactLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function CleanFocusTrendChart({
+  coach,
+  compact = false,
+  dimmed = false,
+}: {
+  coach: FocusCoachResult;
+  compact?: boolean;
+  dimmed?: boolean;
+}) {
+  const points = coach.cleanTrend?.points ?? [];
+  if (points.length === 0) {
+    return null;
+  }
+
+  const height = compact ? 64 : 150;
+  const width = CHART_WIDTH;
+  const padding = compact
+    ? { top: 8, right: 10, bottom: 8, left: 10 }
+    : { top: 18, right: 14, bottom: 28, left: 28 };
+  const goalSeconds =
+    coach.suggestionMinutes !== null ? coach.suggestionMinutes * 60 : null;
+  const maxValue = Math.max(
+    60,
+    goalSeconds ?? 0,
+    ...points.map(point => point.cleanSeconds),
+  );
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const barGap = points.length > 1 ? 8 : 0;
+  const barWidth = Math.max(
+    12,
+    (plotWidth - barGap * (points.length - 1)) / points.length,
+  );
+  const goalY =
+    goalSeconds !== null
+      ? padding.top + plotHeight - (plotHeight * goalSeconds) / maxValue
+      : null;
+
+  return (
+    <View
+      style={[
+        styles.cleanTrendChart,
+        compact && styles.cleanTrendChartCompact,
+      ]}
+    >
+      <Svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${width} ${height}`}
+        opacity={dimmed ? 0.34 : 1}
+      >
+        {!compact ? (
+          <>
+            {[0, 0.5, 1].map(step => {
+              const y = padding.top + plotHeight - plotHeight * step;
+              return (
+                <Line
+                  key={step}
+                  x1={padding.left}
+                  y1={y}
+                  x2={padding.left + plotWidth}
+                  y2={y}
+                  stroke="rgba(246, 249, 253, 0.13)"
+                  strokeDasharray="3 7"
+                  strokeWidth={1}
+                />
+              );
+            })}
+            {goalY !== null ? (
+              <>
+                <Line
+                  x1={padding.left}
+                  y1={goalY}
+                  x2={padding.left + plotWidth}
+                  y2={goalY}
+                  stroke={colors.rewardAmber}
+                  strokeDasharray="5 5"
+                  strokeWidth={1.5}
+                />
+                <SvgText
+                  x={padding.left + plotWidth}
+                  y={Math.max(10, goalY - 5)}
+                  fill={colors.rewardAmber}
+                  fontSize={10}
+                  fontWeight="700"
+                  textAnchor="end"
+                >
+                  Suggested
+                </SvgText>
+              </>
+            ) : null}
+          </>
+        ) : null}
+        {points.map((point, index) => {
+          const x = padding.left + index * (barWidth + barGap);
+          const barHeight = Math.max(
+            4,
+            (plotHeight * point.cleanSeconds) / maxValue,
+          );
+          const y = padding.top + plotHeight - barHeight;
+          return (
+            <Rect
+              key={point.sessionId}
+              x={x}
+              y={y}
+              width={barWidth}
+              height={barHeight}
+              rx={compact ? 4 : 6}
+              fill={colors.white}
+            />
+          );
+        })}
+      </Svg>
     </View>
   );
 }
@@ -537,6 +946,104 @@ function HistoryFirstRunState({
   );
 }
 
+function CoachPaywallSheet({
+  visible,
+  onClose,
+  bottomInset,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  bottomInset: number;
+}) {
+  const rows = [
+    'Clean-focus trend',
+    'Last session breakdown',
+    ...(Platform.OS === 'android' ? ['Away from flagged apps'] : []),
+    'Your pattern',
+    'Weekly experiment',
+  ];
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      statusBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View style={styles.paywallOverlay}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close focus coach upgrade"
+          onPress={onClose}
+          style={styles.paywallBackdrop}
+        />
+        <View
+          style={[
+            styles.paywallSheet,
+            { paddingBottom: Math.max(20, bottomInset + 14) },
+          ]}
+        >
+          <View style={styles.paywallHeader}>
+            <Text style={styles.paywallTitle}>Get your full focus coach</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.paywallClose,
+                pressed && styles.textActionPressed,
+              ]}
+            >
+              <Text style={styles.paywallCloseText}>X</Text>
+            </Pressable>
+          </View>
+          <View style={styles.paywallTable}>
+            <View style={styles.paywallTableHeader}>
+              <Text style={styles.paywallFeatureHeader}>Feature</Text>
+              <Text style={styles.paywallPlanHeader}>Free</Text>
+              <Text style={styles.paywallPlanHeader}>Pro</Text>
+            </View>
+            {rows.map(row => (
+              <View key={row} style={styles.paywallTableRow}>
+                <Text style={styles.paywallFeature}>{row}</Text>
+                <Text style={styles.paywallDash}>-</Text>
+                <View style={styles.paywallCheck}>
+                  <CheckMark />
+                </View>
+              </View>
+            ))}
+          </View>
+          {DEV_FLAGS.tierSwitcher ? (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: true }}
+                disabled
+                style={styles.paywallContinueDisabled}
+              >
+                <Text style={styles.paywallContinueText}>Continue</Text>
+              </Pressable>
+              <Text style={styles.paywallComingSoon}>Purchases coming soon</Text>
+            </>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Not now"
+            onPress={onClose}
+            style={({ pressed }) => [
+              styles.paywallNotNow,
+              pressed && styles.textActionPressed,
+            ]}
+          >
+            <Text style={styles.paywallNotNowText}>Not now</Text>
+          </Pressable>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -547,6 +1054,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
   const [visibleSessionCount, setVisibleSessionCount] = useState(
     INITIAL_VISIBLE_SESSIONS,
   );
+  const [coachPaywallVisible, setCoachPaywallVisible] = useState(false);
   const hasLoadedOnceRef = useRef(false);
   const paidUser = useIsPaidUser();
 
@@ -679,19 +1187,19 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
             </View>
           )}
 
+          {focusCoach ? (
+            <View style={styles.section}>
+              <FocusCoachCard
+                coach={focusCoach}
+                paidUser={paidUser}
+                onLockedSection={() => setCoachPaywallVisible(true)}
+              />
+            </View>
+          ) : null}
+
           {hasSessions && history ? (
             <>
               <StatRows history={history} />
-
-              {focusCoach && focusCoach.validCount > 0 ? (
-                <View style={styles.section}>
-                  <FocusCoachCard
-                    coach={focusCoach}
-                    paidUser={paidUser}
-                    onUpgrade={() => onNavigate('paywall')}
-                  />
-                </View>
-              ) : null}
 
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Most-used modes</Text>
@@ -736,6 +1244,11 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
         bottomInset={insets.bottom}
         backgroundColor={HISTORY_BACKGROUND}
         onSelect={onNavigate}
+      />
+      <CoachPaywallSheet
+        visible={coachPaywallVisible}
+        onClose={() => setCoachPaywallVisible(false)}
+        bottomInset={insets.bottom}
       />
     </View>
   );
@@ -920,8 +1433,8 @@ const styles = StyleSheet.create({
   coachTitle: {
     marginTop: 3,
     color: colors.white,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: '700',
   },
   coachCopy: {
@@ -930,48 +1443,295 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
   },
-  coachStats: {
-    marginTop: 12,
+  coachProgressTrack: {
+    height: 8,
+    marginTop: 14,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  coachProgressFill: {
+    height: '100%',
+    borderRadius: 4,
+    backgroundColor: colors.rewardAmber,
+  },
+  coachMetricLine: {
+    marginTop: 10,
+    color: colors.white,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '600',
+  },
+  coachFootnote: {
+    marginTop: 8,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  coachHeadline: {
+    marginTop: 7,
+    color: colors.white,
+    fontSize: 17,
+    lineHeight: 24,
+    fontWeight: '600',
+  },
+  coachBigNumber: {
+    marginTop: 13,
+    color: colors.white,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '700',
+  },
+  coachSuggestion: {
+    marginTop: 2,
+    color: colors.rewardAmber,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  coachSectionStack: {
+    marginTop: 14,
+    gap: 10,
+  },
+  coachLockedRow: {
+    minHeight: 68,
+    overflow: 'hidden',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+  },
+  coachLockedChartBackground: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    opacity: 0.72,
+  },
+  coachLockedContent: {
+    minHeight: 68,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    justifyContent: 'center',
+    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+  },
+  coachLockedTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  coachLockedTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.white,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  coachLockedTeaser: {
+    marginTop: 3,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  coachDetailCard: {
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+  },
+  coachDetailTitle: {
+    color: colors.white,
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+  coachDetailText: {
+    marginTop: 8,
+    color: colors.white,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  coachDetailSubtext: {
+    marginTop: 5,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  coachDetailGrid: {
+    marginTop: 10,
     flexDirection: 'row',
     gap: 8,
   },
-  coachStat: {
+  coachFact: {
     flex: 1,
-    minHeight: 58,
+    minHeight: 54,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 8,
     justifyContent: 'center',
-    backgroundColor: 'rgba(13, 13, 13, 0.72)',
+    backgroundColor: colors.module,
   },
-  coachStatValue: {
+  coachFactValue: {
     color: colors.white,
     fontSize: 14,
     lineHeight: 18,
     fontWeight: '700',
     textAlign: 'center',
   },
-  coachStatLabel: {
-    marginTop: 3,
+  coachFactLabel: {
+    marginTop: 2,
     color: colors.muted,
     fontSize: 10,
     lineHeight: 13,
     fontWeight: '600',
     textAlign: 'center',
   },
-  lockedCoachRow: {
-    minHeight: 42,
+  cleanTrendChart: {
     marginTop: 12,
-    borderRadius: 12,
-    alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+  },
+  cleanTrendChartCompact: {
+    marginTop: 0,
+  },
+  paywallOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  paywallBackdrop: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+  },
+  paywallSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    backgroundColor: colors.module,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255, 255, 255, 0.12)',
   },
-  lockedCoachText: {
+  paywallHeader: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  paywallTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.white,
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '700',
+  },
+  paywallClose: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  paywallCloseText: {
+    color: colors.ink,
+    fontSize: 21,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  paywallTable: {
+    marginTop: 16,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  paywallTableHeader: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  paywallFeatureHeader: {
+    flex: 1,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  paywallPlanHeader: {
+    width: 54,
+    color: colors.ink,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  paywallTableRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  paywallFeature: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.white,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
+  },
+  paywallDash: {
+    width: 54,
+    color: colors.muted,
+    fontSize: 18,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  paywallCheck: {
+    width: 54,
+    alignItems: 'center',
+  },
+  paywallContinueDisabled: {
+    minHeight: 48,
+    marginTop: 18,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  paywallContinueText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+  paywallComingSoon: {
+    marginTop: 8,
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
+  paywallNotNow: {
+    minHeight: 42,
+    marginTop: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  paywallNotNowText: {
     color: colors.ink,
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 19,
     fontWeight: '700',
   },
   modeBreakdown: {
