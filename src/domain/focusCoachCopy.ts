@@ -15,7 +15,7 @@ import {
   selectCoachVariantIndex,
   type StoredCoachVariant,
 } from './focusCoachCopyRules';
-import { formatDuration } from './durationFormat';
+import { formatApproxDuration, formatDuration } from './durationFormat';
 
 type Slots = {
   now: string;
@@ -150,7 +150,7 @@ async function nextHistoryHeadline(deltaSeconds: number, validCount: number) {
     deltaSeconds,
     stored: null,
     validCount,
-    formatDelta: formatDuration,
+    formatDelta: formatApproxDuration,
   });
   if (!probe) {
     return null;
@@ -162,7 +162,7 @@ async function nextHistoryHeadline(deltaSeconds: number, validCount: number) {
     deltaSeconds,
     stored: parseStoredVariant(storedValue),
     validCount,
-    formatDelta: formatDuration,
+    formatDelta: formatApproxDuration,
   });
   if (!selected) {
     return null;
@@ -184,7 +184,7 @@ export function formatAwayInsightCopy(insight: FocusCoachAwayInsight) {
   );
   return variants[index].replace(
     '{diff}',
-    `${Math.round(Math.abs(insight.differencePct))}%`,
+    formatApproxDuration(Math.abs(insight.differenceSeconds)),
   );
 }
 

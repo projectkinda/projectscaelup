@@ -4,7 +4,7 @@ import type {
   FocusCoachResult,
   FocusCoachState,
 } from './focusCoach';
-import { formatDuration } from './durationFormat';
+import { formatApproxDuration, formatDuration } from './durationFormat';
 
 const DISALLOWED_WORDS = /\b(failed|lazy|bad)\b/i;
 
@@ -69,20 +69,23 @@ export function formatDiagnosisDetail(
     detail.kind === 'best_window'
       ? detail.sessionsInWindow
       : detail.brokenCount;
+  const showEarlySignal =
+    weakEvidence ||
+    (detail.kind === 'best_window' && detail.sessionsInWindow < 5);
   const evidenceSuffix = ` Based on ${evidenceCount} sessions.${
-    weakEvidence ? ' Early signal, it may change.' : ''
+    showEarlySignal ? ' Early signal, it may change.' : ''
   }`;
   const fallback = `Pattern detail is based on ${evidenceCount} sessions.`;
   let copy: string;
 
   switch (detail.kind) {
     case 'early_breaker':
-      copy = `Your first break usually comes about ${formatDuration(
+      copy = `Your first break usually comes about ${formatApproxDuration(
         detail.typicalFirstBreakSeconds,
       )} into a ${formatDuration(detail.typicalPlannedSeconds)} session.`;
       break;
     case 'late_breaker':
-      copy = `You usually hold on for about ${formatDuration(
+      copy = `You usually hold on for about ${formatApproxDuration(
         detail.typicalFirstBreakSeconds,
       )} of a ${formatDuration(
         detail.typicalPlannedSeconds,
@@ -93,7 +96,7 @@ export function formatDiagnosisDetail(
         0,
         detail.windowMedianCleanSeconds - detail.overallMedianCleanSeconds,
       );
-      copy = `Your cleanest sessions start in the ${detail.window}, about ${formatDuration(
+      copy = `Your cleanest sessions start in the ${detail.window}, about ${formatApproxDuration(
         differenceSeconds,
       )} cleaner than your average.`;
       break;

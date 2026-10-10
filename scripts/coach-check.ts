@@ -5,6 +5,7 @@ import {
   type FocusCoachExperiment,
   type FocusCoachSession,
 } from '../src/domain/focusCoach';
+import { formatApproxDuration } from '../src/domain/durationFormat';
 import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
   formatDiagnosisDetail,
@@ -555,10 +556,71 @@ test('formatDiagnosisDetail includes evidence count and weak signal copy only wh
     const strong = formatDiagnosisDetail(item.detail, false);
     const weak = formatDiagnosisDetail(item.detail, true);
     assert(strong.includes(`Based on ${item.count} sessions.`), strong);
-    assert(!strong.includes('Early signal'), strong);
+    if (item.detail.kind === 'best_window' && item.detail.sessionsInWindow < 5) {
+      assert(strong.includes('Early signal'), strong);
+    } else {
+      assert(!strong.includes('Early signal'), strong);
+    }
     assert(weak.includes(`Based on ${item.count} sessions.`), weak);
     assert(weak.includes('Early signal'), weak);
   }
+});
+
+test('formatDiagnosisDetail best_window early signal follows sessionsInWindow', () => {
+  const threeSessions = formatDiagnosisDetail(
+    {
+      kind: 'best_window',
+      window: 'morning',
+      windowMedianCleanSeconds: 30 * 60,
+      overallMedianCleanSeconds: 21 * 60,
+      sessionsInWindow: 3,
+    },
+    false,
+  );
+  const sixSessions = formatDiagnosisDetail(
+    {
+      kind: 'best_window',
+      window: 'morning',
+      windowMedianCleanSeconds: 30 * 60,
+      overallMedianCleanSeconds: 21 * 60,
+      sessionsInWindow: 6,
+    },
+    false,
+  );
+  assert(threeSessions.includes('Early signal'), threeSessions);
+  assert(!sixSessions.includes('Early signal'), sixSessions);
+});
+
+test('formatApproxDuration rounds to approximate copy', () => {
+  assert(formatApproxDuration(42) === '42 sec', formatApproxDuration(42));
+  assert(formatApproxDuration(9 * 60 + 20) === '9 min', formatApproxDuration(9 * 60 + 20));
+  assert(formatApproxDuration(65 * 60 + 20) === '1h 5m', formatApproxDuration(65 * 60 + 20));
+});
+
+test('formatDiagnosisDetail best_window says about 9 min cleaner without seconds', () => {
+  const copy = formatDiagnosisDetail(
+    {
+      kind: 'best_window',
+      window: 'morning',
+      windowMedianCleanSeconds: 30 * 60 + 20,
+      overallMedianCleanSeconds: 21 * 60,
+      sessionsInWindow: 6,
+    },
+    false,
+  );
+  assert(copy.includes('about 9 min cleaner'), copy);
+  assert(!copy.includes('sec cleaner'), copy);
+});
+
+test('historyHeadline delta uses approximate duration', () => {
+  const headline = selectHistoryHeadlineCopy({
+    deltaSeconds: 9 * 60 + 20,
+    stored: null,
+    validCount: 6,
+    formatDelta: formatApproxDuration,
+  })?.text;
+  assert(headline?.includes('9 min'), `got ${headline}`);
+  assert(!headline?.includes('sec'), `got ${headline}`);
 });
 
 test('away hidden maps to null', () => {

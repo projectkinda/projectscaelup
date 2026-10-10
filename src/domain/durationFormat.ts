@@ -20,3 +20,22 @@ export function formatDuration(totalSeconds: number): string {
 
   return `${seconds} sec`;
 }
+
+export function formatApproxDuration(totalSeconds: number): string {
+  const clamped = Math.max(0, Math.round(totalSeconds));
+
+  if (clamped < 60) {
+    return `${clamped} sec`;
+  }
+
+  const minutes = Math.round(clamped / 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0
+    ? `${hours}h ${remainingMinutes}m`
+    : `${hours}h`;
+}
