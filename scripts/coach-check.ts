@@ -1,3 +1,4 @@
+import { transpileModule, ModuleKind } from 'typescript';
 import {
   evaluateFocusCoach,
   type FocusCoachResult,
@@ -707,6 +708,32 @@ test('awayInsight uses clean ratio, not raw clean seconds', () => {
   );
   assert(result.awayInsight?.typeLine === 'break_lengths_similar', `got ${result.awayInsight?.typeLine}`);
   assert(Math.abs(result.awayInsight?.differencePct ?? 999) < 1, `got ${result.awayInsight?.differencePct}`);
+});
+
+test('away insight copy uses rounded ratio differences for both variants', () => {
+  const { readFileSync } = require('node:fs');
+  const { runInNewContext } = require('node:vm');
+  // Isolate the copy module from its native database dependency for these fixtures.
+  const copyModule = { exports: {} as typeof import('../src/domain/focusCoachCopy') };
+  const source = readFileSync('src/domain/focusCoachCopy.ts', 'utf8');
+  runInNewContext(transpileModule(source, {
+    compilerOptions: { module: ModuleKind.CommonJS },
+  }).outputText, { exports: copyModule.exports, require: () => ({}) });
+  const insight = coachResult().awayInsight!;
+  const fixtures = [
+    ['longer_breaks_cleaner', 10, 15.4, 'Sessions after a longer break stayed clean for about 15% more of the session.'],
+    ['longer_breaks_cleaner', 11, 15.6, 'After longer breaks, about 16% more of the session stayed clean.'],
+    ['shorter_breaks_cleaner', 10, -15.4, 'Sessions after shorter breaks stayed clean for about 15% more of the session.'],
+    ['shorter_breaks_cleaner', 11, -15.6, 'After shorter breaks, about 16% more of the session stayed clean.'],
+    ['break_lengths_similar', 10, 0, 'Clean focus looks similar after shorter and longer breaks.'],
+    ['break_lengths_similar', 11, 0, 'Break length is not showing a clear clean-focus difference yet.'],
+  ] as const;
+  for (const [typeLine, verifiedSessionCount, differencePct, expected] of fixtures) {
+    const actual = copyModule.exports.formatAwayInsightCopy({
+      ...insight, typeLine, verifiedSessionCount, differencePct,
+    });
+    assert(actual === expected, actual);
+  }
 });
 
 test('away code throwing returns null', async () => {

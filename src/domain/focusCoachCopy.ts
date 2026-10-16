@@ -81,12 +81,12 @@ const EXPERIMENT_RESULT_COPY: Record<FocusCoachExperimentStatus, string> = {
 
 const AWAY_INSIGHT_COPY: Record<FocusCoachAwayInsightType, string[]> = {
   longer_breaks_cleaner: [
-    'Sessions after a longer break ran about {diff} cleaner.',
-    'Longer breaks are pairing with about {diff} cleaner focus.',
+    'Sessions after a longer break stayed clean for about {diff} more of the session.',
+    'After longer breaks, about {diff} more of the session stayed clean.',
   ],
   shorter_breaks_cleaner: [
-    'Sessions after shorter breaks ran about {diff} cleaner.',
-    'Shorter breaks are pairing with about {diff} cleaner focus.',
+    'Sessions after shorter breaks stayed clean for about {diff} more of the session.',
+    'After shorter breaks, about {diff} more of the session stayed clean.',
   ],
   break_lengths_similar: [
     'Clean focus looks similar after shorter and longer breaks.',
@@ -184,7 +184,7 @@ export function formatAwayInsightCopy(insight: FocusCoachAwayInsight) {
   );
   return variants[index].replace(
     '{diff}',
-    formatApproxDuration(Math.abs(insight.differenceSeconds)),
+    `${Math.round(Math.abs(insight.differencePct))}%`,
   );
 }
 
