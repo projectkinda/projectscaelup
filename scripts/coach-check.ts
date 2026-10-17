@@ -6,6 +6,7 @@ import {
   type FocusCoachExperiment,
   type FocusCoachSession,
 } from '../src/domain/focusCoach';
+import { cleanTrendGeometry, experimentDaysDone, tileDuration, durationInWords } from '../src/components/focusCoachPresentation';
 import { formatApproxDuration } from '../src/domain/durationFormat';
 import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
@@ -975,6 +976,79 @@ test('locked teasers do not leak away paid content', () => {
   assert(teaser !== paidText, 'teaser matched paid text');
 });
 
+// Load the real templates while keeping native database imports out of Node.
+function loadCopyTemplates() {
+  const { readFileSync } = require('node:fs');
+  const { runInNewContext } = require('node:vm');
+  const copyModule = { exports: {} as typeof import('../src/domain/focusCoachCopy') };
+  runInNewContext(transpileModule(readFileSync('src/domain/focusCoachCopy.ts', 'utf8'), {
+    compilerOptions: { module: ModuleKind.CommonJS },
+  }).outputText, { exports: copyModule.exports, require: () => ({}) });
+  return copyModule.exports;
+}
+
+for (const [key, experiment] of Object.entries(loadCopyTemplates().EXPERIMENT_COPY)) {
+  test(`all copy templates read correctly with experiment ${key}`, () => {
+    const { STATE_VARIANTS, fillTemplate } = loadCopyTemplates();
+    for (const template of Object.values(STATE_VARIANTS).flat()) {
+      const rendered = fillTemplate(template, {
+        now: '20 min', before: '15 min', suggested: '25 min', experiment, n: '5',
+      });
+      assert(!/\btry (?:take|put|choose|schedule|try)\b|\btry to to\b| {2}|\{\w+\}/i.test(rendered), rendered);
+    }
+  });
+}
+
+test('trend scale drops goals above three times the largest point', () => {
+  const shape = cleanTrendGeometry([15, 30, 45], 25);
+  assert(shape.goalY === null, 'distant goal should be hidden');
+  assert(shape.points[2].y === 6, 'largest point should fill the plot');
+});
+
+test('trend scale retains goals at the three-times boundary', () => {
+  assert(cleanTrendGeometry([20], 1).goalY !== null, 'boundary goal should be visible');
+  assert(cleanTrendGeometry([19], 1).goalY === null, 'larger goal should be hidden');
+});
+
+test('trend geometry stays inside the chart with a visible short point and last dot', () => {
+  for (const values of [[0], [1], [0, 1, 1800], [45, 30], [0, 0]]) {
+    const shape = cleanTrendGeometry(values, 20);
+    assert(shape.points.every(point => point.x >= 6 && point.x <= 154 && point.y >= 6 && point.y <= 50), 'points outside chart');
+    assert(shape.points.every((point, index) => values[index] === 0 || point.y <= 46), 'short point should be at least four units high');
+  }
+});
+
+test('tile durations preserve seconds-length values', () => {
+  assert(tileDuration(45) === '45 sec', tileDuration(45));
+  assert(tileDuration(12 * 60) === '12m', tileDuration(12 * 60));
+  assert(durationInWords(45) === '45 seconds', 'spoken duration should use words');
+  assert(durationInWords(3661) === '1 hour 1 minute 1 second', 'spoken units should use words');
+});
+
+test('every locked teaser is hint-only, independent of actual values', () => {
+  const first = coachResult();
+  const second = coachResult({
+    cleanTrend: { points: [], deltaSeconds: 999 },
+    lastSession: { ...first.lastSession!, cleanSeconds: 45 },
+    diagnosis: 'camera_heavy',
+    experiment: { ...first.experiment!, id: 'five_minute_break' },
+    away: { ...first.away!, sinceLastUseSeconds: 99999 },
+  });
+  for (const id of ['clean_trend', 'last_session', 'away', 'diagnosis', 'experiment'] as const) {
+    const hint = lockedTeaserCopy(id, first);
+    assert(hint === lockedTeaserCopy(id, second), `data leaked in ${id}`);
+    assert(hint !== null && !/\d/.test(hint) && hint.split(' ').length <= 3, `invalid hint ${hint}`);
+  }
+});
+
+test('experiment dots show this week elapsed days, never last week result', () => {
+  const startedAt = '2026-10-10T10:00:00.000Z';
+  const experiment = { ...coachResult().experiment!, startedAt, result: null, lastResult: 'worked' as const };
+  assert(experimentDaysDone(experiment, Date.parse(startedAt) + 3 * 86400000) === 3, 'expected three elapsed days');
+  assert(experimentDaysDone(experiment, Date.parse(startedAt) - 86400000) === 0, 'future dates should show zero');
+  assert(experimentDaysDone(experiment, Date.parse(startedAt) + 20 * 86400000) === 7, 'dots should cap at seven');
+  assert(experimentDaysDone({ ...experiment, result: 'unclear' }) === 7, 'judged experiment should be complete');
+});
 async function main() {
   let failed = 0;
   for (const item of cases) {

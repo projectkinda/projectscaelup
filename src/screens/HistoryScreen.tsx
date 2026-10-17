@@ -12,7 +12,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Line, Path, Rect, Text as SvgText } from 'react-native-svg';
+import { useFonts } from 'expo-font';
+import Svg, { Circle, Line, Path, Polyline, Rect, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import PlayIcon from '../assets/icons/play.svg';
@@ -34,14 +35,8 @@ import {
   type FocusCoachCardSectionId,
   selectCoachCardSections,
 } from '../domain/focusCoachCardSections';
-import {
-  experimentLabel,
-  formatAwayInsightCopy,
-} from '../domain/focusCoachCopy';
-import {
-  formatDiagnosisDetail,
-  lockedTeaserCopy,
-} from '../domain/focusCoachCopyRules';
+import { lockedTeaserCopy } from '../domain/focusCoachCopyRules';
+import { cleanTrendGeometry, durationInWords, experimentDaysDone, tileDuration, SHORT_EXPERIMENT_COPY } from '../components/focusCoachPresentation';
 import { formatAwayTime } from '../domain/awayTime';
 import { iosAppKey } from '../domain/iosScreenTime';
 import { DEV_FLAGS } from '../domain/paywall';
@@ -141,6 +136,8 @@ function DistractionTrendChart({ points }: { points: HistoryTrendPoint[] }) {
       <Svg
         width="100%"
         height={CHART_HEIGHT}
+        accessible
+        accessibilityLabel={`Distractions by session: ${points.map(point => point.distractionCount).join(', ')}`}
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
       >
         <Line
@@ -291,156 +288,115 @@ function StatRows({ history }: { history: HistoryData }) {
   );
 }
 
-function FocusCoachCard({
-  coach,
-  paidUser,
-  onLockedSection,
-}: {
+function FocusCoachCard({ coach, paidUser, onLockedSection }: {
   coach: FocusCoachResult;
   paidUser: boolean;
   onLockedSection: () => void;
 }) {
-  const selection = selectCoachCardSections({
-    isPaid: paidUser,
-    result: coach,
-    platform: Platform.OS,
+  const [fontsLoaded, fontError] = useFonts({
+    Geist: require('../assets/fonts/Geist-Regular.ttf'),
+    GeistSemiBold: require('../assets/fonts/Geist-SemiBold.ttf'),
   });
-  const headline = coach.historyHeadline ?? coach.historyCopy;
+  const { fontScale } = useWindowDimensions();
+  const selection = selectCoachCardSections({
+    isPaid: paidUser, result: coach, platform: Platform.OS,
+  });
+  const headline = coach.historyHeadline ?? (paidUser ? coach.historyCopy : coach.currentCleanSeconds !== null
+    ? `Current clean length is ${formatDuration(coach.currentCleanSeconds)}.` : null);
   const bestCleanSeconds = getBestCleanSeconds(coach);
+  const latestClean = coach.cleanTrend?.points.at(-1)?.cleanSeconds ?? coach.currentCleanSeconds;
+  const tiles = selection.sections.filter(section => section.id !== 'experiment');
+  const rows = [tiles.slice(0, 2), tiles.slice(2, 4)];
+  const experiment = selection.sections.find(section => section.id === 'experiment');
 
   return (
     <View style={styles.coachCard}>
-      <Text style={styles.coachEyebrow}>Focus coach</Text>
-      {selection.state === 'baseline' ? (
-        <>
-          <Text style={styles.coachTitle}>
-            Your coach unlocks after {coach.baselineTarget} focus sessions
-          </Text>
-          <View style={styles.coachProgressTrack}>
-            <View
-              style={[
-                styles.coachProgressFill,
-                {
-                  width: `${Math.min(
-                    100,
-                    (coach.validCount / coach.baselineTarget) * 100,
-                  )}%`,
-                },
-              ]}
-            />
-          </View>
-          <Text style={styles.coachCopy}>
-            {coach.validCount} of {coach.baselineTarget} done
-          </Text>
-          {coach.validCount >= 1 && bestCleanSeconds !== null ? (
-            <Text style={styles.coachMetricLine}>
-              Best clean focus so far: {formatDuration(bestCleanSeconds)}
+      {!fontsLoaded && !fontError ? <ActivityIndicator color={colors.muted} accessibilityLabel="Loading coach" /> : <>
+        <Text numberOfLines={2} style={styles.coachEyebrow}>Focus coach</Text>
+        {selection.state === 'baseline' ? (
+          <>
+            <Text numberOfLines={2} style={styles.coachTitle}>
+              Your coach unlocks after {coach.baselineTarget} focus sessions
             </Text>
-          ) : null}
-          <Text style={styles.coachFootnote}>
-            Sessions shorter than {formatDuration(MIN_FOCUS_SECONDS)} don't
-            count toward your coach.
-          </Text>
-        </>
-      ) : (
-        <>
-          {headline ? <Text style={styles.coachHeadline}>{headline}</Text> : null}
-          {coach.currentCleanSeconds !== null ? (
-            <Text style={styles.coachBigNumber}>
-              {formatDuration(coach.currentCleanSeconds)}
+            <ProgressDots done={coach.validCount} total={coach.baselineTarget} label="Baseline sessions" />
+            {coach.validCount >= 1 && bestCleanSeconds !== null ? (
+              <Text numberOfLines={2} style={styles.coachMetricLine}>
+                Best clean focus so far: {formatDuration(bestCleanSeconds)}
+              </Text>
+            ) : null}
+            <Text numberOfLines={2} style={styles.coachFootnote}>
+              Sessions shorter than {formatDuration(MIN_FOCUS_SECONDS)} don't count toward your coach.
             </Text>
-          ) : null}
-          {coach.suggestionCopy ? (
-            <Text style={styles.coachSuggestion}>{coach.suggestionCopy}</Text>
-          ) : null}
-          <View style={styles.coachSectionStack}>
-            {selection.sections.map(section =>
-              paidUser ? (
-                <PaidCoachSection
-                  key={section.id}
-                  id={section.id}
-                  coach={coach}
-                />
-              ) : (
-                <LockedCoachSection
-                  key={section.id}
-                  id={section.id}
-                  coach={coach}
-                  onPress={onLockedSection}
-                />
-              ),
-            )}
-          </View>
-        </>
-      )}
+          </>
+        ) : (
+          <>
+            <View style={styles.coachHeader}>
+              <View style={styles.coachHeaderMetric}>
+                <Text numberOfLines={2} style={styles.coachBigNumber}>
+                  {latestClean !== null ? formatDuration(latestClean) : '—'}
+                </Text>
+                <Text numberOfLines={2} style={styles.coachCaption}>clean focus</Text>
+              </View>
+              {coach.suggestionMinutes !== null ? (
+                <View style={styles.coachNextChip}>
+                  <Text numberOfLines={2} style={styles.coachNextText}>Next: {coach.suggestionMinutes} min</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.coachGrid}>
+              {rows.filter(row => row.length > 0).map((row, index) => (
+                <View key={index} style={styles.coachTileRow}>
+                  {row.map(section => (
+                    <View key={section.id} style={[styles.coachTileSlot, { minHeight: 168 * Math.max(1, fontScale) }]}>
+                      {section.locked ? (
+                        <LockedCoachSection id={section.id} coach={coach} onPress={onLockedSection} />
+                      ) : <PaidCoachSection id={section.id} coach={coach} />}
+                    </View>
+                  ))}
+                  {row.length === 1 ? <View style={styles.coachTileSlot} /> : null}
+                </View>
+              ))}
+            </View>
+            {experiment ? experiment.locked ? (
+              <LockedCoachSection id="experiment" coach={coach} onPress={onLockedSection} />
+            ) : coach.experiment ? (
+              <View style={styles.coachExperiment}>
+                <ProgressDots done={experimentDaysDone(coach.experiment)} total={7} label="Experiment days elapsed" />
+                <Text numberOfLines={2} style={styles.coachExperimentText}>{SHORT_EXPERIMENT_COPY[coach.experiment.id]}</Text>
+              </View>
+            ) : null : null}
+            {headline ? <Text numberOfLines={2} style={styles.coachHeadline}>{headline}</Text> : null}
+          </>
+        )}
+      </>}
     </View>
   );
 }
 
 function getBestCleanSeconds(coach: FocusCoachResult) {
-  const trendBest = coach.cleanTrend?.points.length
+  return coach.cleanTrend?.points.length
     ? Math.max(...coach.cleanTrend.points.map(point => point.cleanSeconds))
-    : null;
-  return trendBest ?? coach.currentCleanSeconds;
+    : coach.currentCleanSeconds;
 }
 
 function sectionTitle(id: FocusCoachCardSectionId) {
-  switch (id) {
-    case 'clean_trend':
-      return 'Clean-focus trend';
-    case 'last_session':
-      return 'Last session';
-    case 'away':
-      return 'Away from flagged apps';
-    case 'diagnosis':
-      return 'Your pattern';
-    case 'experiment':
-      return "This week's experiment";
-  }
+  return { clean_trend: 'Trend', last_session: 'Last session', away: 'Away',
+    diagnosis: 'Best window', experiment: 'Experiment' }[id];
 }
 
-function endedByLine(coach: FocusCoachResult) {
-  switch (coach.lastSession?.endedBy) {
-    case 'camera_absence':
-      return 'You stepped away from the camera';
-    case 'app_touched':
-      return 'You opened a flagged app';
-    case 'pause_overrun':
-      return 'A pause ran over';
-    case null:
-    case undefined:
-      return 'No distractions';
-  }
-}
-
-function experimentStatusLine(coach: FocusCoachResult) {
-  const status = coach.experiment?.result ?? coach.experiment?.lastResult;
-  switch (status) {
-    case 'worked':
-      return "Last week's experiment helped.";
-    case 'didnt_work':
-      return "Last week's experiment did not clearly help.";
-    case 'unclear':
-      return "Last week's experiment needs more sessions.";
-    case null:
-    case undefined:
-      return 'In progress this week.';
-  }
-}
-
-function awayLine(coach: FocusCoachResult) {
-  if (!coach.away || coach.away.sinceLastUseSeconds === null) {
-    return null;
-  }
-
-  return `Away since your last use: ${
-    coach.away.display === 'at_least' ? 'at least' : 'about'
-  } ${formatAwayTime(coach.away.sinceLastUseSeconds)}`;
+function ProgressDots({ done, total, label }: { done: number; total: number; label: string }) {
+  return (
+    <View accessible accessibilityLabel={`${label}: ${Math.min(total, Math.max(0, done))} of ${total}`} style={styles.coachDots}>
+      {Array.from({ length: total }, (_, index) => (
+        <View key={index} style={[styles.coachDot, index < done && styles.coachDotFilled]} />
+      ))}
+    </View>
+  );
 }
 
 function LockIcon() {
   return (
-    <Svg width={15} height={15} viewBox="0 0 24 24">
+    <Svg width={15} height={15} viewBox="0 0 24 24" accessibilityLabel="Locked">
       <Rect
         x={5}
         y={10}
@@ -464,7 +420,7 @@ function LockIcon() {
 
 function CheckMark() {
   return (
-    <Svg width={18} height={18} viewBox="0 0 24 24">
+    <Svg width={18} height={18} viewBox="0 0 24 24" accessibilityLabel="Included">
       <Path
         d="M5 12.5 L10 17 L19 7"
         fill="none"
@@ -477,264 +433,133 @@ function CheckMark() {
   );
 }
 
-function LockedCoachSection({
-  id,
-  coach,
-  onPress,
-}: {
+function LockedCoachSection({ id, coach, onPress }: {
   id: FocusCoachCardSectionId;
   coach: FocusCoachResult;
   onPress: () => void;
 }) {
   const teaser = lockedTeaserCopy(id, coach);
-  if (!teaser) {
-    return null;
-  }
-
+  if (!teaser) return null;
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Unlock ${sectionTitle(id)}`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.coachLockedRow,
+    <Pressable accessibilityRole="button" accessibilityLabel={`Unlock ${teaser}`}
+      onPress={onPress} style={({ pressed }) => [
+        styles.coachTile, id === 'experiment' && styles.coachLockedExperiment,
         pressed && styles.textActionPressed,
-      ]}
-    >
-      {id === 'clean_trend' && coach.cleanTrend ? (
-        <View style={styles.coachLockedChartBackground}>
-          <CleanFocusTrendChart coach={coach} compact dimmed />
-        </View>
-      ) : null}
-      <View style={styles.coachLockedContent}>
-        <View style={styles.coachLockedTitleRow}>
-          <Text style={styles.coachLockedTitle}>{sectionTitle(id)}</Text>
-          <LockIcon />
-        </View>
-        <Text style={styles.coachLockedTeaser}>{teaser}</Text>
+      ]}>
+      {/* Static decoration only. Never mount a paid chart or value in a locked tile. */}
+      <View accessible={false} style={styles.coachPlaceholder} />
+      <View style={[styles.coachLockedForeground, id === 'experiment' && styles.coachLockedStripContent]}>
+        <LockIcon />
+        <Text numberOfLines={2} style={styles.coachLockedTeaser}>{teaser}</Text>
       </View>
     </Pressable>
   );
 }
 
-function PaidCoachSection({
-  id,
-  coach,
-}: {
-  id: FocusCoachCardSectionId;
-  coach: FocusCoachResult;
-}) {
+function PaidCoachSection({ id, coach }: { id: FocusCoachCardSectionId; coach: FocusCoachResult }) {
+  let content;
+  let title = sectionTitle(id);
   switch (id) {
-    case 'clean_trend':
-      if (!coach.cleanTrend) return null;
-      return (
-        <View style={styles.coachDetailCard}>
-          <Text style={styles.coachDetailTitle}>Clean-focus trend</Text>
-          <CleanFocusTrendChart coach={coach} />
-        </View>
-      );
-    case 'last_session':
-      if (!coach.lastSession) return null;
-      return (
-        <View style={styles.coachDetailCard}>
-          <Text style={styles.coachDetailTitle}>Last session</Text>
-          <View style={styles.coachDetailGrid}>
-            <CoachFact
-              label="Focus"
-              value={formatDuration(coach.lastSession.focusSeconds)}
-            />
-            <CoachFact
-              label="Clean"
-              value={formatDuration(coach.lastSession.cleanSeconds)}
-            />
-          </View>
-          <Text style={styles.coachDetailText}>{endedByLine(coach)}</Text>
-          {coach.lastSession.endedBy ? (
-            <Text style={styles.coachDetailSubtext}>
-              First break at {formatDuration(coach.lastSession.cleanSeconds)}
-            </Text>
-          ) : null}
-          <Text style={styles.coachDetailSubtext}>
-            {coach.lastSession.pauseCount}{' '}
-            {coach.lastSession.pauseCount === 1 ? 'pause' : 'pauses'} used
-            {coach.lastSession.endedEarly ? '; ended early' : ''}
+    case 'clean_trend': {
+      const delta = coach.cleanTrend?.deltaSeconds;
+      content = <>
+        <CleanFocusTrendChart coach={coach} />
+        {delta !== null && delta !== undefined && delta !== 0 ? (
+          <Text numberOfLines={2} style={[styles.coachTileValue, { color: delta > 0 ? colors.pine : colors.mutedRust }]}>
+            {delta > 0 ? '+' : '−'}{formatDuration(Math.abs(delta))}
           </Text>
-        </View>
-      );
+        ) : null}
+      </>;
+      break;
+    }
+    case 'last_session': {
+      const last = coach.lastSession;
+      if (!last) return null;
+      const width = Math.min(148, Math.max(last.cleanSeconds > 0 ? 4 : 0,
+        (last.cleanSeconds / Math.max(1, last.focusSeconds)) * 148));
+      const marker = last.firstDistractionAtSeconds !== null
+        ? 6 + Math.min(148, Math.max(0, (last.firstDistractionAtSeconds / Math.max(1, last.focusSeconds)) * 148)) : null;
+      const ended = last.endedBy === 'camera_absence' ? 'Away' : last.endedBy === 'app_touched' ? 'App'
+        : last.endedBy === 'pause_overrun' ? 'Pause' : 'Stopped';
+      content = <>
+        <Svg width="100%" height={40} viewBox="0 0 160 40" accessible
+          accessibilityLabel={`Last session: ${durationInWords(last.cleanSeconds)} clean of ${durationInWords(last.focusSeconds)} focus${marker !== null ? `, first distraction at ${durationInWords(last.firstDistractionAtSeconds!)}` : ', no distraction'}`}>
+          <Rect x={6} y={16} width={148} height={10} rx={3} fill={colors.panelTop} />
+          <Rect x={6} y={16} width={width} height={10} rx={3} fill={colors.pine} />
+          {marker !== null ? <Line x1={marker} x2={marker} y1={12} y2={30} strokeWidth={3} stroke={colors.mutedRust} /> : null}
+        </Svg>
+        <Text numberOfLines={2} style={styles.coachTileValue}>{tileDuration(last.cleanSeconds)} clean</Text>
+        {last.endedEarly ? <View style={styles.coachEndChip}><Text numberOfLines={2} style={styles.coachEndText}>{ended}</Text></View> : null}
+      </>;
+      break;
+    }
     case 'away': {
-      const line = awayLine(coach);
-      if (!line || !coach.away) return null;
-      return (
-        <View style={styles.coachDetailCard}>
-          <Text style={styles.coachDetailTitle}>Away from flagged apps</Text>
-          <Text style={styles.coachDetailText}>{line}</Text>
-          {coach.away.afterSessionVerified &&
-          coach.away.afterSessionSeconds !== null ? (
-            <Text style={styles.coachDetailSubtext}>
-              After your last session you stayed away about{' '}
-              {formatAwayTime(coach.away.afterSessionSeconds)}
-            </Text>
-          ) : null}
-          {coach.awayInsight ? (
-            <Text style={styles.coachDetailSubtext}>
-              {formatAwayInsightCopy(coach.awayInsight)}
-            </Text>
-          ) : null}
-        </View>
-      );
+      const away = coach.away;
+      if (!away || away.display === 'hidden' || away.sinceLastUseSeconds === null) return null;
+      const qualifier = away.display === 'at_least' ? 'at least' : 'about';
+      content = <>
+        <Text numberOfLines={2} style={styles.coachCaption}>{qualifier}</Text>
+        <Text numberOfLines={2} style={styles.coachAwayValue}>{formatAwayTime(away.sinceLastUseSeconds).replace(/ (h|min)/g, '$1').replace(/min/g, 'm')}</Text>
+        <Text numberOfLines={2} style={styles.coachCaption}>since last use</Text>
+      </>;
+      break;
     }
     case 'diagnosis': {
-      const line = coach.diagnosisDetail
-        ? formatDiagnosisDetail(coach.diagnosisDetail, coach.weakEvidence)
-        : null;
-      if (!line) return null;
-      return (
-        <View style={styles.coachDetailCard}>
-          <Text style={styles.coachDetailTitle}>Your pattern</Text>
-          <Text style={styles.coachDetailText}>{line}</Text>
+      const detail = coach.diagnosisDetail;
+      const kind = detail?.kind ?? coach.diagnosis;
+      title = kind === 'best_window' ? 'Best window' : 'Pattern';
+      const window = detail?.kind === 'best_window' ? detail.window : null;
+      const label = window === 'morning' ? 'Mornings' : window === 'afternoon' ? 'Afternoons'
+        : window === 'evening' ? 'Evenings' : kind === 'early_breaker' ? 'Early'
+        : kind === 'late_breaker' ? 'Late' : kind === 'app_heavy' ? 'Apps' : kind === 'camera_heavy' ? 'Away' : 'Timing';
+      const delta = detail?.kind === 'best_window'
+        ? Math.max(0, detail.windowMedianCleanSeconds - detail.overallMedianCleanSeconds) : 0;
+      const early = coach.weakEvidence || (detail?.kind === 'best_window' && detail.sessionsInWindow < 5);
+      content = <>
+        <View style={styles.coachPattern}>
+          <PatternIcon kind={window ?? kind ?? 'best_window'} label={label} />
+          <Text numberOfLines={2} style={[styles.coachTileValue, styles.coachPatternLabel]}>{label}</Text>
         </View>
-      );
+        {delta > 0 ? <Text numberOfLines={2} style={styles.coachCaption}>+{tileDuration(delta)} cleaner</Text> : null}
+        {early ? <Text numberOfLines={2} style={styles.coachEarlyTag}>Early</Text> : null}
+      </>;
+      break;
     }
-    case 'experiment':
-      if (!coach.experiment) return null;
-      return (
-        <View style={styles.coachDetailCard}>
-          <Text style={styles.coachDetailTitle}>This week's experiment</Text>
-          <Text style={styles.coachDetailText}>
-            {experimentLabel(coach.experiment.id)}
-          </Text>
-          <Text style={styles.coachDetailSubtext}>
-            {experimentStatusLine(coach)}
-          </Text>
-        </View>
-      );
+    case 'experiment': return null;
   }
+  return <View style={styles.coachTile}>
+    <Text numberOfLines={2} style={styles.coachTileTitle}>{title}</Text>
+    {content}
+  </View>;
 }
 
-function CoachFact({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.coachFact}>
-      <Text style={styles.coachFactValue}>{value}</Text>
-      <Text style={styles.coachFactLabel}>{label}</Text>
-    </View>
-  );
+function PatternIcon({ kind, label }: { kind: string; label: string }) {
+  const sun = kind === 'morning' || kind === 'afternoon' || kind === 'best_window';
+  return <Svg width={24} height={24} viewBox="0 0 24 24" accessible accessibilityLabel={`${label} pattern`}>
+    {sun ? <>
+      <Circle cx={12} cy={12} r={4} fill="none" stroke={colors.pine} strokeWidth={1.8} />
+      <Path d="M12 1v3 M12 20v3 M1 12h3 M20 12h3 M4 4l2 2 M18 18l2 2 M4 20l2-2 M18 6l2-2"
+        stroke={colors.pine} strokeWidth={1.8} />
+      {kind === 'afternoon' ? <Line x1={1} x2={23} y1={18} y2={18} stroke={colors.pine} strokeWidth={1.8} /> : null}
+    </> : kind === 'evening' ? <Path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" fill="none" stroke={colors.pine} strokeWidth={1.8} />
+      : kind === 'app_heavy' ? <Rect x={6} y={2} width={12} height={20} rx={2} fill="none" stroke={colors.muted} strokeWidth={1.8} />
+      : kind === 'camera_heavy' ? <Path d="M3 7h12v12H3Z M15 11l6-4v12l-6-4" fill="none" stroke={colors.muted} strokeWidth={1.8} />
+      : <><Circle cx={12} cy={12} r={9} fill="none" stroke={colors.muted} strokeWidth={1.8} />
+        <Path d={kind === 'early_breaker' ? 'M12 5v7l-4 3' : 'M12 5v7l5 3'} fill="none" stroke={colors.muted} strokeWidth={1.8} /></>}
+  </Svg>;
 }
 
-function CleanFocusTrendChart({
-  coach,
-  compact = false,
-  dimmed = false,
-}: {
-  coach: FocusCoachResult;
-  compact?: boolean;
-  dimmed?: boolean;
-}) {
-  const points = coach.cleanTrend?.points ?? [];
-  if (points.length === 0) {
-    return null;
-  }
-
-  const height = compact ? 64 : 150;
-  const width = CHART_WIDTH;
-  const padding = compact
-    ? { top: 8, right: 10, bottom: 8, left: 10 }
-    : { top: 18, right: 14, bottom: 28, left: 28 };
-  const goalSeconds =
-    coach.suggestionMinutes !== null ? coach.suggestionMinutes * 60 : null;
-  const maxValue = Math.max(
-    60,
-    goalSeconds ?? 0,
-    ...points.map(point => point.cleanSeconds),
-  );
-  const plotWidth = width - padding.left - padding.right;
-  const plotHeight = height - padding.top - padding.bottom;
-  const barGap = points.length > 1 ? 8 : 0;
-  const barWidth = Math.max(
-    12,
-    (plotWidth - barGap * (points.length - 1)) / points.length,
-  );
-  const goalY =
-    goalSeconds !== null
-      ? padding.top + plotHeight - (plotHeight * goalSeconds) / maxValue
-      : null;
-
-  return (
-    <View
-      style={[
-        styles.cleanTrendChart,
-        compact && styles.cleanTrendChartCompact,
-      ]}
-    >
-      <Svg
-        width="100%"
-        height={height}
-        viewBox={`0 0 ${width} ${height}`}
-        opacity={dimmed ? 0.34 : 1}
-      >
-        {!compact ? (
-          <>
-            {[0, 0.5, 1].map(step => {
-              const y = padding.top + plotHeight - plotHeight * step;
-              return (
-                <Line
-                  key={step}
-                  x1={padding.left}
-                  y1={y}
-                  x2={padding.left + plotWidth}
-                  y2={y}
-                  stroke="rgba(246, 249, 253, 0.13)"
-                  strokeDasharray="3 7"
-                  strokeWidth={1}
-                />
-              );
-            })}
-            {goalY !== null ? (
-              <>
-                <Line
-                  x1={padding.left}
-                  y1={goalY}
-                  x2={padding.left + plotWidth}
-                  y2={goalY}
-                  stroke={colors.rewardAmber}
-                  strokeDasharray="5 5"
-                  strokeWidth={1.5}
-                />
-                <SvgText
-                  x={padding.left + plotWidth}
-                  y={Math.max(10, goalY - 5)}
-                  fill={colors.rewardAmber}
-                  fontSize={10}
-                  fontWeight="700"
-                  textAnchor="end"
-                >
-                  Suggested
-                </SvgText>
-              </>
-            ) : null}
-          </>
-        ) : null}
-        {points.map((point, index) => {
-          const x = padding.left + index * (barWidth + barGap);
-          const barHeight = Math.max(
-            4,
-            (plotHeight * point.cleanSeconds) / maxValue,
-          );
-          const y = padding.top + plotHeight - barHeight;
-          return (
-            <Rect
-              key={point.sessionId}
-              x={x}
-              y={y}
-              width={barWidth}
-              height={barHeight}
-              rx={compact ? 4 : 6}
-              fill={colors.white}
-            />
-          );
-        })}
-      </Svg>
-    </View>
-  );
+function CleanFocusTrendChart({ coach }: { coach: FocusCoachResult }) {
+  const values = coach.cleanTrend?.points.map(point => point.cleanSeconds) ?? [];
+  if (!values.length) return null;
+  const geometry = cleanTrendGeometry(values, coach.suggestionMinutes);
+  const last = geometry.points.at(-1)!;
+  return <Svg width="100%" height={56} viewBox="0 0 160 56" accessible
+    accessibilityLabel={`Clean focus trend: ${values.map(durationInWords).join(', ')}${geometry.goalY !== null ? `; suggested goal ${coach.suggestionMinutes} minutes` : ''}`}>
+    {geometry.goalY !== null ? <Line x1={6} x2={154} y1={geometry.goalY} y2={geometry.goalY} stroke={colors.muted} strokeDasharray="3 5" /> : null}
+    <Polyline points={geometry.points.map(point => `${point.x},${point.y}`).join(' ')} fill="none" stroke={colors.pine} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+    <Circle cx={last.x} cy={last.y} r={3.5} fill={colors.pine} />
+  </Svg>;
 }
 
 function ModeBreakdown({
@@ -864,6 +689,7 @@ function GhostTrendPreview() {
       <Svg
         width="100%"
         height={CHART_HEIGHT}
+        accessibilityLabel="Example trend, no session data"
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
       >
         <Path
@@ -1382,192 +1208,42 @@ const styles = StyleSheet.create({
   },
   rewardValue: { color: colors.rewardAmber },
   coachCard: {
-    borderRadius: 18,
-    paddingHorizontal: 15,
-    paddingVertical: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: colors.module,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.13,
-    shadowRadius: 10,
-    elevation: 7,
+    borderRadius: 18, padding: 14, borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.panelTop, backgroundColor: colors.module,
   },
-  coachEyebrow: {
-    color: colors.rewardAmber,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '700',
-  },
-  coachTitle: {
-    marginTop: 3,
-    color: colors.white,
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '700',
-  },
-  coachCopy: {
-    marginTop: 6,
-    color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  coachProgressTrack: {
-    height: 8,
-    marginTop: 14,
-    borderRadius: 4,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  coachProgressFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.rewardAmber,
-  },
-  coachMetricLine: {
-    marginTop: 10,
-    color: colors.white,
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: '600',
-  },
-  coachFootnote: {
-    marginTop: 8,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  coachHeadline: {
-    marginTop: 7,
-    color: colors.white,
-    fontSize: 17,
-    lineHeight: 24,
-    fontWeight: '600',
-  },
-  coachBigNumber: {
-    marginTop: 13,
-    color: colors.white,
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: '700',
-  },
-  coachSuggestion: {
-    marginTop: 2,
-    color: colors.rewardAmber,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
-  coachSectionStack: {
-    marginTop: 14,
-    gap: 10,
-  },
-  coachLockedRow: {
-    minHeight: 68,
-    overflow: 'hidden',
-    borderRadius: 14,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    backgroundColor: 'rgba(13, 13, 13, 0.72)',
-  },
-  coachLockedChartBackground: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    opacity: 0.72,
-  },
-  coachLockedContent: {
-    minHeight: 68,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    justifyContent: 'center',
-    backgroundColor: 'rgba(13, 13, 13, 0.72)',
-  },
-  coachLockedTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  coachLockedTitle: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.white,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '700',
-  },
-  coachLockedTeaser: {
-    marginTop: 3,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  coachDetailCard: {
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: 'rgba(13, 13, 13, 0.72)',
-  },
-  coachDetailTitle: {
-    color: colors.white,
-    fontSize: 14,
-    lineHeight: 19,
-    fontWeight: '700',
-  },
-  coachDetailText: {
-    marginTop: 8,
-    color: colors.white,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  coachDetailSubtext: {
-    marginTop: 5,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 17,
-  },
-  coachDetailGrid: {
-    marginTop: 10,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  coachFact: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    justifyContent: 'center',
-    backgroundColor: colors.module,
-  },
-  coachFactValue: {
-    color: colors.white,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  coachFactLabel: {
-    marginTop: 2,
-    color: colors.muted,
-    fontSize: 10,
-    lineHeight: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  cleanTrendChart: {
-    marginTop: 12,
-    justifyContent: 'center',
-  },
-  cleanTrendChartCompact: {
-    marginTop: 0,
-  },
+  coachEyebrow: { color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: 'Geist' },
+  coachTitle: { marginTop: 6, color: colors.ink, fontSize: 20, lineHeight: 26, fontFamily: 'GeistSemiBold' },
+  coachMetricLine: { marginTop: 10, color: colors.ink, fontSize: 14, lineHeight: 20, fontFamily: 'Geist' },
+  coachFootnote: { marginTop: 8, color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: 'Geist' },
+  coachHeader: { marginTop: 12, flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  coachHeaderMetric: { flex: 1, minWidth: 0 },
+  coachBigNumber: { color: colors.ink, fontSize: 34, lineHeight: 40, fontFamily: 'GeistSemiBold' },
+  coachCaption: { color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: 'Geist' },
+  coachNextChip: { maxWidth: '47%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 18, backgroundColor: colors.goalSurface },
+  coachNextText: { color: colors.rewardAmber, fontSize: 12, lineHeight: 17, fontFamily: 'GeistSemiBold' },
+  coachGrid: { marginTop: 16, gap: 10 },
+  coachTileRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
+  coachTileSlot: { flex: 1, minWidth: 0 },
+  coachTile: { flex: 1, borderRadius: 14, padding: 12, gap: 6, backgroundColor: colors.panelBottom },
+  coachTileTitle: { color: colors.muted, fontSize: 12, lineHeight: 17, fontFamily: 'Geist' },
+  coachTileValue: { color: colors.ink, fontSize: 19, lineHeight: 25, fontFamily: 'GeistSemiBold' },
+  coachAwayValue: { color: colors.ink, fontSize: 28, lineHeight: 34, fontFamily: 'GeistSemiBold' },
+  coachEndChip: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: colors.panelTop },
+  coachEndText: { color: colors.mutedRust, fontSize: 10, lineHeight: 14, fontFamily: 'Geist' },
+  coachPattern: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
+  coachPatternLabel: { flexShrink: 1, minWidth: 0, fontSize: 16, lineHeight: 22 },
+  coachEarlyTag: { color: colors.muted, fontSize: 10, lineHeight: 14, fontFamily: 'Geist' },
+  coachExperiment: { marginTop: 12, borderRadius: 14, padding: 12, gap: 8, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', backgroundColor: colors.panelBottom },
+  coachExperimentText: { flexBasis: 140, flexGrow: 1, flexShrink: 1, color: colors.ink, fontSize: 12, lineHeight: 17, fontFamily: 'GeistSemiBold' },
+  coachDots: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginVertical: 6 },
+  coachDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.panelTop },
+  coachDotFilled: { backgroundColor: colors.pine },
+  coachHeadline: { marginTop: 12, color: colors.muted, fontSize: 11, lineHeight: 16, fontFamily: 'Geist' },
+  coachLockedExperiment: { marginTop: 12, minHeight: 64, flex: 0 },
+  coachPlaceholder: { position: 'absolute', left: 12, right: 12, top: 30, height: 32, borderRadius: 4, backgroundColor: colors.panelTop },
+  coachLockedForeground: { flex: 1, minHeight: 82, gap: 8, justifyContent: 'center', alignItems: 'center' },
+  coachLockedStripContent: { minHeight: 32, flexDirection: 'row' },
+  coachLockedTeaser: { color: colors.ink, fontSize: 14, lineHeight: 20, fontFamily: 'GeistSemiBold', textAlign: 'center' },
   paywallOverlay: {
     flex: 1,
     justifyContent: 'flex-end',

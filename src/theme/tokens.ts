@@ -10,6 +10,8 @@ export const colors = {
   white: '#F6F9FD',
   warmWhite: '#FDFBF6',
   rewardAmber: '#C8912E',
+  pine: '#4EAA91',
+  goalSurface: 'rgba(200, 145, 46, 0.14)',
   mutedRust: '#A45F4B',
   divider: 'rgba(26, 26, 26, 0.10)',
 } as const;

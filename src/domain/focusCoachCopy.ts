@@ -25,31 +25,31 @@ type Slots = {
   n: string;
 };
 
-const STATE_VARIANTS: Record<FocusCoachState, string[]> = {
+export const STATE_VARIANTS: Record<FocusCoachState, string[]> = {
   building_baseline: [
     '{n} of 5 sessions to find your baseline.',
     '{n} of 5 sessions in. A few more will make this useful.',
     '{n} of 5 sessions logged for your baseline.',
   ],
   steady: [
-    'Your baseline is forming around {now}. Try {experiment} this week.',
+    'Your baseline is forming around {now}. Try to {experiment} this week.',
     'You are holding near {now}. Suggested next length: {suggested}.',
     'Current clean length is {now}. Keep the next session simple: {experiment}.',
   ],
   slipping: [
-    'This looks like a rougher stretch: {now}, down from {before}. Try {experiment}.',
+    'This looks like a rougher stretch: {now}, down from {before}. Try to {experiment}.',
     'Clean time is softer right now at {now}. Suggested length: {suggested}.',
-    'A rougher stretch so far: {now} now, {before} before. {experiment} is a reasonable test.',
+    'A rougher stretch so far: {now} now, {before} before. Try to {experiment}.',
   ],
   improving: [
     'Clean time is moving up: {now}, from {before}. Suggested length: {suggested}.',
     'You are trending upward so far. Current clean length: {now}.',
-    'Nice upward pattern: {now} now, {before} before. Try {experiment} next.',
+    'Nice upward pattern: {now} now, {before} before. Try to {experiment} next.',
   ],
   plateau: [
     'Clean time is steady at {now}. A small experiment: {experiment}.',
     'You are around {now}. Suggested next length: {suggested}.',
-    'This looks stable so far. Current clean length: {now}; try {experiment}.',
+    'This looks stable so far. Current clean length: {now}; try to {experiment}.',
   ],
 };
 
@@ -66,9 +66,9 @@ const DIAGNOSIS_COPY: Record<FocusCoachDiagnosis, string> = {
     'Camera absence is the most common first break, so a shorter target may fit better.',
 };
 
-const EXPERIMENT_COPY: Record<FocusCoachExperimentId, string> = {
-  morning_session: 'try one morning session',
-  shorter_sessions: 'try a slightly shorter session',
+export const EXPERIMENT_COPY: Record<FocusCoachExperimentId, string> = {
+  morning_session: 'schedule one morning session',
+  shorter_sessions: 'choose a slightly shorter session',
   phone_out_of_reach: 'put your phone out of reach',
   five_minute_break: 'take a 5 minute break between sessions',
 };
@@ -94,7 +94,7 @@ const AWAY_INSIGHT_COPY: Record<FocusCoachAwayInsightType, string[]> = {
   ],
 };
 
-function fillTemplate(template: string, slots: Slots) {
+export function fillTemplate(template: string, slots: Slots) {
   return template.replace(/\{(now|before|suggested|experiment|n)\}/g, (_, key) =>
     slots[key as keyof Slots],
   );

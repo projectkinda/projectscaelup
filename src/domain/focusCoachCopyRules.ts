@@ -40,24 +40,18 @@ export function safeCopyLine(copy: string, fallback: string) {
 export function lockedTeaserCopy(
   id: FocusCoachCardSectionId,
   coach: FocusCoachResult,
-) {
+): string | null {
   switch (id) {
     case 'clean_trend':
-      return coach.cleanTrend
-        ? `Last ${coach.cleanTrend.points.length} sessions`
-        : null;
+      return coach.cleanTrend ? 'Trend' : null;
     case 'last_session':
-      return coach.lastSession
-        ? `${formatDuration(coach.lastSession.cleanSeconds)} clean`
-        : null;
+      return coach.lastSession ? 'Session' : null;
     case 'away':
-      return coach.away ? 'Time away from your flagged apps' : null;
+      return coach.away ? 'Away' : null;
     case 'diagnosis':
-      return coach.diagnosis
-        ? 'A pattern in how your sessions start to slip'
-        : null;
+      return coach.diagnosis ? 'Pattern' : null;
     case 'experiment':
-      return coach.experiment ? 'A weekly experiment is ready' : null;
+      return coach.experiment ? 'Experiment' : null;
   }
 }
 
