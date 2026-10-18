@@ -1,5 +1,7 @@
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { FlaggedAppsView, ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
 import { FREE_TIER_APP_CAP } from '../data/settingsRepository';
@@ -175,14 +177,13 @@ const styles = StyleSheet.create({
   },
   optionTitle: {
     color: colors.ink,
-    fontSize: 16,
+    ...typography.body,
     fontWeight: '700',
     marginBottom: 2,
   },
   message: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
   },
   button: {
     minHeight: 44,
@@ -196,7 +197,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: colors.ink,
-    fontSize: 15,
+    ...typography.body,
     fontWeight: '700',
   },
   pressed: {

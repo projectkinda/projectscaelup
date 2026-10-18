@@ -1,3 +1,5 @@
+import { typography } from '../theme/typography';
+import { Text } from '../components/AppText';
 import { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
@@ -5,7 +7,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -275,7 +276,7 @@ function DistractionEventApp({ event }: { event: DistractionEventSummary }) {
         <FlaggedAppLabel
           appKeys={[appKey]}
           display="names"
-          size={14}
+          size={12}
           color={colors.ink}
           style={styles.distractionNativeLabel}
         />
@@ -483,8 +484,7 @@ const styles = StyleSheet.create({
   },
   summaryLine: {
     color: colors.muted,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -529,15 +529,13 @@ const styles = StyleSheet.create({
   },
   distractionText: {
     color: colors.muted,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     fontWeight: '500',
     textAlign: 'center',
   },
   distractionHeading: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     fontWeight: '600',
   },
   distractionListScroller: {
@@ -569,8 +567,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     color: colors.ink,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
     fontWeight: '400',
   },
   distractionNativeLabel: {
@@ -581,8 +578,7 @@ const styles = StyleSheet.create({
   distractionMeta: {
     flexShrink: 0,
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.caption,
     fontWeight: '500',
   },
   lockdownPanel: {
@@ -598,16 +594,14 @@ const styles = StyleSheet.create({
   },
   lockdownTitle: {
     color: colors.mutedRust,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     fontWeight: '700',
     textAlign: 'center',
   },
   flaggedAppsText: {
     marginTop: 7,
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.caption,
     fontWeight: '500',
     textAlign: 'center',
   },
@@ -636,8 +630,7 @@ const styles = StyleSheet.create({
   },
   continueLabel: {
     color: colors.warmWhite,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   pressed: {

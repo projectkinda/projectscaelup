@@ -24,6 +24,7 @@ class LockdownBridge(
 
     LockdownStore.applyLockdown(reactApplicationContext, identifiers, expiresAt)
     LockdownOverlayService.start(reactApplicationContext)
+    android.os.Handler(android.os.Looper.getMainLooper()).post { runCatching { AppRuleRuntime.changed(reactApplicationContext) } }
     promise.resolve(null)
   }
 

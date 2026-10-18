@@ -1,9 +1,10 @@
+import { typography } from '../../theme/typography';
+import { Text } from '../../components/AppText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -240,22 +241,19 @@ const styles = StyleSheet.create({
   title: {
     marginTop: 42,
     color: colors.ink,
-    fontSize: 34,
-    lineHeight: 40,
+    ...typography.title,
     fontWeight: '800',
   },
   subtitle: {
     marginTop: 10,
     color: colors.muted,
-    fontSize: 17,
-    lineHeight: 24,
+    ...typography.subheading,
     fontWeight: '600',
   },
   hint: {
     marginTop: 12,
     color: colors.mutedRust,
-    fontSize: 14,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '800',
   },
   pickerWrap: {

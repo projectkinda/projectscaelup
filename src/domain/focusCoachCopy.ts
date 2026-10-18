@@ -1,12 +1,10 @@
-import { getAppState, setAppState } from '../data/appStateRepository';
 import {
-  type FocusCoachDiagnosis,
   type FocusCoachAwayInsight,
   type FocusCoachAwayInsightType,
   type FocusCoachExperimentId,
-  type FocusCoachExperimentStatus,
   type FocusCoachResult,
   type FocusCoachState,
+  type SuggestionReason,
 } from './focusCoach';
 import {
   coachVariantKey,
@@ -27,56 +25,47 @@ type Slots = {
 
 export const STATE_VARIANTS: Record<FocusCoachState, string[]> = {
   building_baseline: [
-    '{n} of 5 sessions to find your baseline.',
+    '{n} of 5 sessions to find your typical clean stretch.',
     '{n} of 5 sessions in. A few more will make this useful.',
-    '{n} of 5 sessions logged for your baseline.',
+    '{n} of 5 sessions logged for your typical clean stretch.',
   ],
   steady: [
-    'Your baseline is forming around {now}. Try to {experiment} this week.',
-    'You are holding near {now}. Suggested next length: {suggested}.',
-    'Current clean length is {now}. Keep the next session simple: {experiment}.',
+    'This week: {experiment}.',
+    'Your typical clean stretch is {now}. Next: {suggested}.',
+    'Next: {experiment}.',
   ],
   slipping: [
-    'This looks like a rougher stretch: {now}, down from {before}. Try to {experiment}.',
-    'Clean time is softer right now at {now}. Suggested length: {suggested}.',
-    'A rougher stretch so far: {now} now, {before} before. Try to {experiment}.',
+    'Clean stretches dipped lately. Next: {suggested}.',
+    'Your typical clean stretch is {now}. Next: {suggested}.',
+    'This week: {experiment}.',
   ],
   improving: [
-    'Clean time is moving up: {now}, from {before}. Suggested length: {suggested}.',
-    'You are trending upward so far. Current clean length: {now}.',
-    'Nice upward pattern: {now} now, {before} before. Try to {experiment} next.',
+    'Clean stretches are up lately. Next: {suggested}.',
+    'Your typical clean stretch is {now}. Next: {suggested}.',
+    'Next: {experiment}.',
   ],
   plateau: [
-    'Clean time is steady at {now}. A small experiment: {experiment}.',
-    'You are around {now}. Suggested next length: {suggested}.',
-    'This looks stable so far. Current clean length: {now}; try to {experiment}.',
+    'This week: {experiment}.',
+    'Your typical clean stretch is {now}. Next: {suggested}.',
+    'Next: {experiment}.',
   ],
 };
 
-const DIAGNOSIS_COPY: Record<FocusCoachDiagnosis, string> = {
-  early_breaker:
-    'The first break tends to arrive early, so shorter sessions may be easier to protect.',
-  late_breaker:
-    'The first break tends to come late, so you are close to finishing most sessions clean.',
-  best_window:
-    'Some times of day are cleaner than others, so timing may matter.',
-  app_heavy:
-    'Flagged apps are the most common first break, so distance from the phone may help.',
-  camera_heavy:
-    'Camera absence is the most common first break, so a shorter target may fit better.',
-};
+export function suggestionCaption(reason: SuggestionReason | null, addsFiveMinutes = true) {
+  switch (reason) {
+    case 'step_up': return addsFiveMinutes ? 'Your last 3 stayed clean. Add 5 min.' : 'Your last 3 stayed clean.';
+    case 'ease_down': return 'Last 2 slipped. Shorter is fine.';
+    case 'floor': return 'A short start is fine. Build from here.';
+    case 'repeat': return 'Same as last time. Build on it.';
+    case null: return '';
+  }
+}
 
 export const EXPERIMENT_COPY: Record<FocusCoachExperimentId, string> = {
   morning_session: 'schedule one morning session',
   shorter_sessions: 'choose a slightly shorter session',
   phone_out_of_reach: 'put your phone out of reach',
-  five_minute_break: 'take a 5 minute break between sessions',
-};
-
-const EXPERIMENT_RESULT_COPY: Record<FocusCoachExperimentStatus, string> = {
-  worked: "Last week's experiment helped.",
-  didnt_work: "Last week's experiment did not clearly help.",
-  unclear: "Last week's experiment needs more sessions before it says much.",
+  five_minute_break: 'take a 5 min break between sessions',
 };
 
 const AWAY_INSIGHT_COPY: Record<FocusCoachAwayInsightType, string[]> = {
@@ -128,6 +117,7 @@ async function nextVariantIndex(
   validCount: number,
   count: number,
 ) {
+  const { getAppState, setAppState } = await import('../data/appStateRepository');
   const key = coachVariantKey(state);
   const lastStateKey = 'coach_variant_last_state';
   const [storedValue, lastState] = await Promise.all([
@@ -156,6 +146,7 @@ async function nextHistoryHeadline(deltaSeconds: number, validCount: number) {
     return null;
   }
 
+  const { getAppState, setAppState } = await import('../data/appStateRepository');
   const key = `coach_headline_${probe.direction}`;
   const storedValue = await getAppState(key);
   const selected = selectHistoryHeadlineCopy({
@@ -208,7 +199,7 @@ export async function buildFocusCoachCopy(
   const suggested =
     result.suggestionMinutes !== null
       ? `${result.suggestionMinutes} min`
-      : 'after baseline';
+      : 'after 5 sessions';
   const experiment =
     result.experiment?.id !== undefined
       ? experimentLabel(result.experiment.id)
@@ -220,26 +211,8 @@ export async function buildFocusCoachCopy(
     experiment,
     n: String(result.validCount),
   });
-  const diagnosisCopy = result.diagnosis
-    ? `${result.weakEvidence ? 'So far, ' : ''}${DIAGNOSIS_COPY[
-        result.diagnosis
-      ].replace(/^./, char => char.toLowerCase())}`
-    : null;
-  const experimentResult =
-    result.experiment?.result ?? result.experiment?.lastResult;
-  const experimentResultCopy = experimentResult
-    ? EXPERIMENT_RESULT_COPY[experimentResult]
-    : null;
-  const awayInsightCopy = result.awayInsight
-    ? formatAwayInsightCopy(result.awayInsight)
-    : null;
-  const fallbackCopy = `Current clean length is ${now}.`;
-  const historyCopy = safeCopyLine(
-    [stateCopy, diagnosisCopy, experimentResultCopy, awayInsightCopy]
-      .filter(Boolean)
-      .join(' '),
-    fallbackCopy,
-  );
+  const fallbackCopy = `Your typical clean stretch is ${now}.`;
+  const historyCopy = safeCopyLine(stateCopy, fallbackCopy);
   const historyHeadline =
     result.cleanTrend?.deltaSeconds !== null &&
     result.cleanTrend?.deltaSeconds !== undefined
@@ -247,14 +220,14 @@ export async function buildFocusCoachCopy(
           const delta = result.cleanTrend?.deltaSeconds ?? 0;
           const headline = await nextHistoryHeadline(delta, result.validCount);
           return safeCopyLine(
-            headline ?? `Current clean length is ${now}.`,
-            `Current clean length is ${now}.`,
+            headline ?? `Your typical clean stretch is ${now}.`,
+            `Your typical clean stretch is ${now}.`,
           );
         })()
       : null;
   const suggestionCopy =
     result.suggestionMinutes !== null
-      ? `Suggested: ${result.suggestionMinutes} min`
+      ? `Try ${result.suggestionMinutes} min`
       : null;
 
   return {
@@ -263,8 +236,120 @@ export async function buildFocusCoachCopy(
     suggestionCopy: suggestionCopy
       ? safeCopyLine(
           suggestionCopy,
-          `Suggested: ${result.suggestionMinutes} min`,
+          `Try ${result.suggestionMinutes} min`,
         )
       : null,
   };
 }
+// Finished narrative copy stays here; the engine supplies only measured values.
+export const COACH_COPY = {
+  title: 'Focus coach', loading: 'Loading coach', tooEarly: 'Too early to spot a pattern.',
+  morePatterns: 'More patterns show up after a few more sessions.', earlyRead: 'Early read',
+  gettingLonger: 'Your clean stretches are getting longer.',
+  gettingShorter: 'Your clean stretches have been shorter lately. That happens.',
+  weeklyTest: 'A weekly test', morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening',
+  shortBreak: 'Short break', longBreak: 'Long break', shorter: 'Shorter', longer: 'Longer', zero: '0',
+} as const;
+export const MORE_PATTERNS_COPY = COACH_COPY.morePatterns;
+
+// External labels are optional; opaque identifiers and unsafe text never become copy.
+export function readableCoachLabel(value: string | null | undefined, maximum = 30) {
+  const label = value?.trim().replace(/\s+/g, ' ');
+  return label && label.length <= maximum &&
+    !/\b(?:baseline|median|ratio|diagnosis|failed|lazy|bad)\b|[{}<>]|(?:[a-z0-9_-]+\.)+[a-z0-9_-]+|ios:/i.test(label)
+    ? label : null;
+}
+export function triggerNoteCopy(source: string | null, camera: boolean, hits: number, total: number) {
+  if (camera) return `You looked away from the screen in ${hits} of your last ${total} sessions.`;
+  return `${source ?? 'Your phone'} pulled you out in ${hits} of your last ${total} sessions.`;
+}
+export function slipTimingCopy(seconds: number) {
+  return seconds < 60 ? 'Your slips usually start within the first minute.'
+    : `Your slips usually start around minute ${Math.round(seconds / 60)}.`;
+}
+export function bestWindowCopy(best: string, worst: string, difference: number) {
+  return `${best} are your best. You stay clean about ${formatApproxDuration(difference)} longer than in the ${worst}.`;
+}
+export function bestLengthCopy(shortMinutes: number, longMinutes: number, shorterWins: boolean) {
+  return shorterWins
+    ? `Your ~${shortMinutes}-minute sessions stay clean more often than your ~${longMinutes}-minute ones.`
+    : `Your longer sessions (~${longMinutes} min) hold up better than your ~${shortMinutes}-minute ones.`;
+}
+export function bestModeCopy(best: string, worst: string) { return `${best} sessions run cleaner than ${worst}.`; }
+export function restBeforeCopy(insight: FocusCoachAwayInsight) {
+  const difference = Math.round(Math.abs(insight.differencePct));
+  return insight.typeLine === 'longer_breaks_cleaner'
+    ? `After a longer break you stayed clean for about ${difference}% more of the session.`
+    : insight.typeLine === 'shorter_breaks_cleaner'
+      ? `After a shorter break you stayed clean for about ${difference}% more of the session.`
+      : 'You stayed clean about as often after shorter and longer breaks.';
+}
+export function consistencyCopy(days: number) {
+  return days === 7 ? 'You focused every day this week.' : `You focused on ${days} of the last 7 days.`;
+}
+export function narrativeHeadlineCopy(typical: number | null, change: 'up' | 'down' | null, current: number | null) {
+  if (typical !== null && typical >= 60) return `You hold focus for about ${formatApproxDuration(typical)}, then something pulls you out.`;
+  if (change === 'up') return COACH_COPY.gettingLonger;
+  if (change === 'down') return COACH_COPY.gettingShorter;
+  return `Your typical clean stretch is ${formatApproxDuration(current ?? 0)}.`;
+}
+export function nextStepCopy(minutes: number, reason: SuggestionReason | null, window: string | null, addsFive: boolean) {
+  return window ? `Try ${minutes} min in the ${window}.`
+    : `Try ${minutes} min. ${suggestionCaption(reason, addsFive)}`.trim();
+}
+export function evidenceLabel(count: number) { return `Last ${count} ${count === 1 ? 'session' : 'sessions'}`; }
+export function remainingSessionsCopy(count: number) { return `${count} more ${count === 1 ? 'session' : 'sessions'}`; }
+export function coachFootnote(minimumSeconds: number) { return `Sessions shorter than ${formatDuration(minimumSeconds)} don't count.`; }
+export function lockedNotesCopy(count: number) { return count > 0 ? `${count} more ${count === 1 ? 'note' : 'notes'}` : null; }
+export const SHORT_EXPERIMENT_COPY: Record<FocusCoachExperimentId, string> = {
+  morning_session: 'one morning session',
+  shorter_sessions: 'shorter sessions',
+  phone_out_of_reach: 'phone out of reach',
+  five_minute_break: '5 min breaks',
+};
+export function weeklyTestCopy(id: FocusCoachExperimentId, day: number) {
+  return `This week's test: ${SHORT_EXPERIMENT_COPY[id]}. Day ${day} of 7.`;
+}
+export function slipVisualCopy(typical: number, maximum: number) {
+  return `Slips usually start after ${formatApproxDuration(typical)} of a ${formatApproxDuration(maximum)} session.`;
+}
+export function dotsVisualCopy(hits: number, total: number) {
+  return `${hits} of your last ${total} sessions had this first distraction.`;
+}
+export function barsVisualCopy(items: {label: string; value: number}[], unit: 'seconds' | 'percent') {
+  return items.map(item => `${item.label}: ${unit === 'percent' ? Math.round(item.value) + '% clean' : formatApproxDuration(item.value) + ' clean'}`).join('; ');
+}
+export function weekVisualCopy(days: boolean[]) {
+  return `${days.filter(Boolean).length} focus days in the last 7 days; the last dot is today.`;
+}
+export const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+export const COACH_WINDOW_LABELS = { morning: 'Mornings', afternoon: 'Afternoons', evening: 'Evenings' } as const;
+
+export function percentValueCopy(value: number) { return `${Math.round(value)}%`; }
+
+export function progressVisualCopy(done: number, total: number) { return `${done} of ${total} focus sessions completed.`; }
+export const PENDING_NOTE_COPY = {
+  top_trigger: { title: 'What pulls you out most', hint: 'Shows up once it has seen a few breaks.' },
+  slip_timing: { title: 'When your focus usually breaks', hint: 'Shows up once it has seen a few breaks.' },
+  best_window: { title: 'Your best time of day', hint: 'Try sessions at different times of day.' },
+  best_length: { title: 'Your best session length', hint: 'Mix short and long sessions, a few of each.' },
+  best_mode: { title: 'Your best mode', hint: 'Use a second mode a few times.' },
+  rest_before: { title: 'Whether rest helps', hint: 'Needs a few more sessions with away time tracked.' },
+  consistency: { title: 'How regularly you focus', hint: 'Focus on another day this week.' },
+} as const;
+export const COMING_UP_COPY = 'Coming up';
+export function pendingProgressCopy(id: keyof typeof PENDING_NOTE_COPY, have: number, need: number) {
+  const unit = id === 'top_trigger' || id === 'slip_timing' ? 'breaks seen'
+    : id === 'consistency' ? 'days' : id === 'rest_before' ? 'sessions' : null;
+  return unit ? `${have} of ${need} ${unit}` : null;
+}
+export function pendingAccessibilityCopy(note: { title: string; hint: string; have: number; need: number }) {
+  return `${note.title}. Not available yet. ${note.hint} Progress: ${note.have} of ${note.need}.`;
+}
+export function weeklyTestTitle(id: FocusCoachExperimentId) { return `This week's test: ${SHORT_EXPERIMENT_COPY[id]}`; }
+export function experimentDayCopy(day: number) { return `Day ${day} of 7`; }
+export const COACH_SAMPLE_COPY = {
+  load: 'Load sample sessions', remove: 'Remove sample sessions',
+  failed: 'Could not update sample sessions', retry: 'Try again in a moment.',
+};

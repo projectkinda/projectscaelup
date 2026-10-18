@@ -1,5 +1,7 @@
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import type { SvgProps } from 'react-native-svg';
 
 import HistoryIcon from '../assets/icons/history.svg';
@@ -87,7 +89,7 @@ const styles = StyleSheet.create({
   },
   item: {
     flex: 1,
-    height: 58,
+    minHeight: 58,
     paddingTop: 6,
     alignItems: 'center',
     gap: 4,
@@ -95,8 +97,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.55 },
   label: {
     color: colors.muted,
-    fontSize: 11,
-    lineHeight: 17,
+    ...typography.label,
     fontWeight: '600',
   },
   activeLabel: { color: colors.ink, fontWeight: '700' },

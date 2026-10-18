@@ -1,3 +1,5 @@
+import { typography } from '../../theme/typography';
+import { Text } from '../../components/AppText';
 import { Camera, type PermissionResponse } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -7,7 +9,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -532,8 +533,7 @@ const styles = StyleSheet.create({
   },
   backArrow: {
     color: colors.ink,
-    fontSize: 38,
-    lineHeight: 42,
+    ...typography.display,
     fontWeight: '500',
     marginTop: -4,
   },
@@ -581,15 +581,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 31,
-    lineHeight: 38,
+    ...typography.title,
     fontWeight: '800',
   },
   bodyText: {
     marginTop: 18,
     color: colors.ink,
-    fontSize: 18,
-    lineHeight: 28,
+    ...typography.subheading,
     fontWeight: '500',
   },
   stepsList: {
@@ -610,8 +608,7 @@ const styles = StyleSheet.create({
   },
   stepNumberText: {
     color: colors.background,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '800',
   },
   stepCopy: {
@@ -621,8 +618,7 @@ const styles = StyleSheet.create({
   stepText: {
     marginTop: 8,
     color: colors.ink,
-    fontSize: 17,
-    lineHeight: 24,
+    ...typography.subheading,
     fontWeight: '700',
   },
   sketch: {
@@ -645,15 +641,13 @@ const styles = StyleSheet.create({
   successText: {
     marginTop: 18,
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '800',
   },
   hintText: {
     marginTop: 18,
     color: colors.muted,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography.body,
     fontWeight: '600',
   },
   primaryShell: {
@@ -677,8 +671,7 @@ const styles = StyleSheet.create({
   },
   primaryLabel: {
     color: colors.warmWhite,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   textButton: {
@@ -689,8 +682,7 @@ const styles = StyleSheet.create({
   },
   textButtonLabel: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '800',
     textDecorationLine: 'underline',
   },
@@ -700,8 +692,7 @@ const styles = StyleSheet.create({
   },
   guidanceText: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 19,
+    ...typography.label,
     fontWeight: '600',
   },
   pressed: {

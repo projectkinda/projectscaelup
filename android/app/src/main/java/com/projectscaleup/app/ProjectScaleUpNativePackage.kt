@@ -12,6 +12,7 @@ class ProjectScaleUpNativePackage : ReactPackage {
     listOf(
       UsageTrackingBridge(reactContext),
       LockdownBridge(reactContext),
+      AppRulesBridge(reactContext),
       AppPickerBridge(reactContext),
       PresenceDetectorBridge(reactContext),
     )

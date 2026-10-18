@@ -73,7 +73,7 @@ final class FlaggedAppLabelModel: ObservableObject {
 
   @Published var apps: [App] = []
   @Published var display: Display = .names
-  @Published var size: Double = 13
+  @Published var size: Double = 12
   @Published var color: Color = .white
   @Published var weight: Weight = .regular
   @Published var align: Align = .start
@@ -130,7 +130,7 @@ private struct FlaggedAppLabel: View {
         }
       }
     }
-    .font(.system(size: model.size, weight: model.fontWeight))
+    .font(.system(size: max(12, model.size), weight: model.fontWeight))
     .foregroundStyle(model.color)
     .lineLimit(1)
     .fixedSize(horizontal: true, vertical: false)

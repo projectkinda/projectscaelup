@@ -1,26 +1,15 @@
-import type { FocusCoachCardSectionId } from './focusCoachCardSections';
+import type { CoachLockedRow } from './focusCoachCardSections';
+import { COACH_COPY, lockedNotesCopy } from './focusCoachCopy';
 import type {
-  FocusCoachDiagnosisDetail,
-  FocusCoachResult,
   FocusCoachState,
 } from './focusCoach';
-import { formatApproxDuration, formatDuration } from './durationFormat';
 
-const DISALLOWED_WORDS = /\b(failed|lazy|bad)\b/i;
+const DISALLOWED_WORDS = /\b(failed|lazy|bad|baseline)\b/i;
 
 export const HEADLINE_VARIANTS = {
-  up: [
-    'Your clean focus is up {delta} compared to your 3 sessions before.',
-    'Clean focus is up {delta} lately.',
-  ],
-  down: [
-    'Your clean focus is down {delta} compared to your 3 sessions before.',
-    'Clean focus is down {delta} lately.',
-  ],
-  steady: [
-    'Your clean focus is steady compared to your 3 sessions before.',
-    'Clean focus is holding steady lately.',
-  ],
+  up: ['Clean stretches are up {delta} from earlier.', 'Clean stretches are up {delta} lately.'],
+  down: ['Clean stretches dipped {delta} lately. A shorter session may help.', 'Clean stretches are down {delta} from earlier.'],
+  steady: ['Clean stretches are steady. Keep the next session simple.', 'Clean stretches are holding steady lately.'],
 } as const;
 
 export type StoredCoachVariant = {
@@ -37,77 +26,8 @@ export function safeCopyLine(copy: string, fallback: string) {
   return copy;
 }
 
-export function lockedTeaserCopy(
-  id: FocusCoachCardSectionId,
-  coach: FocusCoachResult,
-): string | null {
-  switch (id) {
-    case 'clean_trend':
-      return coach.cleanTrend ? 'Trend' : null;
-    case 'last_session':
-      return coach.lastSession ? 'Session' : null;
-    case 'away':
-      return coach.away ? 'Away' : null;
-    case 'diagnosis':
-      return coach.diagnosis ? 'Pattern' : null;
-    case 'experiment':
-      return coach.experiment ? 'Experiment' : null;
-  }
-}
-
-export function formatDiagnosisDetail(
-  detail: FocusCoachDiagnosisDetail,
-  weakEvidence: boolean,
-) {
-  const evidenceCount =
-    detail.kind === 'best_window'
-      ? detail.sessionsInWindow
-      : detail.brokenCount;
-  const showEarlySignal =
-    weakEvidence ||
-    (detail.kind === 'best_window' && detail.sessionsInWindow < 5);
-  const evidenceSuffix = ` Based on ${evidenceCount} sessions.${
-    showEarlySignal ? ' Early signal, it may change.' : ''
-  }`;
-  const fallback = `Pattern detail is based on ${evidenceCount} sessions.`;
-  let copy: string;
-
-  switch (detail.kind) {
-    case 'early_breaker':
-      copy = `Your first break usually comes about ${formatApproxDuration(
-        detail.typicalFirstBreakSeconds,
-      )} into a ${formatDuration(detail.typicalPlannedSeconds)} session.`;
-      break;
-    case 'late_breaker':
-      copy = `You usually hold on for about ${formatApproxDuration(
-        detail.typicalFirstBreakSeconds,
-      )} of a ${formatDuration(
-        detail.typicalPlannedSeconds,
-      )} session before the first break.`;
-      break;
-    case 'best_window': {
-      const differenceSeconds = Math.max(
-        0,
-        detail.windowMedianCleanSeconds - detail.overallMedianCleanSeconds,
-      );
-      copy = `Your cleanest sessions start in the ${detail.window}, about ${formatApproxDuration(
-        differenceSeconds,
-      )} cleaner than your average.`;
-      break;
-    }
-    case 'app_heavy':
-      copy = `About ${Math.round(
-        detail.sharePct,
-      )}% of your first breaks are a flagged app.`;
-      break;
-    case 'camera_heavy':
-      copy = `About ${Math.round(
-        detail.sharePct,
-      )}% of your first breaks are stepping away from the camera.`;
-      break;
-  }
-
-  return safeCopyLine(`${copy}${evidenceSuffix}`, fallback);
+export function lockedTeaserCopy(row: CoachLockedRow) {
+  return [lockedNotesCopy(row.count), row.weeklyTest ? COACH_COPY.weeklyTest : null].filter(Boolean).join(' \u00b7 ');
 }
 
 export function selectCoachVariantIndex({
@@ -152,7 +72,7 @@ export function selectHistoryHeadlineCopy({
   }
 
   const direction =
-    Math.abs(deltaSeconds) < 60 ? 'steady' : deltaSeconds > 0 ? 'up' : 'down';
+    deltaSeconds === 0 ? 'steady' : deltaSeconds > 0 ? 'up' : 'down';
   const variants = HEADLINE_VARIANTS[direction];
   const index = selectCoachVariantIndex({
     stored,

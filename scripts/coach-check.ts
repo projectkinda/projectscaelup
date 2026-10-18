@@ -6,11 +6,12 @@ import {
   type FocusCoachExperiment,
   type FocusCoachSession,
 } from '../src/domain/focusCoach';
-import { cleanTrendGeometry, experimentDaysDone, tileDuration, durationInWords } from '../src/components/focusCoachPresentation';
+import { experimentDaysDone } from '../src/components/focusCoachPresentation';
+import * as narrativeCopy from '../src/domain/focusCoachCopy';
 import { formatApproxDuration } from '../src/domain/durationFormat';
 import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
-  formatDiagnosisDetail,
+  HEADLINE_VARIANTS,
   lockedTeaserCopy,
   safeCopyLine,
   selectHistoryHeadlineCopy,
@@ -70,7 +71,7 @@ function assert(condition: unknown, message: string) {
 function assertSuggestionShape(value: number | null) {
   assert(value !== null, 'suggestion should exist');
   const minutes = value ?? 0;
-  assert(minutes >= 10 && minutes <= 59, 'suggestion should be within 10..59');
+  assert(minutes >= 5 && minutes <= 59, 'suggestion should be within 5..59');
   assert(minutes % 5 === 0, 'suggestion should be a multiple of 5');
 }
 
@@ -87,6 +88,7 @@ function coachResult(
   override: Partial<FocusCoachResult> = {},
 ): FocusCoachResult {
   return {
+    notes: [], pending: [], headline: 'Your typical clean stretch is 20 min.', evidenceCount: 5, nextStep: null, tooEarlyRemaining: 0,
     latestPlatform: 'android',
     validCount: 5,
     baselineTarget: 5,
@@ -94,6 +96,7 @@ function coachResult(
     currentCleanSeconds: 20 * 60,
     beforeCleanSeconds: null,
     suggestionMinutes: 25,
+    suggestionReason: 'repeat',
     cleanTrend: {
       points: many(5, index => (18 + index) * 60).map(item => ({
         sessionId: item.id,
@@ -267,7 +270,7 @@ test('historyHeadline says down for falling fixtures', () => {
     many(6, index => (index < 3 ? 26 * 60 : 20 * 60)),
   );
   const headline = headlineFor(result.cleanTrend?.deltaSeconds, result.validCount);
-  assert(headline?.includes('down'), `got ${headline}`);
+  assert(/down|dipped/.test(headline ?? ''), `got ${headline}`);
 });
 
 test('historyHeadline says steady for flat fixtures', () => {
@@ -315,7 +318,7 @@ test('one great session after 4 poor ones does not jump suggestion by more than 
   assert(suggestion <= 35, `got ${suggestion}`);
 });
 
-test('suggestion always within 10..59 and a multiple of 5', () => {
+test('suggestion always within 5..59 and a multiple of 5', () => {
   const high = evaluateFocusCoach(
     many(6, () => 90 * 60, () => ({
       durationSeconds: 90 * 60,
@@ -506,112 +509,10 @@ test('camera_heavy diagnosisDetail sharePct matches fixture', () => {
   assert(result.diagnosisDetail.brokenCount === 10, `got ${result.diagnosisDetail.brokenCount}`);
 });
 
-test('formatDiagnosisDetail includes evidence count and weak signal copy only when weak', () => {
-  const details = [
-    {
-      detail: {
-        kind: 'early_breaker' as const,
-        typicalFirstBreakSeconds: 6 * 60,
-        typicalPlannedSeconds: 25 * 60,
-        brokenCount: 6,
-      },
-      count: 6,
-    },
-    {
-      detail: {
-        kind: 'late_breaker' as const,
-        typicalFirstBreakSeconds: 21 * 60,
-        typicalPlannedSeconds: 25 * 60,
-        brokenCount: 7,
-      },
-      count: 7,
-    },
-    {
-      detail: {
-        kind: 'best_window' as const,
-        window: 'morning' as const,
-        windowMedianCleanSeconds: 30 * 60,
-        overallMedianCleanSeconds: 21 * 60,
-        sessionsInWindow: 3,
-      },
-      count: 3,
-    },
-    {
-      detail: {
-        kind: 'app_heavy' as const,
-        sharePct: 70,
-        brokenCount: 10,
-      },
-      count: 10,
-    },
-    {
-      detail: {
-        kind: 'camera_heavy' as const,
-        sharePct: 70,
-        brokenCount: 10,
-      },
-      count: 10,
-    },
-  ];
-
-  for (const item of details) {
-    const strong = formatDiagnosisDetail(item.detail, false);
-    const weak = formatDiagnosisDetail(item.detail, true);
-    assert(strong.includes(`Based on ${item.count} sessions.`), strong);
-    if (item.detail.kind === 'best_window' && item.detail.sessionsInWindow < 5) {
-      assert(strong.includes('Early signal'), strong);
-    } else {
-      assert(!strong.includes('Early signal'), strong);
-    }
-    assert(weak.includes(`Based on ${item.count} sessions.`), weak);
-    assert(weak.includes('Early signal'), weak);
-  }
-});
-
-test('formatDiagnosisDetail best_window early signal follows sessionsInWindow', () => {
-  const threeSessions = formatDiagnosisDetail(
-    {
-      kind: 'best_window',
-      window: 'morning',
-      windowMedianCleanSeconds: 30 * 60,
-      overallMedianCleanSeconds: 21 * 60,
-      sessionsInWindow: 3,
-    },
-    false,
-  );
-  const sixSessions = formatDiagnosisDetail(
-    {
-      kind: 'best_window',
-      window: 'morning',
-      windowMedianCleanSeconds: 30 * 60,
-      overallMedianCleanSeconds: 21 * 60,
-      sessionsInWindow: 6,
-    },
-    false,
-  );
-  assert(threeSessions.includes('Early signal'), threeSessions);
-  assert(!sixSessions.includes('Early signal'), sixSessions);
-});
-
 test('formatApproxDuration rounds to approximate copy', () => {
   assert(formatApproxDuration(42) === '42 sec', formatApproxDuration(42));
   assert(formatApproxDuration(9 * 60 + 20) === '9 min', formatApproxDuration(9 * 60 + 20));
   assert(formatApproxDuration(65 * 60 + 20) === '1h 5m', formatApproxDuration(65 * 60 + 20));
-});
-
-test('formatDiagnosisDetail best_window says about 9 min cleaner without seconds', () => {
-  const copy = formatDiagnosisDetail(
-    {
-      kind: 'best_window',
-      window: 'morning',
-      windowMedianCleanSeconds: 30 * 60 + 20,
-      overallMedianCleanSeconds: 21 * 60,
-      sessionsInWindow: 6,
-    },
-    false,
-  );
-  assert(copy.includes('about 9 min cleaner'), copy);
-  assert(!copy.includes('sec cleaner'), copy);
 });
 
 test('historyHeadline delta uses approximate duration', () => {
@@ -835,147 +736,6 @@ test('same state and validCount returns the same variant twice in a row', () => 
   assert(first === second, `${first} !== ${second}`);
 });
 
-test('coach card selector: baseline 0/5 has no locked sections', () => {
-  const selected = selectCoachCardSections({
-    isPaid: false,
-    result: coachResult({
-      validCount: 0,
-      state: 'building_baseline',
-      currentCleanSeconds: null,
-      cleanTrend: null,
-      lastSession: null,
-      away: null,
-      awayInsight: null,
-      diagnosis: null,
-      experiment: null,
-    }),
-    platform: 'android',
-  });
-  assert(selected.state === 'baseline', `got ${selected.state}`);
-  assert(selected.sections.length === 0, 'expected no sections');
-  assert(selected.lockedSections.length === 0, 'expected no locks');
-});
-
-test('coach card selector: baseline 3/5 free and paid are identical', () => {
-  const result = coachResult({
-    validCount: 3,
-    state: 'building_baseline',
-    suggestionMinutes: null,
-    experiment: null,
-  });
-  const free = selectCoachCardSections({ isPaid: false, result, platform: 'android' });
-  const paid = selectCoachCardSections({ isPaid: true, result, platform: 'android' });
-  assert(JSON.stringify(free) === JSON.stringify(paid), 'expected identical baseline state');
-});
-
-test('coach card selector: 5/5 free locks available sections', () => {
-  const selected = selectCoachCardSections({
-    isPaid: false,
-    result: coachResult(),
-    platform: 'android',
-  });
-  assert(selected.state === 'ready_free', `got ${selected.state}`);
-  assert(selected.lockedSections.length === 5, `got ${selected.lockedSections.length}`);
-});
-
-test('coach card selector: 5/5 paid unlocks available sections', () => {
-  const selected = selectCoachCardSections({
-    isPaid: true,
-    result: coachResult(),
-    platform: 'android',
-  });
-  assert(selected.state === 'ready_paid', `got ${selected.state}`);
-  assert(selected.sections.length === 5, `got ${selected.sections.length}`);
-  assert(selected.lockedSections.length === 0, 'expected no locks');
-});
-
-test('coach card selector: paid with away null hides away', () => {
-  const selected = selectCoachCardSections({
-    isPaid: true,
-    result: coachResult({ away: null }),
-    platform: 'android',
-  });
-  assert(!selected.sections.some(section => section.id === 'away'), 'away should be hidden');
-});
-
-test('coach card selector: paid on iOS hides away', () => {
-  const selected = selectCoachCardSections({
-    isPaid: true,
-    result: coachResult(),
-    platform: 'ios',
-  });
-  assert(!selected.sections.some(section => section.id === 'away'), 'away should be hidden');
-});
-
-test('coach card selector: free on iOS has no away locked row', () => {
-  const selected = selectCoachCardSections({
-    isPaid: false,
-    result: coachResult(),
-    platform: 'ios',
-  });
-  assert(!selected.lockedSections.includes('away'), 'away should not lock on iOS');
-});
-
-test('coach card selector: pause_overrun lastSession keeps last session section', () => {
-  const selected = selectCoachCardSections({
-    isPaid: true,
-    result: coachResult({
-      lastSession: {
-        endedAt: '2026-10-20T10:30:00.000Z',
-        plannedSeconds: 30 * 60,
-        focusSeconds: 30 * 60,
-        cleanSeconds: 12 * 60,
-        endedBy: 'pause_overrun',
-        firstDistractionType: null,
-        firstDistractionAtSeconds: null,
-        pauseCount: 1,
-        pausedSeconds: 420,
-        endedEarly: false,
-      },
-    }),
-    platform: 'android',
-  });
-  assert(selected.sections.some(section => section.id === 'last_session'), 'expected last session');
-});
-
-test('coach card selector: no lastSession hides last session section', () => {
-  const selected = selectCoachCardSections({
-    isPaid: true,
-    result: coachResult({ lastSession: null }),
-    platform: 'android',
-  });
-  assert(!selected.sections.some(section => section.id === 'last_session'), 'last session should be hidden');
-});
-
-test('locked teasers do not leak diagnosis paid content', () => {
-  const result = coachResult();
-  const teaser = lockedTeaserCopy('diagnosis', result);
-  const paidText = result.diagnosisDetail
-    ? formatDiagnosisDetail(result.diagnosisDetail, result.weakEvidence)
-    : null;
-  assert(teaser !== null, 'expected teaser');
-  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
-  assert(teaser !== paidText, 'teaser matched paid text');
-});
-
-test('locked teasers do not leak experiment paid content', () => {
-  const result = coachResult();
-  const teaser = lockedTeaserCopy('experiment', result);
-  const paidText = 'put your phone out of reach';
-  assert(teaser !== null, 'expected teaser');
-  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
-  assert(teaser !== paidText, 'teaser matched paid text');
-});
-
-test('locked teasers do not leak away paid content', () => {
-  const result = coachResult();
-  const teaser = lockedTeaserCopy('away', result);
-  const paidText = 'Away since your last use: about 1 h 30 min';
-  assert(teaser !== null, 'expected teaser');
-  assert(!/\d/.test(teaser ?? ''), `got ${teaser}`);
-  assert(teaser !== paidText, 'teaser matched paid text');
-});
-
 // Load the real templates while keeping native database imports out of Node.
 function loadCopyTemplates() {
   const { readFileSync } = require('node:fs');
@@ -983,7 +743,9 @@ function loadCopyTemplates() {
   const copyModule = { exports: {} as typeof import('../src/domain/focusCoachCopy') };
   runInNewContext(transpileModule(readFileSync('src/domain/focusCoachCopy.ts', 'utf8'), {
     compilerOptions: { module: ModuleKind.CommonJS },
-  }).outputText, { exports: copyModule.exports, require: () => ({}) });
+  }).outputText, { exports: copyModule.exports, require: (id: string) => id === '../data/appStateRepository'
+    ? { getAppState: async () => null, setAppState: async () => {} }
+    : require('../src/domain/' + id.replace('./', '')) });
   return copyModule.exports;
 }
 
@@ -994,52 +756,13 @@ for (const [key, experiment] of Object.entries(loadCopyTemplates().EXPERIMENT_CO
       const rendered = fillTemplate(template, {
         now: '20 min', before: '15 min', suggested: '25 min', experiment, n: '5',
       });
-      assert(!/\btry (?:take|put|choose|schedule|try)\b|\btry to to\b| {2}|\{\w+\}/i.test(rendered), rendered);
+      assert(!/\btry to\b| {2}|\{|\bbaseline\b/i.test(rendered), rendered);
+      assert((rendered.match(/this week/gi) ?? []).length <= 1, rendered);
+      assert(rendered.length <= 90, rendered);
+      assert(!template.includes('{now}') || template.includes('typical clean stretch'), template);
     }
   });
 }
-
-test('trend scale drops goals above three times the largest point', () => {
-  const shape = cleanTrendGeometry([15, 30, 45], 25);
-  assert(shape.goalY === null, 'distant goal should be hidden');
-  assert(shape.points[2].y === 6, 'largest point should fill the plot');
-});
-
-test('trend scale retains goals at the three-times boundary', () => {
-  assert(cleanTrendGeometry([20], 1).goalY !== null, 'boundary goal should be visible');
-  assert(cleanTrendGeometry([19], 1).goalY === null, 'larger goal should be hidden');
-});
-
-test('trend geometry stays inside the chart with a visible short point and last dot', () => {
-  for (const values of [[0], [1], [0, 1, 1800], [45, 30], [0, 0]]) {
-    const shape = cleanTrendGeometry(values, 20);
-    assert(shape.points.every(point => point.x >= 6 && point.x <= 154 && point.y >= 6 && point.y <= 50), 'points outside chart');
-    assert(shape.points.every((point, index) => values[index] === 0 || point.y <= 46), 'short point should be at least four units high');
-  }
-});
-
-test('tile durations preserve seconds-length values', () => {
-  assert(tileDuration(45) === '45 sec', tileDuration(45));
-  assert(tileDuration(12 * 60) === '12m', tileDuration(12 * 60));
-  assert(durationInWords(45) === '45 seconds', 'spoken duration should use words');
-  assert(durationInWords(3661) === '1 hour 1 minute 1 second', 'spoken units should use words');
-});
-
-test('every locked teaser is hint-only, independent of actual values', () => {
-  const first = coachResult();
-  const second = coachResult({
-    cleanTrend: { points: [], deltaSeconds: 999 },
-    lastSession: { ...first.lastSession!, cleanSeconds: 45 },
-    diagnosis: 'camera_heavy',
-    experiment: { ...first.experiment!, id: 'five_minute_break' },
-    away: { ...first.away!, sinceLastUseSeconds: 99999 },
-  });
-  for (const id of ['clean_trend', 'last_session', 'away', 'diagnosis', 'experiment'] as const) {
-    const hint = lockedTeaserCopy(id, first);
-    assert(hint === lockedTeaserCopy(id, second), `data leaked in ${id}`);
-    assert(hint !== null && !/\d/.test(hint) && hint.split(' ').length <= 3, `invalid hint ${hint}`);
-  }
-});
 
 test('experiment dots show this week elapsed days, never last week result', () => {
   const startedAt = '2026-10-10T10:00:00.000Z';
@@ -1049,6 +772,551 @@ test('experiment dots show this week elapsed days, never last week result', () =
   assert(experimentDaysDone(experiment, Date.parse(startedAt) + 20 * 86400000) === 7, 'dots should cap at seven');
   assert(experimentDaysDone({ ...experiment, result: 'unclear' }) === 7, 'judged experiment should be complete');
 });
+test('suggestion reasons cover every branch and preserve rounding and limits', () => {
+  const fixtures = [
+    { clean: 28 * 60, planned: 30 * 60, reason: 'step_up', minutes: 35 },
+    { clean: 10 * 60, planned: 30 * 60, reason: 'ease_down', minutes: 10 },
+    { clean: 20 * 60, planned: 30 * 60, reason: 'repeat', minutes: 30 },
+    { clean: 28, planned: 120, reason: 'floor', minutes: 5 },
+    { clean: 90, planned: 120, reason: 'floor', minutes: 5 },
+    { clean: 120, planned: 120, reason: 'step_up', minutes: 5 },
+    { clean: 55 * 60, planned: 55 * 60, reason: 'step_up', minutes: 55 },
+  ];
+  for (const fixture of fixtures) {
+    const result = evaluateFocusCoach(many(6, () => fixture.clean, () => ({
+      durationSeconds: fixture.planned, focusSeconds: Math.max(120, fixture.planned),
+    })));
+    assert(result.suggestionReason === fixture.reason, JSON.stringify(result));
+    assert(result.suggestionMinutes === fixture.minutes, JSON.stringify(result));
+  }
+  assert(evaluateFocusCoach([]).suggestionReason === null, 'no suggestion before enough sessions');
+});
+
+test('suggestion captions are pure, match reasons, and stay within 40 characters', () => {
+  const { suggestionCaption } = loadCopyTemplates();
+  const fixtures = {
+    step_up: 'Your last 3 stayed clean. Add 5 min.',
+    repeat: 'Same as last time. Build on it.',
+    ease_down: 'Last 2 slipped. Shorter is fine.',
+    floor: 'A short start is fine. Build from here.',
+  } as const;
+  for (const reason of Object.keys(fixtures) as Array<keyof typeof fixtures>) {
+    const copy = suggestionCaption(reason);
+    assert(copy === fixtures[reason] && copy.length <= 40 && !/baseline|\{/.test(copy), copy);
+  }
+  assert(suggestionCaption('step_up', false) === 'Your last 3 stayed clean.', 'clamped step-up must not promise 5 min');
+});
+
+test('all headline variants describe changes without jargon or placeholders', () => {
+  for (const template of Object.values(HEADLINE_VARIANTS).flat()) {
+    for (const delta of ['15 sec', '9 min', '1h 5m']) {
+      const copy = template.replace('{delta}', delta);
+      assert(copy.length <= 90 && !/baseline|\{| {2}|try to/i.test(copy), copy);
+    }
+  }
+  assert(selectHistoryHeadlineCopy({ deltaSeconds: 15, stored: null, validCount: 6, formatDelta: formatApproxDuration })?.direction === 'up', 'small positive changes should be visible');
+});
+
+test('generated history copy and headlines stay short and avoid jargon', async () => {
+  const { buildFocusCoachCopy } = loadCopyTemplates();
+  for (const state of ['building_baseline', 'steady', 'slipping', 'improving', 'plateau'] as const) {
+    for (const id of ['morning_session', 'shorter_sessions', 'phone_out_of_reach', 'five_minute_break'] as const) {
+      for (const deltaSeconds of [null, 0, 15, -15, 540]) {
+        const result = coachResult({ state, cleanTrend: { points: [], deltaSeconds }, experiment: { ...coachResult().experiment!, id } });
+        const copy = await buildFocusCoachCopy(result);
+        for (const text of [copy.historyCopy, copy.historyHeadline, copy.suggestionCopy].filter(Boolean) as string[]) {
+          assert(text.length <= 90 && !/\bbaseline\b|\{| {2}|try to/i.test(text), text);
+        }
+      }
+    }
+  }
+});
+
+const NOTE_NOW = new Date(2026, 9, 18, 12).getTime();
+function noteResult(rows: FocusCoachSession[], isPaidUser = true, modeNames: Record<string, string> = {}) {
+  return evaluateFocusCoach(rows, null, null, { isPaidUser, now: NOTE_NOW, modeNames });
+}
+function noteOf(rows: FocusCoachSession[], id: FocusCoachResult['notes'][number]['id']) {
+  return noteResult(rows).notes.find(note => note.id === id);
+}
+function slips(count: number, overrides: Partial<FocusCoachSession> = {}) {
+  return many(Math.max(5, count), index => index < count ? 12 * 60 : 30 * 60, index => ({
+    firstDistractionType: index < count ? 'app_touched' : null,
+    firstDistractionApp: 'Instagram', ...overrides,
+  }));
+}
+function windowSessions(perBucket: number) {
+  return many(perBucket * 2, index => index < perBucket ? 30 * 60 : 18 * 60, index => ({
+    startedAt: new Date(2026, 9, index + 1, index < perBucket ? 9 : 19).toISOString(),
+  }));
+}
+function lengthSessions(perGroup: number, shortPercent = 1, longPercent = .5, shortMinutes = 20, longMinutes = 30) {
+  return many(perGroup * 2, index => (index < perGroup ? shortMinutes * shortPercent : longMinutes * longPercent) * 60, index => ({
+    durationSeconds: (index < perGroup ? shortMinutes : longMinutes) * 60,
+    focusSeconds: (index < perGroup ? shortMinutes : longMinutes) * 60,
+  }));
+}
+function modeSessions(perMode: number, best = .9, worst = .5) {
+  return many(perMode * 2, index => (index < perMode ? best : worst) * 30 * 60, index => ({
+    modeId: index < perMode ? 'study' : 'deep-work',
+  }));
+}
+function restSessions(count: number) {
+  return many(count, index => (index < 5 ? 25 : 15) * 60, index => ({
+    afterSessionAwayVerified: true, afterSessionAwaySeconds: (index < 5 ? 90 : 20) * 60,
+  }));
+}
+function daySessions(days: number) {
+  return many(Math.max(5, days), () => 20 * 60, index => ({
+    startedAt: new Date(2026, 9, index < days ? 18 - index : 1, 10).toISOString(),
+  }));
+}
+
+test('top trigger below, at, and above its slip gate and weak threshold', () => {
+  assert(!noteOf(slips(3), 'top_trigger'), 'three slips must not produce a trigger');
+  assert(noteOf(slips(4), 'top_trigger')?.weak === true, 'four slips are an early read');
+  assert(noteOf(slips(8), 'top_trigger')?.weak === false, 'eight slips establish stronger evidence');
+  const mixed = slips(4).map((s, index) => ({ ...s, firstDistractionApp: index < 2 ? 'Instagram' : 'YouTube' }));
+  assert(!noteOf(mixed, 'top_trigger'), 'two matching sources are below the hit gate');
+  const half = slips(6).map((s, index) => ({ ...s, firstDistractionApp: index < 3 ? 'Instagram' : index < 5 ? 'YouTube' : 'Messages' }));
+  assert(noteOf(half, 'top_trigger')?.text.startsWith('Instagram'), 'three hits at 50% should pass');
+  assert(!noteOf([...half, session(7, { firstDistractionType: 'app_touched', firstDistractionApp: 'Other' })], 'top_trigger'), 'three of seven slips is below 50%');
+});
+
+test('top trigger labels are readable and iOS always uses generic copy', () => {
+  assert(noteOf(slips(6), 'top_trigger')?.text.startsWith('Instagram'), 'resolved app label missing');
+  assert(noteOf(slips(6, { firstDistractionApp: 'camera' }), 'top_trigger')?.text.startsWith('camera pulled'), 'app names must not collide with source types');
+  for (const label of [null, 'com.instagram.android', 'ios:opaque', 'median', '{app}', 'A'.repeat(60)]) {
+    assert(noteOf(slips(6, { firstDistractionApp: label }), 'top_trigger')?.text.startsWith('Your phone'), 'unsafe label reached the note: ' + label);
+  }
+  assert(noteOf(slips(6, { platform: 'ios' }), 'top_trigger')?.text.startsWith('Your phone'), 'iOS leaked an app name');
+  assert(noteOf(slips(6, { firstDistractionType: 'camera_absence' }), 'top_trigger')?.text.startsWith('You looked away'), 'camera copy missing');
+  const result = noteOf(slips(12), 'top_trigger');
+  assert(result?.visual.kind === 'dots' && result.visual.total === 8 && result.visual.hits === 8, 'trigger proof must use the latest eight valid sessions');
+});
+
+test('slip timing below, exactly at, and above its gate includes quartiles', () => {
+  assert(!noteOf(slips(4), 'slip_timing'), 'four timings are too few');
+  const at = noteOf(slips(5), 'slip_timing');
+  assert(at?.weak && at.visual.kind === 'slip_bar' && at.visual.typicalSeconds === 720, 'five-slip timing missing');
+  assert(noteOf(slips(10), 'slip_timing')?.weak === false, 'ten slips should be stronger');
+  const early = slips(5).map(s => ({ ...s, cleanSeconds: 28 }));
+  assert(noteOf(early, 'slip_timing')?.text.includes('first minute'), 'seconds should use first-minute wording');
+  const varying = slips(5).map((s, i) => ({ ...s, cleanSeconds: (i + 1) * 60 }));
+  const visual = noteOf(varying, 'slip_timing')?.visual;
+  assert(visual?.kind === 'slip_bar' && visual.lowSeconds === 120 && visual.highSeconds === 240 && visual.maxSeconds === 1800, 'quartile or planned-duration calculation wrong');
+  assert(!noteOf(slips(6, { firstDistractionType: 'pause_overrun' }), 'slip_timing'), 'pause endings are not observed app/camera slips');
+});
+
+test('best window respects existing bucket gate, math, and weak rule', () => {
+  const below = windowSessions(3).filter((_, index) => index !== 0);
+  assert(!noteOf(below, 'best_window'), 'two morning sessions cannot establish a window');
+  const at = noteOf(windowSessions(3), 'best_window');
+  assert(at?.weak && at.text.includes('12 min longer than in the evening'), 'comparison must use the worst bucket, not overall');
+  assert(noteOf(windowSessions(6), 'best_window')?.weak === false, 'six per bucket should be strong');
+  assert(!noteOf(windowSessions(3).map(s => ({ ...s, cleanSeconds: 20 * 60 })), 'best_window'), 'equal windows should not generate a claim');
+});
+
+test('best length below, exactly at, and above each group and difference gate', () => {
+  assert(!noteOf(lengthSessions(3).filter((_, index) => index !== 0), 'best_length'), 'two in a group is too few');
+  assert(noteOf(lengthSessions(3), 'best_length')?.weak === true, 'three per group is early');
+  assert(noteOf(lengthSessions(6), 'best_length')?.weak === false, 'six per group should be strong');
+  assert(noteOf(lengthSessions(3, .85, .70, 20, 25), 'best_length'), 'exactly five min and fifteen points must pass');
+  assert(!noteOf(lengthSessions(3, .85, .71, 20, 25), 'best_length'), 'fourteen points must fail');
+  assert(!noteOf(lengthSessions(3, 1, .5, 20, 24), 'best_length'), 'four minutes must fail');
+  assert(noteOf(lengthSessions(3, .5, 1), 'best_length')?.text.startsWith('Your longer sessions'), 'longer-group win must swap the sentence');
+});
+
+test('best mode below, exactly at, and above gates resolves built-in and custom names', () => {
+  assert(!noteOf(modeSessions(3).filter((_, index) => index !== 0), 'best_mode'), 'two in a mode is too few');
+  assert(noteOf(modeSessions(3), 'best_mode')?.weak === true, 'three per mode is early');
+  assert(noteOf(modeSessions(6), 'best_mode')?.weak === false, 'six per mode should be strong');
+  assert(noteOf(modeSessions(3, .85, .70), 'best_mode'), 'fifteen points should pass');
+  assert(!noteOf(modeSessions(3, .85, .71), 'best_mode'), 'fourteen points should fail');
+  const custom = modeSessions(3).map(s => ({ ...s, modeId: s.modeId === 'study' ? 'custom-one' : 'custom-two' }));
+  assert(!noteOf(custom, 'best_mode'), 'unresolved custom mode must be skipped');
+  const note = noteResult(custom, true, { 'custom-one': 'Reading', 'custom-two': 'Writing' }).notes.find(n => n.id === 'best_mode');
+  assert(note?.text === 'Reading sessions run cleaner than Writing.', 'custom display names were not resolved');
+});
+
+test('rest before below, exactly at, and above its own verification gates', () => {
+  assert(!noteOf(restSessions(9), 'rest_before'), 'nine verified gaps are too few');
+  assert(noteOf(restSessions(10), 'rest_before')?.weak === true, 'ten verified gaps should be an early read');
+  assert(noteOf(restSessions(12), 'rest_before'), 'twelve verified gaps should pass');
+  assert(!noteOf(restSessions(10).map((s, i) => ({ ...s, afterSessionAwaySeconds: i < 8 ? 7200 : 1200 })), 'rest_before'), 'two verified gaps in a bucket is too few');
+  assert(!noteOf(restSessions(12).map(s => ({ ...s, platform: 'ios' })), 'rest_before'), 'iOS must not receive Android rest insights');
+  assert(!noteOf(restSessions(12).map(s => ({ ...s, afterSessionAwayVerified: false })), 'rest_before'), 'unverified gaps must not create a note');
+});
+
+test('consistency below, exactly at, and above the active-day gate uses local days', () => {
+  assert(!noteOf(daySessions(0), 'consistency'), 'no focus this week means no attendance note');
+  assert(!noteOf(daySessions(1), 'consistency'), 'one active day is pending');
+  assert(noteOf(daySessions(2), 'consistency')?.weak === false, 'two active days should be factual');
+  const every = noteOf(daySessions(7), 'consistency');
+  assert(every?.text === 'You focused every day this week.' && every.visual.kind === 'week_dots' && every.visual.days.length === 7, 'seven-day copy or visual wrong');
+  assert(!noteOf(daySessions(1).slice(0, 4), 'consistency'), 'attendance cannot bypass the initial session gate');
+});
+
+test('notes use only the latest twelve valid sessions of the latest platform', () => {
+  const old = many(12, () => 720, () => ({ startedAt: '2020-01-01T10:00:00Z', firstDistractionType: 'app_touched', firstDistractionApp: 'Instagram' }));
+  const recent = many(12, () => 1200);
+  const result = noteResult([...old, ...recent, session(99, { startedAt: '2030-01-01T10:00:00Z', focusSeconds: 60, firstDistractionType: 'app_touched' })]);
+  assert(result.evidenceCount === 12 && !result.notes.some(n => n.id === 'top_trigger'), 'old or invalid sessions affected notes');
+  const ios = noteResult([...slips(6), ...slips(6, { platform: 'ios', startedAt: '2026-11-01T10:00:00Z' })]);
+  assert(ios.evidenceCount === 6 && ios.notes[0]?.text.startsWith('Your phone'), 'mixed-platform note evidence leaked');
+});
+
+test('priority order and three-note cap are fixed', () => {
+  const rows = windowSessions(6).map(s => ({ ...s, firstDistractionType: 'app_touched' as const, firstDistractionApp: 'Instagram', cleanSeconds: s.cleanSeconds! - 60 }));
+  const result = noteResult(rows);
+  assert(result.notes.map(n => n.id).join(',') === 'top_trigger,slip_timing,best_window', JSON.stringify(result.notes));
+});
+
+test('headlines follow timing, improvement, decline, then typical stretch precedence', () => {
+  assert(noteResult(slips(5)).headline === 'You hold focus for about 12 min, then something pulls you out.', 'timing headline missing');
+  assert(noteResult(many(6, i => (i < 3 ? 1200 : 1500))).headline === narrativeCopy.COACH_COPY.gettingLonger, 'up headline missing');
+  assert(noteResult(many(6, i => (i < 3 ? 1500 : 1200))).headline === narrativeCopy.COACH_COPY.gettingShorter, 'down headline missing');
+  assert(noteResult(many(6, () => 1200)).headline === 'Your typical clean stretch is 20 min.', 'typical headline missing');
+  assert(noteResult(slips(5).map(s => ({ ...s, cleanSeconds: 28 }))).headline === 'Your typical clean stretch is 28 sec.', 'sub-minute timing should use typical fallback');
+});
+
+test('too early selection contains only progress and remaining sessions', () => {
+  for (const count of [0, 3, 4]) {
+    const result = noteResult(many(count, () => 1200));
+    assert(result.headline === narrativeCopy.COACH_COPY.tooEarly && result.tooEarlyRemaining === 5 - count, 'early result wrong');
+    const free = selectCoachCardSections({ isPaid: false, result, platform: 'android' });
+    const paid = selectCoachCardSections({ isPaid: true, result, platform: 'android' });
+    assert(free.state === 'too_early' && free.notes.length === 0 && free.nextStep === null && free.experiment === null, 'early payload leaked content');
+    assert(JSON.stringify(free) === JSON.stringify(paid), 'early states differ by entitlement');
+  }
+  assert(narrativeCopy.remainingSessionsCopy(1) === '1 more session', 'singular remaining session wrong');
+});
+
+test('next step is paid-only and uses strong time-of-day evidence', () => {
+  assert(noteResult(slips(6), false).nextStep === null, 'free result has a next step');
+  assert(noteResult(slips(3).slice(0, 3)).nextStep === null, 'null suggestion must have no next step');
+  assert(noteResult(windowSessions(6)).nextStep?.text.includes('in the morning.'), 'strong morning window not used');
+  assert(!noteResult(windowSessions(3)).nextStep?.text.includes('in the morning.'), 'weak morning window should use reason copy');
+  const repeat = noteResult(many(6, () => 1200));
+  assert(repeat.nextStep?.text === 'Try 30 min. Same as last time. Build on it.', 'suggestion reason not reused');
+});
+
+test('free selection unlocks just one note and locked payload contains only count, icons, weekly hint', () => {
+  const rows = windowSessions(6).map(s => ({ ...s, firstDistractionType: 'app_touched' as const, cleanSeconds: s.cleanSeconds! - 60 }));
+  const result = { ...noteResult(rows), experiment: coachResult().experiment };
+  const free = selectCoachCardSections({ isPaid: false, result, platform: 'android' });
+  assert(free.state === 'ready_free' && free.notes.length === 1 && free.experiment === null && free.nextStep === null, 'free content gate wrong');
+  assert(JSON.stringify(free.lockedRow) === JSON.stringify({ count: 2, icons: ['clock', 'sun'], weeklyTest: true }), 'locked payload leaked data');
+  for (const note of result.notes.slice(1)) assert(!JSON.stringify(free).includes(note.text), 'locked sentence leaked');
+  assert(lockedTeaserCopy(free.lockedRow!) === '2 more notes \u00b7 A weekly test', 'locked hint wrong');
+  const paid = selectCoachCardSections({ isPaid: true, result, platform: 'android' });
+  assert(paid.notes.length === 3 && paid.lockedRow === null && paid.nextStep !== null && paid.experiment !== null, 'paid content missing');
+  const inactive = selectCoachCardSections({ isPaid: true, result: { ...result, experiment: { ...result.experiment!, result: 'worked' } }, platform: 'android' });
+  assert(inactive.experiment === null, 'completed experiment still shown');
+});
+
+test('all generated narrative and visual copy is short, safe, and grammatically complete', () => {
+  const fixtures = [[], slips(4), slips(5), slips(10), slips(6, { platform: 'ios' }), slips(6, { firstDistractionType: 'camera_absence' }), slips(6).map(row => ({ ...row, cleanSeconds: 28 })), slips(6, { firstDistractionApp: 'com.instagram.android' }),
+    windowSessions(3), windowSessions(6), windowSessions(3).map((row, index) => ({ ...row, startedAt: new Date(2026, 9, index + 1, index < 3 ? 14 : 19).toISOString() })), lengthSessions(3), lengthSessions(6), lengthSessions(3, .5, 1), modeSessions(3), modeSessions(6), restSessions(10), restSessions(12), daySessions(0), daySessions(1), daySessions(7)];
+  const texts = [narrativeCopy.progressVisualCopy(0, 5), narrativeCopy.progressVisualCopy(4, 5), narrativeCopy.COACH_COPY.loading, narrativeCopy.MORE_PATTERNS_COPY, narrativeCopy.COACH_COPY.earlyRead, narrativeCopy.coachFootnote(120), narrativeCopy.remainingSessionsCopy(1), narrativeCopy.remainingSessionsCopy(2), narrativeCopy.evidenceLabel(1), narrativeCopy.evidenceLabel(12), lockedTeaserCopy({ count: 1, icons: ['clock'], weeklyTest: false }), lockedTeaserCopy({ count: 0, icons: [], weeklyTest: true })];
+  for (const rows of fixtures) for (const paid of [true, false]) {
+    const result = noteResult(rows, paid); texts.push(result.headline);
+    if (result.nextStep) texts.push(result.nextStep.text);
+    for (const note of result.notes) {
+      texts.push(note.text);
+      const v = note.visual;
+      texts.push(v.kind === 'slip_bar' ? narrativeCopy.slipVisualCopy(v.typicalSeconds, v.maxSeconds)
+        : v.kind === 'dots' ? narrativeCopy.dotsVisualCopy(v.hits, v.total)
+        : v.kind === 'bars' ? narrativeCopy.barsVisualCopy(v.items, v.unit) : narrativeCopy.weekVisualCopy(v.days));
+    }
+  }
+  for (const id of ['morning_session', 'shorter_sessions', 'phone_out_of_reach', 'five_minute_break'] as const) for (const day of [1, 7]) texts.push(narrativeCopy.weeklyTestCopy(id, day));
+  for (const reason of ['step_up', 'repeat', 'ease_down', 'floor'] as const) {
+    texts.push(narrativeCopy.nextStepCopy(55, reason, null, true));
+    texts.push(narrativeCopy.nextStepCopy(55, reason, null, false));
+  }
+  const customNames = { reading: 'A'.repeat(30), writing: 'B'.repeat(30) };
+  const custom = noteResult(modeSessions(3).map(row => ({ ...row, modeId: row.modeId === 'study' ? 'reading' : 'writing' })), true, customNames);
+  texts.push(...custom.notes.map(note => note.text));
+  for (const text of texts) assert(text.length <= 90 && !/\b(baseline|median|ratio|diagnosis|failed|lazy|bad)\b|\{| {2}|(?:[a-z_-]+\.){2}[a-z_-]+/i.test(text), text);
+  assert(narrativeCopy.triggerNoteCopy(null, false, 1, 6).includes('1 of your last 6 sessions'), 'singular hit grammar wrong');
+  assert(narrativeCopy.lockedNotesCopy(1) === '1 more note', 'singular locked note wrong');
+});
+
+test('repository resolves the earliest app label, custom modes, and defensive fallbacks', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const db = new DatabaseSync(':memory:');
+  db.exec(`CREATE TABLE sessions (id INTEGER, started_at TEXT, clean_seconds INTEGER, focus_seconds INTEGER,
+    first_distraction_type TEXT, pause_count INTEGER, paused_seconds INTEGER, ended_early INTEGER,
+    duration_seconds INTEGER, mode_id TEXT, platform TEXT, ended_at TEXT, after_session_away_seconds INTEGER, after_session_away_verified INTEGER);
+    CREATE TABLE distraction_events (id INTEGER, session_id INTEGER, type TEXT, app_identifier TEXT, occurred_at TEXT);
+    CREATE TABLE flagged_apps (app_identifier TEXT, display_name TEXT);
+    CREATE TABLE custom_modes (id TEXT, name TEXT);
+    INSERT INTO flagged_apps VALUES ('com.instagram.android','Instagram'),('com.youtube.app','YouTube');
+    INSERT INTO custom_modes VALUES ('custom-one','Reading'),('custom-two','Writing');`);
+  const insert = db.prepare('INSERT INTO sessions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+  for (let index = 1; index <= 6; index++) {
+    insert.run(index, new Date(2026, 9, index, 10).toISOString(), 720, 1800, 'app_touched', 0, 0, 0, 1800, 'deep-work', 'android', new Date(2026, 9, index, 11).toISOString(), null, 0);
+    db.prepare('INSERT INTO distraction_events VALUES (?,?,?,?,?)').run(index * 2, index, 'app_touched', 'com.youtube.app', '2026-10-01T10:20:00Z');
+    db.prepare('INSERT INTO distraction_events VALUES (?,?,?,?,?)').run(index * 2 + 1, index, 'app_touched', 'com.instagram.android', '2026-10-01T10:10:00Z');
+  }
+  let failLabels = false;
+  const database = { getAllAsync: async (sql: string) => { if (failLabels && /FROM distraction_events|FROM custom_modes/.test(sql)) throw new Error('fixture label failure'); return db.prepare(sql).all(); } };
+  const module = { exports: {} as typeof import('../src/data/focusCoachRepository') };
+  const source = require('node:fs').readFileSync('src/data/focusCoachRepository.ts', 'utf8');
+  require('node:vm').runInNewContext(transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, {
+    exports: module.exports, console: { warn: () => {} }, require: (id: string) => {
+      if (id === 'react-native') return { Platform: { OS: 'android' } };
+      if (id === './coachDataEvents') return require('../src/data/coachDataEvents');
+      if (id === './database') return { getDatabase: async () => database, ensureSchema: async () => {} };
+      if (id === './appStateRepository') return { getAppState: async () => null, setAppState: async () => {} };
+      if (id === '../domain/awayTime') return { getAwayDisplay: async () => null };
+      if (id === '../domain/focusCoachAway') return { safeLoadFocusCoachAway: async () => null };
+      if (id === '../domain/focusCoachCopy') return { ...narrativeCopy, buildFocusCoachCopy: async () => ({}) };
+      return require('../src/domain/' + id.replace('../domain/', ''));
+    },
+  });
+  const result = await module.exports.loadFocusCoachData({ isPaidUser: true });
+  assert(result.notes[0]?.text.startsWith('Instagram'), 'repository did not select the earliest app event');
+  assert(result.nextStep !== null, 'paid flag did not reach the engine');
+  db.exec("UPDATE sessions SET first_distraction_type = NULL, mode_id = CASE WHEN id <= 3 THEN 'custom-one' ELSE 'custom-two' END, clean_seconds = CASE WHEN id <= 3 THEN 1620 ELSE 900 END;");
+  const custom = await module.exports.loadFocusCoachData({ isPaidUser: true });
+  assert(custom.notes.some(note => note.text === 'Reading sessions run cleaner than Writing.'), 'custom mode names did not reach note analysis');
+  db.exec("UPDATE sessions SET first_distraction_type = 'app_touched', mode_id = 'deep-work', clean_seconds = 720;");
+  failLabels = true;
+  const fallback = await module.exports.loadFocusCoachData();
+  assert(fallback.notes[0]?.text.startsWith('Your phone') && fallback.nextStep === null, 'defensive fallback or free next step is wrong');
+  db.close();
+});
+
+function pendingOf(rows: FocusCoachSession[], id: FocusCoachResult['pending'][number]['id'], awayTrackingOptedIn = false) {
+  return evaluateFocusCoach(rows, null, null, { now: NOTE_NOW, awayTrackingOptedIn }).pending.find(row => row.id === id);
+}
+
+test('pending progress uses each note gate below and at its boundary', () => {
+  const check = (rows: FocusCoachSession[], id: FocusCoachResult['pending'][number]['id'], have: number, need: number, optedIn = false) => {
+    const row = pendingOf(rows, id, optedIn);
+    assert(row?.have === have && row.need === need, id + ': ' + JSON.stringify(row));
+  };
+  check(slips(3), 'top_trigger', 3, 4);
+  assert(!pendingOf(slips(4), 'top_trigger'), 'unlocked trigger remains pending');
+  check(slips(4), 'slip_timing', 4, 5);
+  assert(!pendingOf(slips(5), 'slip_timing'), 'unlocked timing remains pending');
+  check(windowSessions(3).filter((_, index) => index !== 0), 'best_window', 2, 3);
+  assert(!pendingOf(windowSessions(3), 'best_window'), 'unlocked window remains pending');
+  check(lengthSessions(3).slice(0, -1), 'best_length', 2, 3);
+  assert(!pendingOf(lengthSessions(3), 'best_length'), 'unlocked length remains pending');
+  check(many(6, () => 1200), 'best_length', 0, 3);
+  check(modeSessions(3).slice(0, -1), 'best_mode', 2, 3);
+  assert(!pendingOf(modeSessions(3), 'best_mode'), 'unlocked mode remains pending');
+  check(many(6, () => 1200), 'best_mode', 0, 3);
+  check(restSessions(9), 'rest_before', 9, 10, true);
+  assert(!pendingOf(restSessions(10), 'rest_before', true), 'unlocked rest remains pending');
+  check(daySessions(1), 'consistency', 1, 2);
+  assert(!pendingOf(daySessions(2), 'consistency'), 'unlocked attendance remains pending');
+});
+
+test('pending remains pending when counts pass but pattern evidence does not', () => {
+  const varied = slips(4).map((s, i) => ({ ...s, firstDistractionApp: 'App ' + i }));
+  assert(pendingOf(varied, 'top_trigger')?.have === 4, 'source recurrence is still required');
+  assert(pendingOf(windowSessions(3).map(s => ({ ...s, cleanSeconds: 1200 })), 'best_window')?.have === 3, 'window advantage is still required');
+  assert(pendingOf(modeSessions(3, .8, .8), 'best_mode')?.have === 3, 'mode advantage is still required');
+  assert(pendingOf(lengthSessions(3, .8, .8), 'best_length')?.have === 3, 'length advantage is still required');
+});
+
+test('pending ordering is distance to gate then fixed note priority', () => {
+  const result = noteResult(daySessions(0));
+  assert(result.pending.map(row => row.id).join(',') === 'consistency,best_window,best_length,best_mode,top_trigger,slip_timing', JSON.stringify(result.pending));
+  for (const row of result.pending) assert(!result.notes.some(note => note.id === row.id), 'unlocked note repeated in pending');
+});
+
+test('rest pending needs Android and explicit away opt-in', () => {
+  assert(!pendingOf(restSessions(9), 'rest_before'), 'off-by-default rest pending leaked');
+  assert(pendingOf(restSessions(9), 'rest_before', true), 'opted-in rest progress missing');
+  assert(!pendingOf(restSessions(9).map(s => ({ ...s, platform: 'ios' })), 'rest_before', true), 'iOS rest pending leaked');
+  const rows = restSessions(9).map((s, index) => ({ ...s, afterSessionAwayVerified: index < 4, afterSessionAwaySeconds: index === 3 ? null : s.afterSessionAwaySeconds }));
+  assert(pendingOf(rows, 'rest_before', true)?.have === 3, 'pending counted unverified or missing away values');
+});
+
+test('selection fills three total rows with pending and respects free rules', () => {
+  const rich = noteResult(windowSessions(6).map(s => ({ ...s, firstDistractionType: 'app_touched' as const, cleanSeconds: s.cleanSeconds! - 60 })));
+  const pending = noteResult(daySessions(0)).pending.filter(row => !rich.notes.some(note => note.id === row.id));
+  for (const count of [0, 1, 2, 3]) {
+    const result = { ...rich, notes: rich.notes.slice(0, count), pending };
+    const paid = selectCoachCardSections({ isPaid: true, result, platform: 'android' });
+    assert(paid.notes.length + paid.pending.length === 3 && paid.pending.length === 3 - count, 'paid rows wrong for ' + count);
+    const free = selectCoachCardSections({ isPaid: false, result, platform: 'android' });
+    assert(free.notes.length === Math.min(1, count) && free.pending.length === (count === 0 ? 3 : 0), 'free pending gate wrong for ' + count);
+    if (count > 1) assert(free.lockedRow?.count === count - 1, 'locked note count changed');
+  }
+  const early = selectCoachCardSections({ isPaid: true, result: noteResult(daySessions(1).slice(0, 3)), platform: 'android' });
+  assert(early.state === 'too_early' && early.pending.length === 0, 'early progress card changed');
+});
+
+test('consistency is factual at two days and never weak', () => {
+  assert(!noteOf(daySessions(1), 'consistency'), 'one day must not unlock regular attendance');
+  for (const days of [2, 3, 7]) assert(noteOf(daySessions(days), 'consistency')?.weak === false, 'attendance must never be weak');
+});
+
+test('all new pending and dev strings meet the copy rules', () => {
+  for (const [id, value] of Object.entries(narrativeCopy.PENDING_NOTE_COPY)) {
+    assert(value.title.length <= 40 && value.hint.length <= 60, id + ' copy too long');
+    const accessibility = narrativeCopy.pendingAccessibilityCopy({ ...value, have: 1, need: 3 });
+    assert(!accessibility.includes('..'), accessibility);
+    for (const text of [value.title, value.hint, accessibility]) assert(!/\b(baseline|median|ratio|diagnosis|failed|lazy|bad)\b|\{| {2}/i.test(text), text);
+  }
+  assert(narrativeCopy.pendingProgressCopy('best_window', 2, 3) === null, 'group progress must use dots');
+  assert(narrativeCopy.pendingProgressCopy('top_trigger', 3, 4) === '3 of 4 breaks seen', 'break unit missing');
+  assert(narrativeCopy.pendingProgressCopy('rest_before', 9, 10) === '9 of 10 sessions', 'session unit missing');
+  assert(narrativeCopy.pendingProgressCopy('consistency', 1, 2) === '1 of 2 days', 'day unit missing');
+  for (const text of [narrativeCopy.COMING_UP_COPY, ...Object.values(narrativeCopy.COACH_SAMPLE_COPY), narrativeCopy.weeklyTestTitle('five_minute_break'), narrativeCopy.experimentDayCopy(3)]) {
+    assert(text.length <= 90 && !/\b(baseline|median|ratio|diagnosis|failed|lazy|bad)\b|\{| {2}/i.test(text), text);
+  }
+});
+
+test('dev sample load/remove uses the real schema, lights all gates, and restores real data', async () => {
+  const { DatabaseSync } = require('node:sqlite');
+  const { readFileSync } = require('node:fs');
+  const { runInNewContext } = require('node:vm');
+  const db = new DatabaseSync(':memory:');
+  let failInsert = false;
+  const adapter = {
+    execAsync: async (sql: string) => db.exec(sql),
+    getAllAsync: async (sql: string, params: unknown[] = []) => db.prepare(sql).all(...params),
+    getFirstAsync: async (sql: string, params: unknown[] = []) => db.prepare(sql).get(...params) ?? null,
+    runAsync: async (sql: string, params: unknown[] = []) => {
+      if (failInsert && /INSERT INTO sessions/.test(sql)) throw new Error('fixture insert failure');
+      const result = db.prepare(sql).run(...params);
+      return { lastInsertRowId: Number(result.lastInsertRowid), changes: Number(result.changes) };
+    },
+    withTransactionAsync: async (work: () => Promise<void>) => {
+      db.exec('BEGIN');
+      try { await work(); db.exec('COMMIT'); } catch (error) { db.exec('ROLLBACK'); throw error; }
+    },
+  };
+  const fixedDate = class extends Date {
+    constructor(value: any = NOTE_NOW) { super(value); }
+    static now() { return NOTE_NOW; }
+  };
+  const loadModule = (file: string, dependencies: (id: string) => unknown, dev = true) => {
+    const module = { exports: {} as any };
+    runInNewContext(transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
+      { exports: module.exports, require: dependencies, __DEV__: dev, Date: fixedDate, console });
+    return module.exports;
+  };
+  const schema = loadModule('src/data/database.ts', () => ({ openDatabaseAsync: async () => adapter }));
+  await schema.ensureSchema(adapter);
+  db.exec(`INSERT INTO flagged_apps VALUES ('com.real.app','Real flagged app',NULL);
+    INSERT INTO custom_modes VALUES ('real-mode','Real custom mode',5,15,40);
+    INSERT INTO sessions (mode_id,started_at,duration_seconds,completed,distraction_count,lockdown_minutes,
+      focus_seconds,clean_seconds,first_distraction_type,pause_count,paused_seconds,ended_early,platform,ended_at)
+      VALUES ('deep-work','2020-01-01T10:00:00Z',1800,1,1,0,1800,1200,'app_touched',1,30,0,'android','2020-01-01T10:30:30Z');
+    INSERT INTO distraction_events (session_id,type,app_identifier,occurred_at) VALUES (1,'app_touched','com.real.app','2020-01-01T10:20:30Z');
+    INSERT INTO session_pauses (session_id,paused_at,resumed_at) VALUES (1,'2020-01-01T10:02:00Z','2020-01-01T10:02:30Z');
+    UPDATE streaks SET current_streak=3,best_streak=9,total_sessions_completed=17;`);
+  const originalExperiment = JSON.stringify({ id: 'phone_out_of_reach', startedAt: '2020-01-01T10:00:00Z' });
+  await adapter.runAsync('INSERT OR REPLACE INTO app_state VALUES (?,?);', ['coach_experiment', originalExperiment]);
+  await adapter.runAsync('INSERT OR REPLACE INTO app_state VALUES (?,?);', ['coach_variant_steady', '{"index":1,"validCount":12}']);
+  const tables = ['sessions', 'session_pauses', 'distraction_events', 'streaks', 'flagged_apps', 'custom_modes', 'app_state'];
+  const snapshot = () => JSON.stringify(Object.fromEntries(tables.map(table => [table, db.prepare('SELECT * FROM ' + table + ' ORDER BY 1;').all()])));
+  const before = snapshot();
+  const events = require('../src/data/coachDataEvents');
+  let notifications = 0;
+  const unsubscribe = events.subscribeCoachDataChanges(() => notifications++);
+  const platform = { OS: 'android' };
+  let tierEnabled = true;
+  const dependencies = (id: string): unknown => {
+    if (id === 'react-native') return { Platform: platform };
+    if (id === '../domain/paywall') return { TIER_SWITCHER_ENABLED: tierEnabled };
+    if (id === './database') return { getDatabase: async () => adapter, ensureSchema: schema.ensureSchema };
+    if (id === './coachDataEvents') return events;
+    return require('../src/domain/' + id.replace('../domain/', ''));
+  };
+  const samples = loadModule('src/data/coachSampleRepository.ts', dependencies) as typeof import('../src/data/coachSampleRepository');
+  try {
+    await samples.loadSampleSessions();
+    const ids = JSON.parse(db.prepare('SELECT value FROM app_state WHERE key=?').get(events.DEV_SAMPLE_SESSION_IDS_KEY).value);
+    assert(ids.length === 16 && db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n === 17, 'sample ownership or row count wrong');
+    assert(db.prepare('SELECT COUNT(*) AS n FROM session_pauses WHERE session_id<>1').get().n === 16, 'sample pauses missing');
+    const rows = db.prepare('SELECT * FROM sessions WHERE id<>1 ORDER BY started_at').all();
+    const sessions = rows.map((row: any) => {
+      const pause = db.prepare('SELECT * FROM session_pauses WHERE session_id=?').get(row.id);
+      const event = db.prepare('SELECT * FROM distraction_events WHERE session_id=? ORDER BY occurred_at LIMIT 1').get(row.id);
+      const grace = row.mode_id === 'study' ? 12 : 5;
+      const measuredClean = event ? Math.min(row.focus_seconds, (Date.parse(event.occurred_at) - Date.parse(row.started_at)) / 1000 - row.paused_seconds - (event.type === 'camera_absence' ? grace : 0)) : row.focus_seconds;
+      assert(row.clean_seconds === measuredClean && row.pause_count === 1 && row.paused_seconds === 30, 'sample differs from the session-end writer');
+      assert(Date.parse(row.ended_at) - Date.parse(row.started_at) === (row.focus_seconds + row.paused_seconds) * 1000, 'focus/pause/end time mismatch');
+      assert(Date.parse(pause.resumed_at) - Date.parse(pause.paused_at) === 30000, 'pause duration mismatch');
+      if (event) assert(Date.parse(event.occurred_at) <= Date.parse(row.ended_at), 'event is after the session ended');
+      return session(row.id, { startedAt: row.started_at, endedAt: row.ended_at, modeId: row.mode_id,
+        cleanSeconds: row.clean_seconds, focusSeconds: row.focus_seconds, durationSeconds: row.duration_seconds,
+        firstDistractionType: row.first_distraction_type, firstDistractionApp: event?.app_identifier ? 'Real flagged app' : null,
+        pauseCount: row.pause_count, pausedSeconds: row.paused_seconds,
+        afterSessionAwaySeconds: row.after_session_away_seconds, afterSessionAwayVerified: row.after_session_away_verified === 1 });
+    });
+    const result = evaluateFocusCoach(sessions, null, null, { now: NOTE_NOW, isPaidUser: true, awayTrackingOptedIn: true });
+    assert(result.notes.map(note => note.id).join(',') === 'top_trigger,slip_timing,best_window', JSON.stringify(result.notes));
+    assert(result.pending.length === 0, 'sample did not pass all seven note gates: ' + JSON.stringify(result.pending));
+    assert(result.notes[0].text.includes('Real flagged app'), 'sample did not reuse the real flagged app');
+    const recentSix = sessions.slice(-6);
+    assert(recentSix.filter((s: FocusCoachSession) => s.firstDistractionType === 'app_touched').length === 4, 'sample needs four primary-app slips in the last six');
+    let copyWrites = 0;
+    const repository = loadModule('src/data/focusCoachRepository.ts', id => {
+      if (id === './appStateRepository') return {
+        getAppState: async (key: string) => db.prepare('SELECT value FROM app_state WHERE key=?').get(key)?.value ?? null,
+        setAppState: async (key: string, value: string) => { copyWrites++; await adapter.runAsync('INSERT OR REPLACE INTO app_state VALUES (?,?);', [key, value]); },
+      };
+      if (id === '../domain/awayTime') return { getAwayDisplay: async () => null, isAwayTrackingOptedIn: async () => true };
+      if (id === '../domain/focusCoachAway') return { safeLoadFocusCoachAway: async () => null };
+      if (id === '../domain/focusCoachCopy') return { ...narrativeCopy, buildFocusCoachCopy: async () => { copyWrites++; return {}; } };
+      return dependencies(id);
+    });
+    await repository.loadFocusCoachData({ isPaidUser: true });
+    assert(copyWrites === 0 && db.prepare('SELECT value FROM app_state WHERE key=?').get('coach_experiment').value === originalExperiment, 'sample preview changed persisted coaching state');
+    const loaded = snapshot();
+    failInsert = true;
+    let failed = false; try { await samples.loadSampleSessions(); } catch { failed = true; }
+    failInsert = false;
+    assert(failed && snapshot() === loaded, 'failed reload was not atomic');
+    await Promise.all([samples.loadSampleSessions(), samples.loadSampleSessions()]);
+    assert(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n === 17, 'loading twice duplicated samples');
+    await samples.removeSampleSessions();
+    assert(snapshot() === before, 'removal did not restore real sessions, children, settings, streaks and app state');
+    await samples.removeSampleSessions();
+    assert(snapshot() === before, 'second removal changed real data');
+    assert(notifications === 5, 'committed changes did not refresh coach/history');
+    platform.OS = 'ios';
+    await samples.loadSampleSessions();
+    assert(db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE platform=?').get('ios').n === 16, 'sample platform is wrong');
+    assert(db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE platform=? AND after_session_away_verified IS NOT NULL').get('ios').n === 0, 'iOS samples fabricated verified away time');
+    await samples.removeSampleSessions();
+    assert(snapshot() === before, 'iOS sample removal changed original state');
+    db.exec('DELETE FROM flagged_apps;');
+    const withoutFlaggedApps = snapshot();
+    platform.OS = 'android';
+    await samples.loadSampleSessions();
+    const fallbackApps = db.prepare('SELECT DISTINCT app_identifier FROM distraction_events WHERE session_id <> 1 AND app_identifier IS NOT NULL').all().map((row: any) => row.app_identifier);
+    assert(fallbackApps.includes('com.instagram.android') && fallbackApps.includes('com.google.android.youtube'), 'fallback apps were not used');
+    await samples.removeSampleSessions();
+    assert(snapshot() === withoutFlaggedApps, 'fallback sampling added settings or left rows behind');
+    db.exec("INSERT INTO flagged_apps VALUES ('com.real.app','Real flagged app',NULL);");
+    for (const dev of [false, true]) {
+      tierEnabled = dev ? false : true;
+      const guarded = loadModule('src/data/coachSampleRepository.ts', dependencies, dev);
+      let refused = false; try { await guarded.loadSampleSessions(); } catch { refused = true; }
+      assert(refused && snapshot() === before, 'sample action is reachable outside the dev guard');
+    }
+  } finally { unsubscribe(); db.close(); }
+});
+
+test('release compilation removes sample actions and dynamic repository import', async () => {
+  const { build } = require('esbuild');
+  const output = await build({ entryPoints: ['src/components/DevCoachSampleControls.tsx'], bundle: true,
+    packages: 'external', write: false, minify: true, define: { __DEV__: 'false' } });
+  const code = output.outputFiles[0].text;
+  assert(!/coachSampleRepository|dev_sample_session_ids|INSERT INTO sessions/.test(code), 'sample implementation leaked into release controls');
+});
+
 async function main() {
   let failed = 0;
   for (const item of cases) {

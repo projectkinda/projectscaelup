@@ -1,3 +1,6 @@
+import { typography } from '../theme/typography';
+import { Text } from '../components/AppText';
+import { suggestionCaption } from '../domain/focusCoachCopy';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -7,7 +10,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -64,6 +66,8 @@ import {
   startSession,
   voidSession,
 } from '../domain/sessionHistory';
+import { stopLiveTimer } from '../domain/androidLiveTimer';
+import { useAndroidLiveTimer } from '../domain/useAndroidLiveTimer';
 import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { PreSessionReadinessScreen } from './PreSessionReadinessScreen';
 import { PostSessionSummaryScreen } from './PostSessionSummaryScreen';
@@ -254,6 +258,13 @@ export function HomeScreen({
   const resumeInFlight = useRef(false);
   const pauseInFlight = useRef(false);
   const hasActiveSession = remainingSeconds !== null;
+
+  useAndroidLiveTimer({
+    remainingSeconds,
+    endsAtMs: sessionEndTimeMs.current,
+    isPaused,
+    awaitingEndChoice,
+  });
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -694,6 +705,7 @@ export function HomeScreen({
   };
 
   const resetActiveSessionState = async () => {
+    void stopLiveTimer();
     await sessionMonitorUnsubscribe.current?.();
     sessionMonitorUnsubscribe.current = null;
     usageMonitorUnsubscribe.current?.();
@@ -717,6 +729,7 @@ export function HomeScreen({
   };
 
   const handleCancelSession = async () => {
+    void stopLiveTimer();
     const sessionId = activeSessionId;
     const timing = sessionId !== null ? buildSessionTiming() : null;
     if (activePauseId.current !== null) {
@@ -759,6 +772,7 @@ export function HomeScreen({
   };
 
   const handleCompleteSession = async () => {
+    void stopLiveTimer();
     const sessionId = activeSessionId;
 
     if (sessionId === null) {
@@ -859,6 +873,10 @@ export function HomeScreen({
   const suggestionMinutes = paidUser
     ? focusCoach?.suggestionMinutes ?? null
     : null;
+  const suggestionReasonCaption = suggestionCaption(
+    focusCoach?.suggestionReason ?? null,
+    suggestionMinutes === (focusCoach?.lastSession?.plannedSeconds ?? 0) / 60 + 5,
+  );
   const handleSuggestionPress = () => {
     if (suggestionMinutes === null) {
       return;
@@ -1065,7 +1083,7 @@ export function HomeScreen({
             {suggestionMinutes !== null ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Use suggested ${suggestionMinutes} minute session`}
+                accessibilityLabel={`Use suggested ${suggestionMinutes} minute session. ${suggestionReasonCaption}`}
                 onPress={handleSuggestionPress}
                 style={({ pressed }) => [
                   styles.suggestionChip,
@@ -1073,7 +1091,10 @@ export function HomeScreen({
                 ]}
               >
                 <Text style={styles.suggestionText}>
-                  Suggested: {suggestionMinutes} min
+                  Try {suggestionMinutes} min
+                </Text>
+                <Text style={styles.suggestionCaption}>
+                  {suggestionReasonCaption}
                 </Text>
               </Pressable>
             ) : null}
@@ -1158,8 +1179,7 @@ const styles = StyleSheet.create({
   },
   runningTitle: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   cameraPreview: {
@@ -1205,8 +1225,7 @@ const styles = StyleSheet.create({
   },
   moreModesIcon: {
     color: colors.ink,
-    fontSize: 29,
-    lineHeight: 32,
+    ...typography.title,
     fontWeight: '500',
   },
   tabsScroller: {
@@ -1228,8 +1247,7 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     color: colors.muted,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '500',
   },
   activeTabLabel: { color: colors.ink, fontWeight: '700' },
@@ -1269,8 +1287,7 @@ const styles = StyleSheet.create({
   },
   startLabel: {
     color: colors.warmWhite,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   pauseShell: {
@@ -1296,8 +1313,7 @@ const styles = StyleSheet.create({
   },
   pauseLabel: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   pauseGlyph: {
@@ -1319,13 +1335,13 @@ const styles = StyleSheet.create({
   sessionMessage: { position: 'absolute', width: 1, height: 1, opacity: 0 },
   awayLine: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.label,
     fontWeight: '600',
     textAlign: 'center',
   },
   suggestionChip: {
     minHeight: 38,
+    paddingVertical: 6,
     borderRadius: 12,
     paddingHorizontal: 14,
     alignItems: 'center',
@@ -1334,10 +1350,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: colors.module,
   },
+  suggestionCaption: { color: colors.muted, ...typography.caption, textAlign: 'center' },
   suggestionText: {
     color: colors.rewardAmber,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '700',
   },
 });

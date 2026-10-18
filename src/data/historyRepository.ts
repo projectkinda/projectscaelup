@@ -1,3 +1,4 @@
+import { buildWeekStrip, localWeekBoundaries, type ThisWeek } from '../domain/weekStrip';
 import { iosAppKey } from '../domain/iosScreenTime';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
 import { ensureSchema, getDatabase } from './database';
@@ -34,6 +35,8 @@ export type HistoryModeBreakdown = {
 };
 
 export type HistoryData = {
+  thisWeek: ThisWeek;
+  focusedToday: boolean;
   sessions: HistorySession[];
   trend: HistoryTrendPoint[];
   modeBreakdown: HistoryModeBreakdown[];
@@ -120,6 +123,19 @@ export async function loadHistoryData({
 } = {}): Promise<HistoryData> {
   const database = await getDatabase();
   await ensureSchema(database);
+
+  const weekBoundaries = localWeekBoundaries(today);
+  // completeSession counts completed attempts of any length and records ended_at.
+  // Legacy rows lack that timestamp; their start is the only available day marker.
+  // Include dev samples automatically, using the same completed predicate.
+  const focusedRows = await database.getAllAsync<{ focused_at: string }>(
+    `SELECT COALESCE(ended_at, started_at) AS focused_at
+      FROM sessions WHERE completed = 1
+        AND COALESCE(ended_at, started_at) >= ?
+        AND COALESCE(ended_at, started_at) < ?;`,
+    [weekBoundaries[0].toISOString(), weekBoundaries[7].toISOString()],
+  );
+  const thisWeek = buildWeekStrip(focusedRows.map(row => row.focused_at), today, weekBoundaries);
 
   const cutoffDate = isPaidUser ? null : subtractDays(today, 14);
   const cutoffWhere = cutoffDate ? 'AND started_at >= ?' : '';
@@ -270,6 +286,8 @@ export async function loadHistoryData({
     : null;
 
   return {
+    thisWeek,
+    focusedToday: thisWeek.days[thisWeek.todayIndex],
     trend: trendRows.map(row => ({
       id: row.id,
       startedAt: row.started_at,

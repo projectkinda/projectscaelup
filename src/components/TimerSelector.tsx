@@ -1,4 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
+import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { TimeModule } from './TimeModule';
@@ -117,10 +119,10 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   hint: {
-    height: 18,
+    minHeight: 20,
     marginTop: 4,
     color: colors.muted,
-    fontSize: 13,
+    ...typography.caption,
     fontWeight: '400',
     textAlign: 'center',
   },

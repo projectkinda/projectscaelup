@@ -1,3 +1,5 @@
+import { startAppRulesSync, syncRulesToNative } from './src/data/appRulesRepository';
+import { useFonts } from 'expo-font';
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, StatusBar, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -21,6 +23,7 @@ import {
   setTestTierOverride,
   type TestTierOverride,
 } from './src/domain/paywall';
+import { onLiveTimerOpen } from './src/domain/androidLiveTimer';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { OnboardingFlow } from './src/screens/onboarding/OnboardingFlow';
@@ -41,6 +44,10 @@ function parseStoredTier(value: string | null): TestTierOverride {
 }
 
 function App(): React.JSX.Element {
+  const [fontsLoaded, fontError] = useFonts({
+    Geist: require('./src/assets/fonts/Geist-Regular.ttf'),
+    GeistSemiBold: require('./src/assets/fonts/Geist-SemiBold.ttf'),
+  });
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
   const [paywallReturnScreen, setPaywallReturnScreen] =
     useState<MainScreen>('home');
@@ -51,6 +58,13 @@ function App(): React.JSX.Element {
     useState<RequiredPermissionStatus | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
   const didApplyResetOnboardingRef = useRef(false);
+
+  useEffect(() => startAppRulesSync(), []);
+
+  useEffect(() => onLiveTimerOpen(() => {
+    setActiveScreen('home');
+    setPaywallReturnScreen('home');
+  }), []);
 
   useEffect(() => {
     sweepPresencePhotoCacheQuietly();
@@ -110,6 +124,7 @@ function App(): React.JSX.Element {
     drainAway();
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
+        void syncRulesToNative();
         reconcile();
         checkGate();
         drainAway();
@@ -184,7 +199,7 @@ function App(): React.JSX.Element {
     }
   };
 
-  if (gate === 'loading' || !tierReady) {
+  if ((!fontsLoaded && !fontError) || gate === 'loading' || !tierReady) {
     return (
       <GestureHandlerRootView style={styles.root}>
         <SafeAreaProvider>

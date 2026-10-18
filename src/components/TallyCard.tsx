@@ -1,5 +1,7 @@
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import { TALLY_GROUP_SIZE, TallyGroupMark } from './TallyGroupMark';
@@ -181,21 +183,18 @@ const styles = StyleSheet.create({
   },
   emptyStateText: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
     textAlign: 'center',
   },
   copy: { alignItems: 'center', gap: 4 },
   sessionCount: {
     color: colors.ink,
-    fontSize: 24,
-    lineHeight: 29,
+    ...typography.metric,
     fontWeight: '700',
   },
   streak: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.caption,
     fontWeight: '400',
   },
 });

@@ -1,3 +1,10 @@
+import { AppRulesSection } from '../components/AppRulesSection';
+import { CUSTOM_MODES_INTRO, CUSTOM_MODE_EDITOR_INTRO, cameraDistanceText, customModeDetail, lookAwayDescription, modeFrameRange } from '../domain/customModeCopy';
+import { AppPickerModal } from '../components/AppPickerModal';
+import { DevAppRulesControls } from '../components/DevAppRulesControls';
+import { typography } from '../theme/typography';
+import { Text, TextInput } from '../components/AppText';
+import { DevCoachSampleControls } from '../components/DevCoachSampleControls';
 import { Camera } from 'expo-camera';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -11,8 +18,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -27,8 +32,6 @@ import {
 } from '../data/coachSeedRepository';
 import { setAppState } from '../data/appStateRepository';
 import {
-  AppPickerList,
-  SelectionMark,
   filterAppsForPicker,
 } from '../components/AppPickerList';
 import {
@@ -97,15 +100,6 @@ const MIN_GRACE_SECONDS = 3;
 const MAX_GRACE_SECONDS = 90;
 const TEST_TIER_OVERRIDE_KEY = 'test_tier_override';
 
-function formatGracePeriod(seconds: number) {
-  if (seconds < 60) {
-    return `${seconds}s grace`;
-  }
-
-  const minutes = Math.round(seconds / 60);
-  return `${minutes} min grace`;
-}
-
 function statusLabel(state: PermissionState) {
   switch (state) {
     case 'granted':
@@ -149,10 +143,6 @@ function screenTimePermissionState(status: ScreenTimeStatus | null): PermissionS
 function appInitial(name: string) {
   const trimmed = name.trim();
   return trimmed.length > 0 ? trimmed[0].toUpperCase() : '?';
-}
-
-function inferFrameWidthRange(gracePeriodSeconds: number) {
-  return gracePeriodSeconds >= 30 ? '5-20%' : '15-40%';
 }
 
 async function openAccessibilitySettings() {
@@ -694,9 +684,13 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                 </View>
               </View>
 
+              {/* TODO: iOS App rules will use the Screen Time engine. */}
+              {Platform.OS === 'android' ? <AppRulesSection isActive={isActive}/> : null}
+
               {paidUser ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Custom modes</Text>
+                  <Text style={[styles.rowDetail, { marginTop: 8 }]}>{CUSTOM_MODES_INTRO}</Text>
                   <View style={styles.panelShell}>
                     <LinearGradient
                       colors={['#333333', '#141414']}
@@ -707,9 +701,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                           <View style={styles.rowTextWrap}>
                             <Text style={styles.rowTitle}>{mode.name}</Text>
                             <Text style={styles.rowDetail}>
-                              {formatGracePeriod(mode.gracePeriodSeconds)} ·{' '}
-                              {mode.frameWidthRange[0]}-{mode.frameWidthRange[1]}%
-                              frame
+                              {customModeDetail(mode.gracePeriodSeconds, mode.frameWidthRange)}
                             </Text>
                           </View>
                           <View style={styles.actionGroup}>
@@ -908,6 +900,9 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
+                    {__DEV__ && TIER_SWITCHER_ENABLED && Platform.OS === 'android' ?
+                      <DevAppRulesControls flaggedPackages={flaggedApps.map(app => app.appIdentifier)} /> : null}
+                    {__DEV__ && TIER_SWITCHER_ENABLED ? <DevCoachSampleControls /> : null}
                     {TIER_SWITCHER_ENABLED ? (
                       <View style={styles.row}>
                         <View style={styles.rowTextWrap}>
@@ -1028,121 +1023,6 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   );
 }
 
-function AppPickerModal({
-  apps,
-  isSaving,
-  query,
-  remainingSlots,
-  selectedAppIdentifiers,
-  visible,
-  onCancel,
-  onChangeQuery,
-  onSave,
-  onToggleAllVisible,
-  onToggleApp,
-}: {
-  apps: InstalledApp[];
-  isSaving: boolean;
-  query: string;
-  remainingSlots: number;
-  selectedAppIdentifiers: string[];
-  visible: boolean;
-  onCancel: () => void;
-  onChangeQuery: (value: string) => void;
-  onSave: () => void;
-  onToggleAllVisible: (apps: InstalledApp[]) => void;
-  onToggleApp: (app: InstalledApp) => void;
-}) {
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const insets = useSafeAreaInsets();
-  const selectedAppSet = new Set(selectedAppIdentifiers);
-  const selectedCount = selectedAppIdentifiers.length;
-  const allVisibleSelected =
-    apps.length > 0 && apps.every(app => selectedAppSet.has(app.packageName));
-
-  return (
-    <Modal
-      animationType="slide"
-      visible={visible}
-      onRequestClose={onCancel}
-    >
-      <View
-        style={[
-          styles.appPickerScreen,
-          { paddingTop: insets.top + 22, paddingBottom: insets.bottom },
-        ]}
-      >
-        <View style={styles.appPickerHeader}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={allVisibleSelected ? 'Clear all' : 'Select all'}
-            onPress={() => onToggleAllVisible(apps)}
-            style={({ pressed }) => [
-              styles.selectAllButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <SelectionMark selected={allVisibleSelected} />
-            <Text style={styles.selectAllText}>All</Text>
-          </Pressable>
-          <Text style={styles.appPickerTitle}>Add apps</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Add selected apps"
-            disabled={selectedCount === 0 || isSaving}
-            onPress={onSave}
-            style={({ pressed }) => [
-              styles.appPickerAddButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            {isSaving ? (
-              <ActivityIndicator color={colors.ink} />
-            ) : (
-              <Text
-                style={[
-                  styles.appPickerAddText,
-                  selectedCount > 0 && styles.appPickerAddTextReady,
-                ]}
-              >
-                Add
-              </Text>
-            )}
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Search apps"
-            onPress={() => setIsSearchVisible(current => !current)}
-            style={({ pressed }) => [
-              styles.appPickerSearchButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <View style={styles.searchLens} />
-            <View style={styles.searchHandle} />
-          </Pressable>
-        </View>
-
-        <Text style={styles.appPickerSectionLabel}>Add apps from phone</Text>
-        <AppPickerList
-          apps={apps}
-          selectedIds={selectedAppIdentifiers}
-          onToggle={packageName => {
-            const app = apps.find(item => item.packageName === packageName);
-            if (app) {
-              onToggleApp(app);
-            }
-          }}
-          maxSelectable={remainingSlots}
-          query={isSearchVisible ? query : ''}
-          onChangeQuery={onChangeQuery}
-          showSearch={isSearchVisible}
-        />
-      </View>
-    </Modal>
-  );
-}
-
 function CustomModeEditorModal({
   visible,
   mode,
@@ -1221,9 +1101,11 @@ function CustomModeEditorModal({
           colors={['#333333', '#141414']}
           style={styles.modeEditorCard}
         >
+          <ScrollView showsVerticalScrollIndicator={false} testID="custom-mode-editor-scroll" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modeEditorContent}>
           <Text style={styles.modeEditorTitle}>
             {mode ? 'Edit custom mode' : 'Create custom mode'}
           </Text>
+          <Text style={styles.rowDetail}>{CUSTOM_MODE_EDITOR_INTRO}</Text>
 
           <View style={styles.fieldGroup}>
             <Text style={styles.fieldLabel}>Name</Text>
@@ -1239,15 +1121,17 @@ function CustomModeEditorModal({
 
           <View style={styles.fieldGroup}>
             <View style={styles.sliderHeader}>
-              <Text style={styles.fieldLabel}>Grace period</Text>
+              <Text style={styles.fieldLabel}>Look-away allowance</Text>
               <Text style={styles.sliderValue}>
-                {formatGracePeriod(gracePeriodSeconds)}
+                {gracePeriodSeconds} sec
               </Text>
             </View>
             <Pressable
               accessibilityRole="adjustable"
-              accessibilityLabel="Grace period"
-              accessibilityValue={{ text: `${gracePeriodSeconds} seconds` }}
+              accessibilityLabel="Look-away allowance"
+              accessibilityValue={{ min: MIN_GRACE_SECONDS, max: MAX_GRACE_SECONDS, now: gracePeriodSeconds, text: gracePeriodSeconds + ' seconds' }}
+              accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+              onAccessibilityAction={event => setGracePeriodSeconds(current => Math.max(MIN_GRACE_SECONDS, Math.min(MAX_GRACE_SECONDS, current + (event.nativeEvent.actionName === 'increment' ? 1 : -1))))}
               onPress={event =>
                 setGraceFromPosition(event.nativeEvent.locationX)
               }
@@ -1267,8 +1151,10 @@ function CustomModeEditorModal({
                 ]}
               />
             </Pressable>
+            <View style={styles.sliderEnds}><Text style={styles.rowDetail}>Strict</Text><Text style={styles.rowDetail}>Relaxed</Text></View>
+            <Text style={styles.rowDetail}>{lookAwayDescription(gracePeriodSeconds)}</Text>
             <Text style={styles.rowDetail}>
-              Frame default: {inferFrameWidthRange(gracePeriodSeconds)}
+              Camera distance: {cameraDistanceText(modeFrameRange(gracePeriodSeconds))}
             </Text>
           </View>
 
@@ -1297,6 +1183,7 @@ function CustomModeEditorModal({
               </Text>
             </Pressable>
           </View>
+          </ScrollView>
         </LinearGradient>
       </View>
     </Modal>
@@ -1313,8 +1200,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 30,
-    lineHeight: 36,
+    ...typography.title,
     fontWeight: '700',
   },
   loadingWrap: {
@@ -1325,8 +1211,7 @@ const styles = StyleSheet.create({
   section: { marginTop: 28 },
   sectionLabel: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   panelShell: {
@@ -1399,38 +1284,32 @@ const styles = StyleSheet.create({
   },
   appIconText: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   plusText: {
     color: colors.ink,
-    fontSize: 26,
-    lineHeight: 30,
+    ...typography.metric,
     fontWeight: '700',
   },
   rowTitle: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 22,
+    ...typography.body,
     fontWeight: '700',
   },
   rowDetail: {
     marginTop: 2,
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.caption,
   },
   emptyText: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
   },
   addRow: { justifyContent: 'flex-start' },
   addText: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   actionGroup: {
@@ -1444,162 +1323,10 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: colors.ink,
-    fontSize: 14,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '700',
   },
-  appPickerScreen: {
-    flex: 1,
-    backgroundColor: '#000000',
-    paddingHorizontal: 24,
-  },
-  appPickerHeader: {
-    minHeight: 66,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 16,
-  },
-  selectAllButton: {
-    width: 54,
-    alignItems: 'center',
-    paddingTop: 2,
-  },
-  selectionCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#6f6f7b',
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectionCircleSelected: {
-    borderColor: colors.ink,
-    backgroundColor: colors.ink,
-  },
-  selectionCheck: {
-    width: 11,
-    height: 6,
-    marginTop: -1,
-    borderLeftWidth: 2.5,
-    borderBottomWidth: 2.5,
-    borderColor: '#111111',
-    transform: [{ rotate: '-45deg' }],
-  },
-  selectAllText: {
-    marginTop: 5,
-    color: colors.ink,
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  appPickerTitle: {
-    flex: 1,
-    color: colors.ink,
-    fontSize: 30,
-    lineHeight: 38,
-    fontWeight: '800',
-  },
-  appPickerAddButton: {
-    minWidth: 54,
-    minHeight: 42,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  appPickerAddText: {
-    color: 'rgba(255, 255, 255, 0.36)',
-    fontSize: 21,
-    lineHeight: 28,
-    fontWeight: '800',
-  },
-  appPickerAddTextReady: {
-    color: colors.ink,
-  },
-  appPickerSearchButton: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  searchLens: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 3,
-    borderColor: colors.ink,
-  },
-  searchHandle: {
-    position: 'absolute',
-    width: 13,
-    height: 3,
-    right: 5,
-    bottom: 8,
-    borderRadius: 2,
-    backgroundColor: colors.ink,
-    transform: [{ rotate: '45deg' }],
-  },
-  appPickerSearchWrap: {
-    minHeight: 50,
-    marginTop: 8,
-    marginLeft: 88,
-    marginRight: 0,
-    borderRadius: 25,
-    backgroundColor: '#2d2d2d',
-    justifyContent: 'center',
-  },
-  appPickerSearch: {
-    minHeight: 50,
-    paddingHorizontal: 22,
-    color: colors.ink,
-    fontSize: 18,
-    lineHeight: 24,
-  },
-  appPickerSectionLabel: {
-    marginTop: 28,
-    marginBottom: 14,
-    color: 'rgba(255, 255, 255, 0.62)',
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '700',
-  },
-  appPickerListShell: {
-    flex: 1,
-    borderRadius: 26,
-    backgroundColor: '#111111',
-    overflow: 'hidden',
-  },
-  appPickerList: {
-    paddingVertical: 16,
-  },
-  appPickerRow: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-    paddingLeft: 16,
-    paddingRight: 26,
-  },
-  appPickerRowDisabled: {
-    opacity: 0.45,
-  },
-  appPickerIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 12,
-  },
-  appPickerAppName: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.ink,
-    fontSize: 21,
-    lineHeight: 28,
-  },
-  appPickerEmpty: {
-    minHeight: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+
   permissionList: {
     marginTop: 12,
     gap: 10,
@@ -1634,8 +1361,7 @@ const styles = StyleSheet.create({
   },
   statusPillText: {
     color: colors.ink,
-    fontSize: 12,
-    lineHeight: 16,
+    ...typography.label,
     fontWeight: '700',
   },
   attentionPill: {
@@ -1644,8 +1370,7 @@ const styles = StyleSheet.create({
   attentionPillText: { color: colors.warmWhite },
   tierText: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   premiumText: { color: colors.rewardAmber },
@@ -1670,8 +1395,7 @@ const styles = StyleSheet.create({
   },
   tierOptionText: {
     color: colors.ink,
-    fontSize: 13,
-    lineHeight: 17,
+    ...typography.label,
     fontWeight: '700',
   },
   tierOptionTextSelected: {
@@ -1685,7 +1409,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
+  sliderEnds: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
+  modeEditorContent: { gap: 18 },
   modeEditorCard: {
+    maxHeight: '90%',
     width: '100%',
     maxWidth: 370,
     borderRadius: 24,
@@ -1696,8 +1423,7 @@ const styles = StyleSheet.create({
   },
   modeEditorTitle: {
     color: colors.ink,
-    fontSize: 20,
-    lineHeight: 26,
+    ...typography.heading,
     fontWeight: '700',
   },
   fieldGroup: {
@@ -1705,8 +1431,7 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     color: colors.ink,
-    fontSize: 14,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '700',
   },
   textInput: {
@@ -1717,8 +1442,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.module,
     color: colors.ink,
     paddingHorizontal: 12,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   sliderHeader: {
@@ -1729,8 +1453,7 @@ const styles = StyleSheet.create({
   },
   sliderValue: {
     color: colors.rewardAmber,
-    fontSize: 14,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '700',
   },
   sliderTrack: {
@@ -1775,8 +1498,7 @@ const styles = StyleSheet.create({
   },
   secondaryActionText: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   primaryAction: {
@@ -1789,8 +1511,7 @@ const styles = StyleSheet.create({
   },
   primaryActionText: {
     color: colors.background,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
 });

@@ -1,11 +1,11 @@
+import { typography } from '../theme/typography';
+import { Text, TextInput } from './AppText';
 import {
   Image,
   Pressable,
   ScrollView,
   StyleProp,
   StyleSheet,
-  Text,
-  TextInput,
   View,
   ViewStyle,
 } from 'react-native';
@@ -220,16 +220,14 @@ const styles = StyleSheet.create({
   },
   iconPlaceholderText: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '800',
   },
   appName: {
     flex: 1,
     minWidth: 0,
     color: colors.ink,
-    fontSize: 21,
-    lineHeight: 28,
+    ...typography.stat,
   },
   empty: {
     minHeight: 180,
@@ -238,8 +236,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
   },
   searchWrap: {
     minHeight: 50,
@@ -262,8 +259,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 50,
     color: colors.ink,
-    fontSize: 18,
-    lineHeight: 24,
+    ...typography.subheading,
   },
   selectionCircle: {
     width: 24,

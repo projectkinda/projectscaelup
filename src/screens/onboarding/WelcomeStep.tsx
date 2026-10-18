@@ -1,9 +1,10 @@
+import { typography } from '../../theme/typography';
+import { Text } from '../../components/AppText';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -102,15 +103,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 38,
-    lineHeight: 44,
+    ...typography.display,
     fontWeight: '800',
   },
   body: {
     marginTop: 18,
     color: colors.muted,
-    fontSize: 18,
-    lineHeight: 28,
+    ...typography.subheading,
     fontWeight: '600',
   },
   bottomBar: {
@@ -144,8 +143,7 @@ const styles = StyleSheet.create({
   },
   primaryLabel: {
     color: colors.warmWhite,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   disabledShell: {

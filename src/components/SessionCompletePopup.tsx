@@ -1,3 +1,5 @@
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -6,7 +8,6 @@ import {
   Modal,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -173,10 +174,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.warmWhite,
-    fontSize: 16,
+    ...typography.body,
     fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 22,
   },
   okButton: {
     width: '100%',
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   okButtonPressed: { opacity: 0.85 },
   okButtonLabel: {
     color: colors.ink,
-    fontSize: 16,
+    ...typography.body,
     fontWeight: '600',
   },
 });

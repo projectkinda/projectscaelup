@@ -1,5 +1,7 @@
+import { typography } from '../theme/typography';
+import { Text } from '../components/AppText';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -73,16 +75,14 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 22,
-    lineHeight: 28,
+    ...typography.stat,
     fontWeight: '700',
     textAlign: 'center',
   },
   copy: {
     marginTop: 10,
     color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typography.body,
     textAlign: 'center',
   },
   actions: {
@@ -98,8 +98,7 @@ const styles = StyleSheet.create({
   },
   upgradeText: {
     color: 'rgba(237, 237, 237, 0.42)',
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   dismissButton: {
@@ -110,8 +109,7 @@ const styles = StyleSheet.create({
   },
   dismissText: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   pressed: { opacity: 0.55 },

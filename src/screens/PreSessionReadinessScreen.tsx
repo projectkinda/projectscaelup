@@ -1,3 +1,5 @@
+import { typography } from '../theme/typography';
+import { Text } from '../components/AppText';
 import { Camera, CameraView } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,7 +11,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -493,16 +494,14 @@ const styles = StyleSheet.create({
   },
   permissionTitle: {
     color: colors.ink,
-    fontSize: 18,
-    lineHeight: 24,
+    ...typography.subheading,
     fontWeight: '700',
     textAlign: 'center',
   },
   permissionCopy: {
     marginTop: 8,
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...typography.caption,
     textAlign: 'center',
   },
   permissionAction: {
@@ -512,8 +511,7 @@ const styles = StyleSheet.create({
   },
   permissionActionText: {
     color: colors.ink,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
   },
   secondaryPermissionAction: {
@@ -523,8 +521,7 @@ const styles = StyleSheet.create({
   },
   secondaryPermissionActionText: {
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.label,
     fontWeight: '600',
   },
   guide: {
@@ -548,8 +545,7 @@ const styles = StyleSheet.create({
   },
   statusText: {
     color: colors.muted,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typography.body,
     textAlign: 'center',
   },
   modeBlock: {
@@ -567,16 +563,14 @@ const styles = StyleSheet.create({
   },
   modeLabel: {
     color: colors.ink,
-    fontSize: 16,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '700',
     textAlign: 'center',
   },
   durationLabel: {
     marginTop: 4,
     color: colors.muted,
-    fontSize: 13,
-    lineHeight: 18,
+    ...typography.caption,
     textAlign: 'center',
   },
   cancelAction: {
@@ -588,8 +582,7 @@ const styles = StyleSheet.create({
   },
   cancelText: {
     color: colors.muted,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.body,
     fontWeight: '600',
   },
   pressed: {

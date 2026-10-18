@@ -1,5 +1,7 @@
+import { typography } from '../theme/typography';
+import { Text } from './AppText';
 import { useEffect, useRef } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { useAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -173,14 +175,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 20,
+    ...typography.heading,
     fontWeight: '700',
     textAlign: 'center',
   },
   body: {
     color: colors.muted,
-    fontSize: 15,
-    lineHeight: 21,
+    ...typography.body,
     textAlign: 'center',
     marginBottom: 8,
   },
@@ -196,7 +197,7 @@ const styles = StyleSheet.create({
   },
   primaryButtonLabel: {
     color: colors.ink,
-    fontSize: 16,
+    ...typography.body,
     fontWeight: '600',
   },
   secondaryButton: {
@@ -210,7 +211,7 @@ const styles = StyleSheet.create({
   },
   secondaryButtonLabel: {
     color: colors.ink,
-    fontSize: 16,
+    ...typography.body,
     fontWeight: '600',
   },
   pressed: { opacity: 0.85 },

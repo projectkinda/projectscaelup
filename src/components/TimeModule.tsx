@@ -1,8 +1,8 @@
+import { Text } from './AppText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   StyleSheet,
-  Text,
   View,
   type AccessibilityActionEvent,
 } from 'react-native';

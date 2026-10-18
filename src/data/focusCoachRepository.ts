@@ -1,4 +1,7 @@
+import { TIER_SWITCHER_ENABLED } from '../domain/paywall';
+import { DEV_SAMPLE_SESSION_IDS_KEY } from './coachDataEvents';
 import { Platform } from 'react-native';
+import { BUILT_IN_MODES } from '../domain/sessionModes';
 
 import {
   experimentForDiagnosis,
@@ -9,9 +12,9 @@ import {
   type FocusCoachResult,
   MIN_BASELINE_SESSIONS,
 } from '../domain/focusCoach';
-import { getAwayDisplay } from '../domain/awayTime';
+import { isAwayTrackingOptedIn, getAwayDisplay } from '../domain/awayTime';
 import { safeLoadFocusCoachAway } from '../domain/focusCoachAway';
-import { buildFocusCoachCopy } from '../domain/focusCoachCopy';
+import { readableCoachLabel, buildFocusCoachCopy } from '../domain/focusCoachCopy';
 import { judgeExperimentResult } from '../domain/focusCoachExperiment';
 import { getAppState, setAppState } from './appStateRepository';
 import { ensureSchema, getDatabase } from './database';
@@ -152,7 +155,7 @@ async function resolveExperiment(
   return next;
 }
 
-export async function loadFocusCoachData(): Promise<FocusCoachResult> {
+export async function loadFocusCoachData({ isPaidUser = false }: { isPaidUser?: boolean } = {}): Promise<FocusCoachResult> {
   const database = await getDatabase();
   await ensureSchema(database);
 
@@ -178,13 +181,57 @@ export async function loadFocusCoachData(): Promise<FocusCoachResult> {
     `,
   );
 
-  const sessions = mapRows(rows);
-  const firstPass = evaluateFocusCoach(sessions);
+  const appLabels = new Map<number, string>();
+  // Reuse History's flagged_apps join; unresolved labels remain generic.
+  if (Platform.OS === 'android') {
+    try {
+      const labels = await database.getAllAsync<{ session_id: number; display_name: string | null }>(
+        `SELECT de.session_id, fa.display_name
+         FROM distraction_events de
+         LEFT JOIN flagged_apps fa ON fa.app_identifier = de.app_identifier
+         WHERE de.id = (
+           SELECT first.id FROM distraction_events first
+           WHERE first.session_id = de.session_id AND first.type = 'app_touched'
+           ORDER BY first.occurred_at ASC, first.id ASC LIMIT 1
+         );`,
+      );
+      labels.forEach(row => {
+        const label = readableCoachLabel(row.display_name, 26);
+        if (label) appLabels.set(row.session_id, label);
+      });
+    } catch (error) {
+      console.warn('Could not resolve coach app labels:', error);
+    }
+  }
+  const modeNames: Record<string, string> = Object.fromEntries(BUILT_IN_MODES.map(mode => [mode.id, mode.name]));
+  try {
+    const customModes = await database.getAllAsync<{ id: string; name: string }>('SELECT id, name FROM custom_modes;');
+    customModes.forEach(mode => {
+      const label = readableCoachLabel(mode.name, 30);
+      if (label) modeNames[mode.id] = label;
+    });
+  } catch (error) {
+    console.warn('Could not resolve coach mode names:', error);
+  }
+  const sessions = mapRows(rows).map(session => ({ ...session,
+    firstDistractionApp: session.firstDistractionType === 'app_touched' && session.platform === 'android'
+      ? appLabels.get(session.id) ?? null : null,
+  }));
+  let awayTrackingOptedIn = false;
+  try { awayTrackingOptedIn = await isAwayTrackingOptedIn(); }
+  catch (error) { console.warn('Could not load coach away opt-in:', error); }
+  const options = { isPaidUser, modeNames, awayTrackingOptedIn, platform: Platform.OS };
+  const firstPass = evaluateFocusCoach(sessions, null, null, options);
   if (firstPass.validCount === 0) {
     return firstPass;
   }
 
-  const experiment = await resolveExperiment(
+  // Previewing samples must not rotate or create the user's persisted experiment/copy.
+  const samplePreview = typeof __DEV__ !== 'undefined' && __DEV__ && TIER_SWITCHER_ENABLED &&
+    (await getAppState(DEV_SAMPLE_SESSION_IDS_KEY)) !== null;
+  const experiment = samplePreview ? parseExperiment(await getAppState(COACH_EXPERIMENT_KEY)) ?? {
+    id: experimentForDiagnosis(firstPass.diagnosis), startedAt: new Date().toISOString(), result: null,
+  } : await resolveExperiment(
     sessions,
     firstPass.diagnosis,
     firstPass.validCount,
@@ -194,7 +241,8 @@ export async function loadFocusCoachData(): Promise<FocusCoachResult> {
     latestSession: latestSessionForAway(sessions, firstPass.latestPlatform) ?? null,
     platform: Platform.OS,
   });
-  const result = evaluateFocusCoach(sessions, experiment, away);
+  const result = evaluateFocusCoach(sessions, experiment, away, options);
+  if (samplePreview) return result;
   const copy = await buildFocusCoachCopy(result);
 
   return { ...result, ...copy };

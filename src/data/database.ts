@@ -45,6 +45,20 @@ async function addColumnIfMissing(
 
 async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
   await database.execAsync(`
+    CREATE TABLE IF NOT EXISTS app_rules (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('schedule', 'limit')),
+      apps TEXT NOT NULL,
+      days INTEGER,
+      start_minute INTEGER,
+      end_minute INTEGER,
+      limit_minutes INTEGER,
+      enabled INTEGER NOT NULL,
+      retired_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       mode_id TEXT NOT NULL,

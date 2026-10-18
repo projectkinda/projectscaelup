@@ -1,4 +1,6 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { typography } from '../../theme/typography';
+import { Text } from '../../components/AppText';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, layout } from '../../theme/tokens';
@@ -85,8 +87,7 @@ const styles = StyleSheet.create({
   },
   backButtonText: {
     color: colors.ink,
-    fontSize: 28,
-    lineHeight: 32,
+    ...typography.title,
     fontWeight: '600',
   },
   pressed: {
@@ -98,15 +99,13 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.ink,
-    fontSize: 38,
-    lineHeight: 44,
+    ...typography.display,
     fontWeight: '800',
   },
   body: {
     marginTop: 16,
     color: colors.muted,
-    fontSize: 18,
-    lineHeight: 28,
+    ...typography.subheading,
     fontWeight: '600',
   },
 });
