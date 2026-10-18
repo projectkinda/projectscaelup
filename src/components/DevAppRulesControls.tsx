@@ -8,11 +8,25 @@ import { typography } from '../theme/typography';
 export function DevAppRulesControls({ flaggedPackages }: { flaggedPackages: string[] }) {
   const [busy, setBusy] = useState(false);
   const [output, setOutput] = useState('');
-  if (!__DEV__ || !DEV_FLAGS.tierSwitcher || Platform.OS !== 'android') return null;
-  const run = async (action: 'schedule' | 'schedule-later' | 'limit' | 'usage' | 'clear') => {
-    if (!__DEV__ || !DEV_FLAGS.tierSwitcher || busy) return;
+  if (!DEV_FLAGS.tierSwitcher || Platform.OS !== 'android') return null;
+  const run = async (action: 'schedule' | 'schedule-later' | 'limit' | 'usage' | 'clear' | 'diagnostics') => {
+    if (!DEV_FLAGS.tierSwitcher || busy) return;
     setBusy(true);
     try {
+      if (action === 'diagnostics') {
+        const [{ getInstalledApps }, { AppRulesModule, getSelectableRuleApps }, { formatPickerDiagnostics }] = await Promise.all([
+          import('../domain/appPicker'), import('../domain/appRulesModule'), import('../domain/appPickerDiagnostics'),
+        ]);
+        const installed = await getInstalledApps();
+        const [excluded, reasons] = await Promise.all([AppRulesModule.getExcludedPackages(), AppRulesModule.getExcludedPackageReasons()]);
+        try {
+          const selectable = await getSelectableRuleApps(installed);
+          setOutput(formatPickerDiagnostics(installed, excluded, selectable, reasons, flaggedPackages));
+        } catch (error) {
+          setOutput(formatPickerDiagnostics(installed, excluded, [], reasons, flaggedPackages) + '\nPicker error: ' + String(error));
+        }
+        return;
+      }
       const rules = await import('../data/appRulesRepository');
       if (action === 'clear') { await rules.clearDevAppRules(); setOutput('All test rules cleared. Today usage is retained.'); }
       else if (action === 'usage') {
@@ -36,6 +50,7 @@ export function DevAppRulesControls({ flaggedPackages }: { flaggedPackages: stri
     ['limit', 'Add 1-min daily limit for my first flagged app'],
     ['usage', "Show today's usage for rule apps"],
     ['clear', 'Clear all rules'],
+    ['diagnostics', 'App picker diagnostics'],
   ] as const;
   return <View testID="dev-app-rules" style={styles.panel}>
     <Text style={styles.title}>App rules (testing only)</Text>
@@ -44,7 +59,7 @@ export function DevAppRulesControls({ flaggedPackages }: { flaggedPackages: stri
       style={({ pressed }) => [styles.button, (busy || pressed) && styles.dim]}>
       <Text style={styles.label}>{label}</Text>
     </Pressable>)}
-    {output ? <Text selectable style={styles.output}>{output}</Text> : null}
+    {output ? <Text selectable accessibilityLiveRegion="polite" style={styles.output}>{output}</Text> : null}
   </View>;
 }
 const styles = StyleSheet.create({

@@ -1,3 +1,4 @@
+import { TIER_SWITCHER_ENABLED } from './paywall';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 import { Alert, PermissionsAndroid, Platform } from 'react-native';
@@ -10,7 +11,11 @@ declare class LiveTimerModule extends NativeModule<{ onOpenTimer: () => void }> 
   resumeLiveTimer(endsAtMs: number): void;
   stopLiveTimer(): void;
   consumeOpenRequest(): boolean;
+  getStyleOverride(): LiveTimerStyle;
+  setStyleOverride(style: LiveTimerStyle, testToolsEnabled: boolean): boolean;
 }
+
+export type LiveTimerStyle = 'custom' | 'standard';
 
 function getNative() {
   try {
@@ -58,6 +63,20 @@ const native: LiveTimerNative = {
 const controller = createLiveTimerController({ native, requestPermission: requestNotificationPermission });
 
 export const { startLiveTimer, pauseLiveTimer, resumeLiveTimer, stopLiveTimer } = controller;
+
+/** Test-build comparison only; native persists the choice for the next start. */
+export function getLiveTimerStyleOverride(): LiveTimerStyle | null {
+  if (!TIER_SWITCHER_ENABLED || Platform.OS !== 'android') return null;
+  try {
+    const style = getNative()?.getStyleOverride?.();
+    return style === 'custom' || style === 'standard' ? style : null;
+  } catch { return null; }
+}
+export function setLiveTimerStyleOverride(style: LiveTimerStyle): boolean {
+  if (!TIER_SWITCHER_ENABLED || Platform.OS !== 'android' || !['custom', 'standard'].includes(style)) return false;
+  try { return getNative()?.setStyleOverride?.(style, TIER_SWITCHER_ENABLED) === true; }
+  catch { return false; }
+}
 
 export function onLiveTimerOpen(onOpen: () => void): () => void {
   try {

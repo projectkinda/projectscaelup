@@ -27,12 +27,11 @@ import { onLiveTimerOpen } from './src/domain/androidLiveTimer';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { OnboardingFlow } from './src/screens/onboarding/OnboardingFlow';
-import { PaywallStubScreen } from './src/screens/PaywallStubScreen';
+import { PaywallProvider } from './src/components/PaywallProvider';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { colors } from './src/theme/tokens';
 
-type AppScreen = 'home' | 'history' | 'settings' | 'paywall';
-type MainScreen = Exclude<AppScreen, 'paywall'>;
+type AppScreen = 'home' | 'history' | 'settings';
 type LaunchGate = 'loading' | 'onboarding' | 'permissions' | 'ready';
 
 const ONBOARDING_COMPLETE_KEY = 'onboarding_complete';
@@ -49,8 +48,6 @@ function App(): React.JSX.Element {
     GeistSemiBold: require('./src/assets/fonts/Geist-SemiBold.ttf'),
   });
   const [activeScreen, setActiveScreen] = useState<AppScreen>('home');
-  const [paywallReturnScreen, setPaywallReturnScreen] =
-    useState<MainScreen>('home');
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [gate, setGate] = useState<LaunchGate>('loading');
   const [tierReady, setTierReady] = useState(false);
@@ -63,7 +60,6 @@ function App(): React.JSX.Element {
 
   useEffect(() => onLiveTimerOpen(() => {
     setActiveScreen('home');
-    setPaywallReturnScreen('home');
   }), []);
 
   useEffect(() => {
@@ -187,15 +183,7 @@ function App(): React.JSX.Element {
   const handleNavigate = (screen: string) => {
     if (screen === 'home' || screen === 'history' || screen === 'settings') {
       setActiveScreen(screen);
-      setPaywallReturnScreen(screen);
       return;
-    }
-
-    if (screen === 'paywall') {
-      if (activeScreen !== 'paywall') {
-        setPaywallReturnScreen(activeScreen);
-      }
-      setActiveScreen('paywall');
     }
   };
 
@@ -235,45 +223,42 @@ function App(): React.JSX.Element {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        {/* Every tab stays mounted (hidden) so switching tabs never re-fetches
-            from a blank state and flashes a loading spinner. */}
-        <View style={[styles.root, activeScreen !== 'home' && styles.hidden]}>
-          <HomeScreen
-            isActive={activeScreen === 'home'}
-            sessionMessage={sessionMessage}
-            onNavigate={handleNavigate}
-            onSessionActiveChange={setSessionActive}
-            onStartSession={({ modeName, durationFormatted }) => {
-              setSessionMessage(`${modeName} - ${durationFormatted}`);
-            }}
-          />
-        </View>
-        <View style={[styles.root, activeScreen !== 'history' && styles.hidden]}>
-          <HistoryScreen
-            isActive={activeScreen === 'history'}
-            onNavigate={handleNavigate}
-          />
-        </View>
-        <View style={[styles.root, activeScreen !== 'settings' && styles.hidden]}>
-          <SettingsScreen
-            isActive={activeScreen === 'settings'}
-            onNavigate={handleNavigate}
-          />
-        </View>
-        {activeScreen === 'paywall' ? (
-          <PaywallStubScreen
-            onDismiss={() => setActiveScreen(paywallReturnScreen)}
-          />
-        ) : null}
-        {gate === 'permissions' ? (
-          <View style={styles.gateOverlay}>
-            <OnboardingFlow
-              mode="gate"
-              initialStatus={requiredPermissions}
-              onPermissionsReady={() => setGate('ready')}
+        <PaywallProvider>
+          {/* Every tab stays mounted (hidden) so switching tabs never re-fetches
+              from a blank state and flashes a loading spinner. */}
+          <View style={[styles.root, activeScreen !== 'home' && styles.hidden]}>
+            <HomeScreen
+              isActive={activeScreen === 'home'}
+              sessionMessage={sessionMessage}
+              onNavigate={handleNavigate}
+              onSessionActiveChange={setSessionActive}
+              onStartSession={({ modeName, durationFormatted }) => {
+                setSessionMessage(`${modeName} - ${durationFormatted}`);
+              }}
             />
           </View>
-        ) : null}
+          <View style={[styles.root, activeScreen !== 'history' && styles.hidden]}>
+            <HistoryScreen
+              isActive={activeScreen === 'history'}
+              onNavigate={handleNavigate}
+            />
+          </View>
+          <View style={[styles.root, activeScreen !== 'settings' && styles.hidden]}>
+            <SettingsScreen
+              isActive={activeScreen === 'settings'}
+              onNavigate={handleNavigate}
+            />
+          </View>
+          {gate === 'permissions' ? (
+            <View style={styles.gateOverlay}>
+              <OnboardingFlow
+                mode="gate"
+                initialStatus={requiredPermissions}
+                onPermissionsReady={() => setGate('ready')}
+              />
+            </View>
+          ) : null}
+        </PaywallProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

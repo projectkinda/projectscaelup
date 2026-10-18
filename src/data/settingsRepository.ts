@@ -1,3 +1,5 @@
+import { canAddFlaggedApp } from '../domain/paywall';
+export { FREE_TIER_APP_CAP } from '../domain/paywall';
 import { ensureSchema, getDatabase } from './database';
 import { getInstalledApps } from '../domain/appPicker';
 import { UsageTrackingModule } from '../domain/usageTrackingModule';
@@ -40,7 +42,6 @@ export type SettingsData = {
   customModes: CustomMode[];
 };
 
-export const FREE_TIER_APP_CAP = 3;
 
 const LEGACY_DEFAULT_APPS_SEEDED_KEY = 'defaultAppsSeeded';
 const LEGACY_DEFAULT_FLAGGED_APP_IDENTIFIERS = [
@@ -194,7 +195,7 @@ export async function canAddAnotherFlaggedApp(
     `,
   );
 
-  return (countRow?.count ?? 0) < FREE_TIER_APP_CAP;
+  return canAddFlaggedApp(paidUser, countRow?.count ?? 0);
 }
 
 function slugify(value: string) {

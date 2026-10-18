@@ -121,6 +121,22 @@ test('repository uses completed attempts, completion date, no coach minimum, and
     }
   } finally { db.close(); }
 });
+test('free history enforces the same calendar-day depth advertised by the paywall', async () => {
+  const { db, repository } = await repositoryFixture();
+  try {
+    const now = new Date(2026, 9, 18, 12);
+    const { FREE_HISTORY_DAYS } = require('../src/domain/paywall');
+    const cutoff = new Date(now); cutoff.setHours(0, 0, 0, 0); cutoff.setDate(cutoff.getDate() - FREE_HISTORY_DAYS);
+    const insert = db.prepare("INSERT INTO sessions (mode_id,started_at,duration_seconds,completed,distraction_count,lockdown_minutes) VALUES ('deep-work',?,600,1,0,0)");
+    insert.run(new Date(cutoff.getTime() - 1).toISOString());
+    insert.run(cutoff.toISOString());
+    insert.run(now.toISOString());
+    const free = await repository.loadHistoryData({ today: now, isPaidUser: false });
+    const pro = await repository.loadHistoryData({ today: now, isPaidUser: true });
+    assert(free.sessions.length === 2 && free.hasHiddenHistory, 'free cutoff must exclude the older row');
+    assert(pro.sessions.length === 3 && !pro.hasHiddenHistory, 'Pro history must include all rows');
+  } finally { db.close(); }
+});
 test('new-user repository returns all zero stats and a complete empty strip', async () => {
   const { db, repository } = await repositoryFixture();
   try {

@@ -4,11 +4,8 @@ package com.projectscaleup.app
 object AppRuleDenylist {
   val PACKAGES = setOf(
     "com.projectscaleup.app", "com.android.systemui", "com.android.settings",
-    "com.android.phone", "com.android.server.telecom", "com.android.dialer",
-    "com.google.android.dialer", "com.samsung.android.dialer", "com.samsung.android.incallui",
+    "com.android.phone", "com.android.server.telecom", "com.samsung.android.incallui",
     "com.android.emergency", "com.google.android.apps.safetyhub",
-    "com.sec.android.app.launcher", "com.android.launcher", "com.android.launcher3",
-    "com.google.android.apps.nexuslauncher",
   )
   fun allows(pkg: String, excluded: Set<String> = emptySet()): Boolean {
     val lower = pkg.lowercase()

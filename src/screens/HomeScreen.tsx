@@ -1,3 +1,4 @@
+import { usePaywall } from '../components/PaywallProvider';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
 import { suggestionCaption } from '../domain/focusCoachCopy';
@@ -220,6 +221,7 @@ export function HomeScreen({
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const paidUser = useIsPaidUser();
+  const paywall = usePaywall();
   const fallbackModes = useMemo(() => getHomeModes(paidUser), [paidUser]);
   const [homeModes, setHomeModes] = useState(fallbackModes);
   const [activeModeId, setActiveModeId] = useState(fallbackModes[0].id);
@@ -259,12 +261,15 @@ export function HomeScreen({
   const pauseInFlight = useRef(false);
   const hasActiveSession = remainingSeconds !== null;
 
+  const activeMode =
+    homeModes.find(mode => mode.id === activeModeId) ?? homeModes[0];
+
   useAndroidLiveTimer({
     remainingSeconds,
     endsAtMs: sessionEndTimeMs.current,
     isPaused,
     awaitingEndChoice,
-  });
+  }, activeMode.name);
 
   useEffect(() => {
     getSessionCount().then(setSessionCount);
@@ -345,8 +350,6 @@ export function HomeScreen({
     }
   }, [activeModeId, homeModes]);
 
-  const activeMode =
-    homeModes.find(mode => mode.id === activeModeId) ?? homeModes[0];
   const topInsetPadding = insets.top + 27;
   const bottomInsetPadding = layout.bottomNavHeight + insets.bottom + 24;
   const availableContentHeight = Math.max(
@@ -867,7 +870,7 @@ export function HomeScreen({
   };
 
   const handleMoreModes = () => {
-    onNavigate('paywall');
+    paywall.show('modes');
   };
 
   const suggestionMinutes = paidUser

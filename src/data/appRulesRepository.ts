@@ -122,7 +122,7 @@ export function startAppRulesSync(): () => void {
   return unsubscribe;
 }
 export function createDevTestRule(pkg: string, kind: 'schedule' | 'limit', now = new Date(), startDelayMinutes: 0 | 1 = 0) {
-  if (!__DEV__ || !DEV_FLAGS.tierSwitcher) return Promise.resolve<RuleWriteResult>({ ok: false, error: 'Development fixtures are disabled.' });
+  if (!DEV_FLAGS.tierSwitcher) return Promise.resolve<RuleWriteResult>({ ok: false, error: 'Development fixtures are disabled.' });
   const start = new Date(now.getTime() + startDelayMinutes * 60_000);
   const startMin = start.getHours() * 60 + start.getMinutes();
   return mutate(() => create({ kind, apps: [pkg], enabled: true, days: kind === 'schedule' ? 1 << ((start.getDay() + 6) % 7) : null,
@@ -131,7 +131,7 @@ export function createDevTestRule(pkg: string, kind: 'schedule' | 'limit', now =
 }
 /** Test reset intentionally bypasses retirement; never available in a release build. */
 export async function clearDevAppRules(): Promise<void> {
-  if (!__DEV__ || !DEV_FLAGS.tierSwitcher || Platform.OS !== 'android') return;
+  if (!DEV_FLAGS.tierSwitcher || Platform.OS !== 'android') return;
   const work = async () => { try { const db = await database(); await db.withTransactionAsync(async () => { await db.runAsync('DELETE FROM app_rules;'); await db.runAsync("DELETE FROM app_state WHERE key LIKE 'app_rule_deleted:%';"); }); await syncRulesToNative(); }
     catch (error) { console.warn('Could not clear dev app rules:', error); } };
   const result = queue.then(work, work); queue = result; await result;

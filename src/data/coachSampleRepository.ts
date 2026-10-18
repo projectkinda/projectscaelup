@@ -1,4 +1,4 @@
-﻿import { Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { TIER_SWITCHER_ENABLED } from '../domain/paywall';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
 import { ensureSchema, getDatabase } from './database';
@@ -7,9 +7,9 @@ import { DEV_SAMPLE_SESSION_IDS_KEY, notifyCoachDataChanged } from './coachDataE
 type Database = Awaited<ReturnType<typeof getDatabase>>;
 let mutationTail: Promise<unknown> = Promise.resolve();
 
-function requireDevelopment() {
-  if (typeof __DEV__ === 'undefined' || !__DEV__ || !TIER_SWITCHER_ENABLED) {
-    throw new Error('Sample sessions are available only in development with the tier switcher enabled.');
+function requireTestTools() {
+  if (!TIER_SWITCHER_ENABLED) {
+    throw new Error('Sample sessions require the test-tools flag.');
   }
 }
 function serialize<T>(work: () => Promise<T>): Promise<T> {
@@ -31,7 +31,7 @@ async function removeTracked(database: Database) {
 }
 
 export async function removeSampleSessions() {
-  requireDevelopment();
+  requireTestTools();
   return serialize(async () => {
     const database = await getDatabase();
     await ensureSchema(database);
@@ -41,7 +41,7 @@ export async function removeSampleSessions() {
 }
 
 export async function loadSampleSessions() {
-  requireDevelopment();
+  requireTestTools();
   return serialize(async () => {
     const database = await getDatabase();
     await ensureSchema(database);

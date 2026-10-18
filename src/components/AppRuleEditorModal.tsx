@@ -6,14 +6,15 @@ import { RuleTimePicker } from './RuleTimePicker';
 import { RuleAppIcon, RuleIcon, RuleModalShell, ruleStyles } from './AppRulePrimitives';
 import type { InstalledApp } from '../domain/appPicker';
 import { validateRule, type AppRule, type AppRuleSnapshot } from '../domain/appRules';
-import { defaultRuleDraft, formatRuleDuration, formatRuleTime, isLooserChange, RULE_DAY_INITIALS, RULE_DAY_NAMES, stepRuleLimit } from '../domain/appRulesPresentation';
+import { ruleAppName, defaultRuleDraft, formatRuleDuration, formatRuleTime, isLooserChange, RULE_DAY_INITIALS, RULE_DAY_NAMES, stepRuleLimit } from '../domain/appRulesPresentation';
 import { colors } from '../theme/tokens';
 
-export function AppRuleEditorModal({ rule, apps, onCancel, onSave, onDelete }: {
+export function AppRuleEditorModal({ rule, apps, initialKind, appsError, appsLoading, onReloadApps, onCancel, onSave, onDelete }: {
+  initialKind?: AppRuleSnapshot['kind']; appsError?: string; appsLoading?: boolean; onReloadApps?: () => Promise<void>;
   rule: AppRule | null; apps: InstalledApp[]; onCancel: () => void;
   onSave: (draft: AppRuleSnapshot) => Promise<boolean>; onDelete: () => Promise<boolean>;
 }) {
-  const [draft, setDraft] = useState<AppRuleSnapshot>(() => rule ? { ...rule, apps: [...rule.apps] } : defaultRuleDraft());
+  const [draft, setDraft] = useState<AppRuleSnapshot>(() => rule ? { ...rule, apps: [...rule.apps] } : defaultRuleDraft(initialKind));
   const [picker, setPicker] = useState(false);
   const [pickerSelection, setPickerSelection] = useState(draft.apps);
   const [query, setQuery] = useState('');
@@ -39,22 +40,22 @@ export function AppRuleEditorModal({ rule, apps, onCancel, onSave, onDelete }: {
   return <>
     <RuleModalShell visible onClose={() => { if (!busy) onCancel(); }} testID="app-rule-editor">
       <Text style={ruleStyles.title}>{rule ? 'Edit rule' : 'New rule'}</Text>
-      <View style={styles.segments} accessibilityRole="radiogroup" accessibilityLabel="Rule type">
+      {!rule ? <View style={styles.segments} accessibilityRole="radiogroup" accessibilityLabel="Rule type">
         {(['schedule', 'limit'] as const).map(kind => <Pressable key={kind} accessibilityRole="radio"
-          accessibilityState={{ selected: draft.kind === kind, disabled: !!rule || busy }} disabled={!!rule || busy}
+          accessibilityState={{ checked: draft.kind === kind, disabled: !!rule || busy }} disabled={!!rule || busy}
           onPress={() => changeKind(kind)} style={[styles.segment, draft.kind === kind && ruleStyles.selected, !!rule && ruleStyles.dim]}>
           <Text style={[ruleStyles.label, draft.kind === kind && ruleStyles.selectedText]}>{kind === 'schedule' ? 'Schedule' : 'Daily limit'}</Text>
         </Pressable>)}
-      </View>
+      </View> : null}
       <View style={ruleStyles.field}>
         <Text style={ruleStyles.label}>Apps</Text>
         <View style={ruleStyles.row}>
           {draft.apps.map(pkg => <Pressable key={pkg} accessibilityRole="button" disabled={busy}
-            accessibilityLabel={'Remove ' + (appMap.get(pkg)?.displayName ?? pkg)} onPress={() => patch({ apps: draft.apps.filter(id => id !== pkg) })}>
+            accessibilityLabel={'Remove ' + ruleAppName(pkg, appMap)} onPress={() => patch({ apps: draft.apps.filter(id => id !== pkg) })}>
             <RuleAppIcon pkg={pkg} app={appMap.get(pkg)}/>
           </Pressable>)}
           <Pressable accessibilityRole="button" accessibilityLabel="Choose rule apps" disabled={busy}
-            onPress={() => { setPickerSelection([...draft.apps]); setPicker(true); }} style={styles.addApp}><RuleIcon name="plus" color={colors.ink}/></Pressable>
+            onPress={() => { setPickerSelection([...draft.apps]); setPicker(true); void onReloadApps?.(); }} style={styles.addApp}><RuleIcon name="plus" color={colors.ink}/></Pressable>
         </View>
         <Text style={ruleStyles.caption}>{draft.apps.length} of 20 apps</Text>
       </View>
@@ -96,7 +97,7 @@ export function AppRuleEditorModal({ rule, apps, onCancel, onSave, onDelete }: {
       </View>}
       <Text style={ruleStyles.muted}>{draft.kind === 'schedule'
         ? 'Chosen apps show a lock screen until ' + formatRuleTime(draft.endMin ?? 0) + ". There's no way to open them in between."
-        : 'When the limit is reached, the apps are blocked until midnight.'}</Text>
+        : 'When the limit is reached, the apps are blocked until ' + formatRuleTime(0) + '.'}</Text>
       {rule ? <>
         <Pressable accessibilityRole="checkbox" accessibilityLabel="Rule enabled" disabled={busy} accessibilityState={{ checked: draft.enabled }}
           onPress={() => patch({ enabled: !draft.enabled })} style={ruleStyles.row}>
@@ -125,7 +126,7 @@ export function AppRuleEditorModal({ rule, apps, onCancel, onSave, onDelete }: {
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => submit(true)} style={ruleStyles.secondary}><Text style={ruleStyles.error}>Delete</Text></Pressable>
           </View>
         </RuleModalShell> : null}
-    {picker ? <AppPickerModal visible variant="rule" apps={apps} isSaving={false} query={query} remainingSlots={20}
+    {picker ? <AppPickerModal visible variant="rule" loadError={appsError} isLoading={appsLoading} onRetry={() => { void onReloadApps?.(); }} apps={apps} isSaving={false} query={query} remainingSlots={20}
       selectedAppIdentifiers={pickerSelection} onCancel={() => setPicker(false)} onChangeQuery={setQuery}
       onSave={() => { patch({ apps: pickerSelection }); setPicker(false); }}
       onToggleApp={app => setPickerSelection(current => current.includes(app.packageName) ? current.filter(pkg => pkg !== app.packageName) : current.length < 20 ? [...current, app.packageName] : current)}

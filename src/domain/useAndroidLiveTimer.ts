@@ -5,7 +5,7 @@ import { pauseLiveTimer, resumeLiveTimer, startLiveTimer, stopLiveTimer } from '
 import { liveTimerSnapshot } from './liveTimerState';
 
 /** Mirrors transitions, not ticks. Home stays mounted while other tabs are visible. */
-export function useAndroidLiveTimer(source: Parameters<typeof liveTimerSnapshot>[0]) {
+export function useAndroidLiveTimer(source: Parameters<typeof liveTimerSnapshot>[0], modeName: string) {
   const snapshot = liveTimerSnapshot(source);
   const runningEnd = snapshot.state === 'running' ? snapshot.endsAtMs : null;
   const pausedRemaining = snapshot.state === 'paused' ? snapshot.remainingMs : null;
@@ -18,11 +18,11 @@ export function useAndroidLiveTimer(source: Parameters<typeof liveTimerSnapshot>
     if (runningEnd !== null) {
       if (!started.current) {
         started.current = true;
-        void startLiveTimer({ endsAtMs: runningEnd, label: 'Focus' });
+        void startLiveTimer({ endsAtMs: runningEnd, label: modeName });
       } else void resumeLiveTimer({ endsAtMs: runningEnd });
     } else if (pausedRemaining !== null) void pauseLiveTimer({ remainingMs: pausedRemaining });
     else void stopLiveTimer();
-  }, [pausedRemaining, runningEnd, sessionGone]);
+  }, [pausedRemaining, runningEnd, sessionGone, modeName]);
 
   useEffect(() => () => { if (Platform.OS === 'android') void stopLiveTimer(); }, []);
 }

@@ -46,13 +46,15 @@ class LockdownOverlayService : Service() {
           BlockReason.LOCKDOWN -> formatRemaining(info.untilMs - System.currentTimeMillis())
           BlockReason.SCHEDULE -> "Until " + java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US)
             .format(java.time.Instant.ofEpochMilli(info.untilMs).atZone(java.time.ZoneId.systemDefault())).lowercase(java.util.Locale.US)
-          BlockReason.LIMIT -> "Back tomorrow"
+          BlockReason.LIMIT -> "Back at " + DailyLimitCopy.resetTime(info.untilMs, java.time.ZoneId.systemDefault(),
+            android.text.format.DateFormat.is24HourFormat(this@LockdownOverlayService))
         }
         ruleDetailText?.text = when (info.reason) {
           BlockReason.LOCKDOWN -> ""
           BlockReason.SCHEDULE -> "Your schedule"
-          BlockReason.LIMIT -> info.detail + " per day"
+          BlockReason.LIMIT -> info.detail + " per day, resets in " + DailyLimitCopy.resetCountdown(System.currentTimeMillis(), info.untilMs)
         }
+        // Keep the existing enforcement tick; minute-rounded LIMIT copy updates as time passes.
         handler.postDelayed(this, 1000)
       }.onFailure { hideOverlay() }
     }

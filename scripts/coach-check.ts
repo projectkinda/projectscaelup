@@ -1232,7 +1232,7 @@ test('dev sample load/remove uses the real schema, lights all gates, and restore
     if (id === './coachDataEvents') return events;
     return require('../src/domain/' + id.replace('../domain/', ''));
   };
-  const samples = loadModule('src/data/coachSampleRepository.ts', dependencies) as typeof import('../src/data/coachSampleRepository');
+  const samples = loadModule('src/data/coachSampleRepository.ts', dependencies, false) as typeof import('../src/data/coachSampleRepository');
   try {
     await samples.loadSampleSessions();
     const ids = JSON.parse(db.prepare('SELECT value FROM app_state WHERE key=?').get(events.DEV_SAMPLE_SESSION_IDS_KEY).value);
@@ -1270,7 +1270,7 @@ test('dev sample load/remove uses the real schema, lights all gates, and restore
       if (id === '../domain/focusCoachAway') return { safeLoadFocusCoachAway: async () => null };
       if (id === '../domain/focusCoachCopy') return { ...narrativeCopy, buildFocusCoachCopy: async () => { copyWrites++; return {}; } };
       return dependencies(id);
-    });
+    }, false);
     await repository.loadFocusCoachData({ isPaidUser: true });
     assert(copyWrites === 0 && db.prepare('SELECT value FROM app_state WHERE key=?').get('coach_experiment').value === originalExperiment, 'sample preview changed persisted coaching state');
     const loaded = snapshot();
@@ -1301,7 +1301,7 @@ test('dev sample load/remove uses the real schema, lights all gates, and restore
     assert(snapshot() === withoutFlaggedApps, 'fallback sampling added settings or left rows behind');
     db.exec("INSERT INTO flagged_apps VALUES ('com.real.app','Real flagged app',NULL);");
     for (const dev of [false, true]) {
-      tierEnabled = dev ? false : true;
+      tierEnabled = false;
       const guarded = loadModule('src/data/coachSampleRepository.ts', dependencies, dev);
       let refused = false; try { await guarded.loadSampleSessions(); } catch { refused = true; }
       assert(refused && snapshot() === before, 'sample action is reachable outside the dev guard');
@@ -1309,12 +1309,12 @@ test('dev sample load/remove uses the real schema, lights all gates, and restore
   } finally { unsubscribe(); db.close(); }
 });
 
-test('release compilation removes sample actions and dynamic repository import', async () => {
+test('release compilation retains sample actions behind the test-tools flag', async () => {
   const { build } = require('esbuild');
   const output = await build({ entryPoints: ['src/components/DevCoachSampleControls.tsx'], bundle: true,
     packages: 'external', write: false, minify: true, define: { __DEV__: 'false' } });
   const code = output.outputFiles[0].text;
-  assert(!/coachSampleRepository|dev_sample_session_ids|INSERT INTO sessions/.test(code), 'sample implementation leaked into release controls');
+  assert(/dev_sample_session_ids|INSERT INTO sessions/.test(code), 'release test-build tools were stripped');
 });
 
 async function main() {

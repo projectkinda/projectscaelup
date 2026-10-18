@@ -227,7 +227,7 @@ export async function loadFocusCoachData({ isPaidUser = false }: { isPaidUser?: 
   }
 
   // Previewing samples must not rotate or create the user's persisted experiment/copy.
-  const samplePreview = typeof __DEV__ !== 'undefined' && __DEV__ && TIER_SWITCHER_ENABLED &&
+  const samplePreview = TIER_SWITCHER_ENABLED &&
     (await getAppState(DEV_SAMPLE_SESSION_IDS_KEY)) !== null;
   const experiment = samplePreview ? parseExperiment(await getAppState(COACH_EXPERIMENT_KEY)) ?? {
     id: experimentForDiagnosis(firstPass.diagnosis), startedAt: new Date().toISOString(), result: null,

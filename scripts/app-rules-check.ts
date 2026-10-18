@@ -78,7 +78,7 @@ test('Kotlin/TS denylist constants match and runtime keyboard/launcher exclusion
   assert.equal(isRulePackageAllowed('example.social'), true);
 });
 
-async function fixture(platform = 'android', dev = true) {
+async function fixture(platform = 'android', dev = true, testTools = true) {
   const { DatabaseSync } = require('node:sqlite');
   const db = new DatabaseSync(':memory:');
   const clock = { now: monday().getTime() };
@@ -97,7 +97,7 @@ async function fixture(platform = 'android', dev = true) {
   const repo = load('src/data/appRulesRepository.ts', id => {
     if (id === 'react-native') return { Platform: { OS: platform } };
     if (id === './database') return { getDatabase: async () => { if (state.failRead) throw new Error('test read failure'); return adapter; }, ensureSchema: schema.ensureSchema };
-    if (id === '../domain/paywall') return { DEV_FLAGS: { tierSwitcher: true }, isPaidUser: () => state.paid, subscribeToTier: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); } };
+    if (id === '../domain/paywall') return { DEV_FLAGS: { tierSwitcher: testTools }, isPaidUser: () => state.paid, subscribeToTier: (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); } };
     if (id === '../domain/appRules') return require('../src/domain/appRules');
     if (id === '../domain/appRulesModule') return { AppRulesModule: {
       getExcludedPackages: async () => ['vendor.home'],
@@ -167,7 +167,7 @@ test('DB/native failures are contained and a paid read failure does not erase na
     f.state.failRead = false; f.state.failNative = true; await f.repo.syncRulesToNative(); assert(f.warnings() >= 2);
   } finally { f.db.close(); }
 });
-test('dev fixture durations/reset work only in dev and cannot weaken production validation', async () => {
+test('test fixture durations/reset follow the flag in debug and release and cannot weaken production validation', async () => {
   const f = await fixture();
   try {
     assert.equal((await f.repo.createRule({ ...base, limitMinutes: 1 })).ok, false);
@@ -180,9 +180,17 @@ test('dev fixture durations/reset work only in dev and cannot weaken production 
   const release = await fixture('android', false);
   try {
     assert((await release.repo.createRule(base)).ok);
-    assert.equal((await release.repo.createDevTestRule('example.social', 'limit')).ok, false);
-    await release.repo.clearDevAppRules(); assert.equal((await release.repo.listRules()).length, 1);
+    assert.equal((await release.repo.createDevTestRule('example.social', 'limit')).ok, true);
+    await release.repo.clearDevAppRules(); assert.equal((await release.repo.listRules()).length, 0);
   } finally { release.db.close(); }
+  for (const dev of [true, false]) {
+    const disabled = await fixture('android', dev, false);
+    try {
+      assert((await disabled.repo.createRule(base)).ok);
+      assert.equal((await disabled.repo.createDevTestRule('example.social', 'limit')).ok, false);
+      await disabled.repo.clearDevAppRules(); assert.equal((await disabled.repo.listRules()).length, 1);
+    } finally { disabled.db.close(); }
+  }
 });
 test('iOS and web wrappers/repository do not call Android bridges or mutate rule data', async () => {
   for (const platform of ['ios', 'web']) {
@@ -192,7 +200,8 @@ test('iOS and web wrappers/repository do not call Android bridges or mutate rule
     const wrapper = load('src/domain/appRulesModule.ts', id => {
       if (id === 'react-native') return { Platform: { OS: platform }, NativeModules: new Proxy({}, { get: () => { throw new Error('Native lookup on non-Android'); } }) };
       if (id === './appPicker') return { getInstalledApps: async () => [] };
-      if (id === './appRules') return require('../src/domain/appRules');
+      if (id === './paywall') return { TIER_SWITCHER_ENABLED: true };
+    if (id === './appRules') return require('../src/domain/appRules');
       throw new Error(id);
     });
     await wrapper.AppRulesModule.setRules([]); assert.equal(Object.keys(await wrapper.AppRulesModule.getTodayUsage(['example.social'])).length, 0);
@@ -205,17 +214,42 @@ test('native wrapper contains errors and rule app selection excludes runtime rol
       getExcludedPackages: async () => ['vendor.home'], getTodayUsage: async () => { throw new Error('test'); }, setRules: async () => { throw new Error('test'); },
     } } };
     if (id === './appPicker') return { getInstalledApps: async () => ['vendor.home', 'com.android.settings', 'example.one', 'example.two', 'example.three'].map(packageName => ({ packageName })) };
+    if (id === './paywall') return { TIER_SWITCHER_ENABLED: true };
     if (id === './appRules') return require('../src/domain/appRules');
     throw new Error(id);
   }, { console: { ...console, warn: () => {} } });
   assert.equal((await wrapper.getSelectableRuleApps()).length, 3);
   await wrapper.AppRulesModule.setRules([]); assert.equal(Object.keys(await wrapper.AppRulesModule.getTodayUsage([])).length, 0);
 });
-test('release compilation removes test panel UI and test action imports', async () => {
+test('native fixture flag sync precedes rules in debug and store configurations; picker errors propagate', async () => {
+  for (const enabled of [true, false]) {
+    const calls: string[] = [];
+    let mode = 'ok';
+    const wrapper = load('src/domain/appRulesModule.ts', id => {
+      if (id === 'react-native') return { Platform: { OS: 'android' }, NativeModules: { AppRulesBridge: {
+        setTestToolsEnabled: async (value: boolean) => calls.push('flag:' + value),
+        setRules: async () => calls.push('rules'),
+        getExcludedPackages: async () => { if (mode === 'throws') throw new Error('roles failed'); return mode === 'empty' ? ['com.snapchat.android'] : []; },
+        getExcludedPackageReasons: async () => ({}),
+      } } };
+      if (id === './paywall') return { TIER_SWITCHER_ENABLED: enabled };
+      if (id === './appPicker') return { getInstalledApps: async () => [{ packageName: 'com.snapchat.android' }] };
+      if (id === './appRules') return require('../src/domain/appRules');
+      throw Error(id);
+    });
+    await wrapper.AppRulesModule.setRules([]);
+    assert.deepEqual(calls, ['flag:' + enabled, 'rules']);
+    assert.equal((await wrapper.getSelectableRuleApps())[0].packageName, 'com.snapchat.android');
+    mode = 'throws'; await assert.rejects(() => wrapper.getSelectableRuleApps(), /roles failed/);
+    mode = 'empty'; await assert.rejects(() => wrapper.getSelectableRuleApps(), /No selectable apps/);
+  }
+});
+
+test('release compilation retains flag-controlled test tools', async () => {
   const { build } = require('esbuild');
   const result = await build({ stdin: { contents: readFileSync('src/components/DevAppRulesControls.tsx', 'utf8'), loader: 'tsx' }, write: false, minify: true, define: { __DEV__: 'false' } });
   const text = result.outputFiles[0].text;
-  assert(!text.includes('Add 3-min') && !text.includes('createDevTestRule') && !text.includes('clearDevAppRules'));
+  assert(text.includes('Add 3-min') && text.includes('createDevTestRule') && text.includes('clearDevAppRules'));
   assert(!readFileSync('android/app/src/main/res/xml/accessibility_service_config.xml', 'utf8').includes('canRetrieveWindowContent="true"'));
 });
 

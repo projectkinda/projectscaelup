@@ -38,6 +38,17 @@ class AppRulesBridge(reactContext: ReactApplicationContext) : ReactContextBaseJa
       }.onSuccess { promise.resolve(it) }.onFailure { promise.reject("APP_RULES_USAGE", it) }
     }
   }
+  @ReactMethod fun setTestToolsEnabled(enabled: Boolean, promise: Promise) {
+    handler.post {
+      runCatching { RuleStore.setTestToolsEnabled(reactApplicationContext, enabled) }
+        .onSuccess { promise.resolve(null) }.onFailure { promise.reject("APP_RULES_TEST_FLAG", it) }
+    }
+  }
+  @ReactMethod fun getExcludedPackageReasons(promise: Promise) {
+    runCatching {
+      Arguments.createMap().apply { AppRulePackages.exclusionReasons(reactApplicationContext).forEach { (pkg, reason) -> putString(pkg, reason) } }
+    }.onSuccess { promise.resolve(it) }.onFailure { promise.reject("APP_RULES_PACKAGES", it) }
+  }
   @ReactMethod fun getExcludedPackages(promise: Promise) {
     runCatching {
       Arguments.createArray().apply { AppRulePackages.excluded(reactApplicationContext).forEach { pushString(it) } }

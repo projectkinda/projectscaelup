@@ -1,3 +1,4 @@
+import { FREE_HISTORY_DAYS } from '../domain/paywall';
 import { buildWeekStrip, localWeekBoundaries, type ThisWeek } from '../domain/weekStrip';
 import { iosAppKey } from '../domain/iosScreenTime';
 import { BUILT_IN_MODES } from '../domain/sessionModes';
@@ -137,7 +138,7 @@ export async function loadHistoryData({
   );
   const thisWeek = buildWeekStrip(focusedRows.map(row => row.focused_at), today, weekBoundaries);
 
-  const cutoffDate = isPaidUser ? null : subtractDays(today, 14);
+  const cutoffDate = isPaidUser ? null : subtractDays(today, FREE_HISTORY_DAYS);
   const cutoffWhere = cutoffDate ? 'AND started_at >= ?' : '';
   const cutoffParams = cutoffDate ? [cutoffDate] : [];
 

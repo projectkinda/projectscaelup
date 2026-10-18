@@ -38,12 +38,25 @@ export function ruleUsage(rule: AppRuleSnapshot, usage: Record<string, number>) 
   const budgetMs = Math.max(1, (rule.limitMinutes ?? 0) * 60_000);
   return { usedMs, reached: usedMs >= budgetMs, progress: Math.min(1, usedMs / budgetMs),
     used: formatRuleDuration(Math.floor(usedMs / 60_000)) + ' used today',
-    left: usedMs >= budgetMs ? 'Limit reached' : formatRuleDuration(Math.ceil((budgetMs - usedMs) / 60_000)) + ' left' };
+    left: usedMs >= budgetMs ? 'Reached, back at ' + formatRuleTime(0) : formatRuleDuration(Math.ceil((budgetMs - usedMs) / 60_000)) + ' left' };
 }
 export function ruleEnabledStatus(rule: AppRule, now = Date.now()): 'On' | 'Off' | 'Ends tomorrow' {
   if (rule.enabled) return 'On';
   return rule.retired.some(item => item.snapshot.enabled && Date.parse(item.enforcedUntil) > now) ? 'Ends tomorrow' : 'Off';
 }
-export function defaultRuleDraft(): AppRuleSnapshot {
+export function defaultRuleDraft(kind: AppRuleSnapshot['kind'] = 'schedule'): AppRuleSnapshot {
+  if (kind === 'limit') return { kind, apps: [], days: null, startMin: null, endMin: null, limitMinutes: 60, enabled: true };
   return { kind: 'schedule', apps: [], days: 31, startMin: 9 * 60, endMin: 17 * 60, limitMinutes: null, enabled: true };
+}
+
+/** Installed names first; a removed app still has a readable name. */
+export function ruleAppName(pkg: string, apps: ReadonlyMap<string, { displayName: string }>): string {
+  return apps.get(pkg)?.displayName || (pkg.split('.').pop() || 'App').replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\b\w/g, char => char.toUpperCase());
+}
+export function ruleAppSummary(packages: readonly string[], apps: ReadonlyMap<string, { displayName: string }>): string {
+  const names = [...new Set(packages)].map(pkg => ruleAppName(pkg, apps));
+  return names.length > 2 ? names[0] + ' +' + (names.length - 1) : names.join(', ');
+}
+export function ruleSections(rules: readonly AppRule[]) {
+  return { schedule: rules.filter(rule => rule.kind === 'schedule'), limit: rules.filter(rule => rule.kind === 'limit'), canAdd: rules.length < 10 };
 }

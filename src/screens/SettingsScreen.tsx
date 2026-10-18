@@ -1,5 +1,7 @@
+import { getLiveTimerStyleOverride, setLiveTimerStyleOverride, type LiveTimerStyle } from '../domain/androidLiveTimer';
 import { AppRulesSection } from '../components/AppRulesSection';
 import { CUSTOM_MODES_INTRO, CUSTOM_MODE_EDITOR_INTRO, cameraDistanceText, customModeDetail, lookAwayDescription, modeFrameRange } from '../domain/customModeCopy';
+import { usePaywall } from '../components/PaywallProvider';
 import { AppPickerModal } from '../components/AppPickerModal';
 import { DevAppRulesControls } from '../components/DevAppRulesControls';
 import { typography } from '../theme/typography';
@@ -59,6 +61,7 @@ import {
 } from '../domain/awayTime';
 import {
   TIER_SWITCHER_ENABLED,
+  canAddFlaggedApp, flaggedAppSlots, toggleAllFlaggedApps,
   getTestTierOverride,
   setTestTierOverride,
   subscribeToTier,
@@ -174,7 +177,7 @@ async function openSubscriptionManagement() {
 
 export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, fontScale } = useWindowDimensions();
   const [flaggedApps, setFlaggedApps] = useState<FlaggedApp[]>([]);
   const [customModes, setCustomModes] = useState<CustomMode[]>([]);
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
@@ -183,6 +186,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
   const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
   const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
+  const paywall = usePaywall();
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [appPickerQuery, setAppPickerQuery] = useState('');
   const [selectedAppIdentifiers, setSelectedAppIdentifiers] = useState<
@@ -193,6 +197,15 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const [screenTimeStatus, setScreenTimeStatus] = useState<ScreenTimeStatus | null>(null);
   const [testTierOverride, setLocalTestTierOverride] =
     useState<TestTierOverride>(() => getTestTierOverride());
+  const [liveTimerStyle, setLiveTimerStyle] = useState<LiveTimerStyle | null>(getLiveTimerStyleOverride);
+  const [liveTimerStyleOutput, setLiveTimerStyleOutput] = useState('');
+  const changeLiveTimerStyle = () => {
+    if (!TIER_SWITCHER_ENABLED || Platform.OS !== 'android') return;
+    const next = liveTimerStyle === 'standard' ? 'custom' : 'standard';
+    if (setLiveTimerStyleOverride(next)) {
+      setLiveTimerStyle(next); setLiveTimerStyleOutput('Applies from the next session start.');
+    } else setLiveTimerStyleOutput('Rebuild the Android app to change the live timer style.');
+  };
   const paidUser = useIsPaidUser();
   const hasLoadedOnceRef = useRef(false);
 
@@ -330,9 +343,9 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     setIsModeEditorVisible(true);
   };
 
-  const remainingFreeAppSlots = paidUser
-    ? Number.POSITIVE_INFINITY
-    : Math.max(0, FREE_TIER_APP_CAP - flaggedApps.length);
+  const appCapFull = Platform.OS === 'android' && !canAddFlaggedApp(paidUser, flaggedApps.length);
+  const showAppProLabel = (typography.subheading.lineHeight + typography.caption.lineHeight) * fontScale <= 45;
+  const remainingFreeAppSlots = flaggedAppSlots(paidUser, flaggedApps.length);
 
   const availableInstalledApps = useMemo(() => {
     const flaggedAppIdentifiers = new Set(
@@ -371,9 +384,10 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   );
 
   const handleAddApp = async () => {
+    if (Platform.OS !== 'android') return;
     const canAdd = await canAddAnotherFlaggedApp(paidUser);
     if (!canAdd) {
-      onNavigate('paywall');
+      paywall.show('apps');
       return;
     }
 
@@ -413,38 +427,11 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   };
 
   const toggleAllVisibleApps = (apps: InstalledApp[]) => {
-    setSelectedAppIdentifiers(current => {
-      const visibleAppIdentifiers = apps.map(app => app.packageName);
-      const allVisibleSelected =
-        visibleAppIdentifiers.length > 0 &&
-        visibleAppIdentifiers.every(packageName =>
-          current.includes(packageName),
-        );
-
-      if (allVisibleSelected) {
-        return current.filter(
-          packageName => !visibleAppIdentifiers.includes(packageName),
-        );
-      }
-
-      const next = [...current];
-      for (const packageName of visibleAppIdentifiers) {
-        if (next.includes(packageName)) {
-          continue;
-        }
-
-        if (next.length >= remainingFreeAppSlots) {
-          break;
-        }
-
-        next.push(packageName);
-      }
-
-      return next;
-    });
+    setSelectedAppIdentifiers(current => toggleAllFlaggedApps(current, apps.map(app => app.packageName), remainingFreeAppSlots));
   };
 
   const saveSelectedApps = async () => {
+    if (!paidUser && selectedAppIdentifiers.length > remainingFreeAppSlots) { paywall.show('apps'); return; }
     if (selectedAppIdentifiers.length === 0) {
       return;
     }
@@ -536,24 +523,27 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     }
   };
 
+  const [coachSeedOutput, setCoachSeedOutput] = useState('');
   const seedCoach = async (pattern: CoachSeedPattern) => {
+    if (!TIER_SWITCHER_ENABLED) return;
     try {
       await clearSeededCoachSessions();
       await seedCoachSessions(pattern);
-      Alert.alert('Coach seeded', `${pattern.replace('_', ' ')} sessions added.`);
+      setCoachSeedOutput(`${pattern.replace('_', ' ')} sessions added.`);
     } catch (error) {
       console.warn('Failed to seed coach sessions:', error);
-      Alert.alert('Unable to seed coach sessions', 'Try again in a moment.');
+      setCoachSeedOutput('Unable to seed coach sessions. Try again in a moment.');
     }
   };
 
   const clearCoachSeed = async () => {
+    if (!TIER_SWITCHER_ENABLED) return;
     try {
       await clearSeededCoachSessions();
-      Alert.alert('Seeded sessions cleared');
+      setCoachSeedOutput('Seeded sessions cleared.');
     } catch (error) {
       console.warn('Failed to clear seeded coach sessions:', error);
-      Alert.alert('Unable to clear seeded sessions', 'Try again in a moment.');
+      setCoachSeedOutput('Unable to clear seeded sessions. Try again in a moment.');
     }
   };
 
@@ -649,21 +639,29 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                           ))}
                           <Pressable
                             accessibilityRole="button"
-                            accessibilityLabel="Add app"
+                            accessibilityLabel={appCapFull ? 'Add app, requires Pro' : 'Add app'}
                             disabled={isPickingApp}
                             onPress={handleAddApp}
                             style={({ pressed }) => [
                               styles.addAppIconButton,
+                              appCapFull && styles.addAppPro,
                               pressed && styles.pressed,
                             ]}
                           >
                             {isPickingApp ? (
                               <ActivityIndicator color={colors.ink} />
                             ) : (
-                              <Text style={styles.plusText}>+</Text>
+                              <>
+                                <Text style={[styles.plusText, appCapFull && styles.plusAmber, appCapFull && showAppProLabel && styles.plusWithPro]}>+</Text>
+                                {appCapFull && showAppProLabel ? <Text style={styles.appProLabel}>PRO</Text> : null}
+                              </>
                             )}
                           </Pressable>
                         </ScrollView>
+                        {Platform.OS === 'android' && !paidUser ? appCapFull ?
+                          <Pressable accessibilityRole="button" accessibilityLabel="Add more apps with Pro" hitSlop={8} onPress={() => paywall.show('apps')} style={styles.appCapCaption}>
+                            <Text numberOfLines={1} style={styles.appCapCaptionText}>{FREE_TIER_APP_CAP} of {FREE_TIER_APP_CAP} free apps{' \u00b7 '}<Text style={styles.appCapLink}>Add more with Pro</Text></Text>
+                          </Pressable> : <Text numberOfLines={1} style={[styles.appCapCaptionText, styles.appCapCaption]}>{flaggedApps.length} of {FREE_TIER_APP_CAP} free apps</Text> : null}
                       </>
                     ) : (
                       Platform.OS === 'ios' ? (
@@ -848,7 +846,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                 </View>
               ) : null}
 
-              {__DEV__ ? (
+              {TIER_SWITCHER_ENABLED ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Coach dev seeding</Text>
                   <View style={styles.panelShell}>
@@ -888,6 +886,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                       >
                         <Text style={styles.addText}>Clear seeded sessions</Text>
                       </Pressable>
+                      {coachSeedOutput ? <Text selectable accessibilityLiveRegion="polite" style={styles.addText}>{coachSeedOutput}</Text> : null}
                     </LinearGradient>
                   </View>
                 </View>
@@ -900,9 +899,18 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
-                    {__DEV__ && TIER_SWITCHER_ENABLED && Platform.OS === 'android' ?
+                    {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ? <View>
+                      <Pressable accessibilityRole="button" onPress={changeLiveTimerStyle} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowTitle}>Live timer style: {liveTimerStyle === 'standard' ? 'Status-bar chip' : 'One-line row'}</Text>
+                          <Text style={styles.rowDetail}>One-line row / Status-bar chip</Text>
+                        </View>
+                      </Pressable>
+                      {liveTimerStyleOutput ? <Text accessibilityLiveRegion="polite" style={styles.rowDetail}>{liveTimerStyleOutput}</Text> : null}
+                    </View> : null}
+                    {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ?
                       <DevAppRulesControls flaggedPackages={flaggedApps.map(app => app.appIdentifier)} /> : null}
-                    {__DEV__ && TIER_SWITCHER_ENABLED ? <DevCoachSampleControls /> : null}
+                    {TIER_SWITCHER_ENABLED ? <DevCoachSampleControls /> : null}
                     {TIER_SWITCHER_ENABLED ? (
                       <View style={styles.row}>
                         <View style={styles.rowTextWrap}>
@@ -1011,6 +1019,8 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
         isSaving={isPickingApp}
         query={appPickerQuery}
         remainingSlots={remainingFreeAppSlots}
+        freeAppLimit={Platform.OS === 'android' && !paidUser ? { cap: FREE_TIER_APP_CAP, savedCount: flaggedApps.length } : undefined}
+        onUpgrade={() => paywall.show('apps')}
         selectedAppIdentifiers={selectedAppIdentifiers}
         visible={isAppPickerVisible}
         onCancel={closeAppPicker}
@@ -1257,6 +1267,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  addAppPro: { borderWidth: StyleSheet.hairlineWidth, borderColor: colors.rewardAmber + '59' },
+  plusAmber: { color: colors.rewardAmber },
+  plusWithPro: { ...typography.subheading },
+  appProLabel: { ...typography.caption, fontWeight: '700', letterSpacing: .8, color: colors.rewardAmber },
+  appCapCaption: { marginTop: 12 },
+  appCapCaptionText: { ...typography.caption, color: colors.muted },
+  appCapLink: { ...typography.caption, color: colors.rewardAmber },
   addAppIconButton: {
     width: 46,
     height: 46,

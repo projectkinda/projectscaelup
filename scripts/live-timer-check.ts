@@ -3,7 +3,7 @@ const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 import { ModuleKind, transpileModule } from 'typescript';
 
-import { createLiveTimerController, type LiveTimerNative } from '../src/domain/liveTimerController';
+import { createLiveTimerController, liveTimerLabel, type LiveTimerNative } from '../src/domain/liveTimerController';
 import { liveTimerRemainingMs, liveTimerSnapshot, pausedLiveTimerTimeoutMs } from '../src/domain/liveTimerState';
 import { MAX_PAUSE_SECONDS } from '../src/domain/pauseRules';
 
@@ -130,9 +130,9 @@ test('an obsolete permission result cannot affect a subsequent session', async (
 
 test('rapid start then pause still initializes the new native session', async () => {
   const { controller, calls } = fixture();
-  void controller.startLiveTimer({ endsAtMs: 61000, label: 'Focus' });
+  void controller.startLiveTimer({ endsAtMs: 61000, label: 'Deep Work' });
   await controller.pauseLiveTimer({ remainingMs: 45000 });
-  assert.deepEqual(calls, [['start', 0, 'Focus'], ['pause', 45000, 345000]]);
+  assert.deepEqual(calls, [['start', 0, 'Deep Work'], ['pause', 45000, 345000]]);
 });
 
 test('queued start then cancel cannot post an obsolete countdown', async () => {
@@ -155,8 +155,9 @@ test('native exceptions and permission failures never reject into the session', 
   await flush();
 });
 
-function loadAndroidApi(platform = 'android', available = true, allowed = false, skip = false, version = 36, storage = new Map<string, string>()) {
-  const count = { requests: 0, explanations: 0, lookups: 0, starts: 0, stops: 0 };
+function loadAndroidApi(platform = 'android', available = true, allowed = false, skip = false, version = 36, storage = new Map<string, string>(), testTools = true) {
+  const count = { requests: 0, explanations: 0, lookups: 0, starts: 0, stops: 0, styleWrites: 0 };
+  let style = 'custom';
   const exports = {} as typeof import('../src/domain/androidLiveTimer');
   runInNewContext(transpileModule(readFileSync('src/domain/androidLiveTimer.ts', 'utf8'), {
     compilerOptions: { module: ModuleKind.CommonJS },
@@ -168,6 +169,7 @@ function loadAndroidApi(platform = 'android', available = true, allowed = false,
     if (id === 'expo') return { NativeModule: class {}, requireOptionalNativeModule: () => {
       count.lookups += 1;
       return available ? {
+        getStyleOverride: () => style, setStyleOverride: (value: string, enabled: boolean) => { if (!enabled) return false; style = value; count.styleWrites++; return true; },
         startLiveTimer: () => { count.starts += 1; }, pauseLiveTimer: () => {}, resumeLiveTimer: () => {},
         stopLiveTimer: () => { count.stops += 1; },
       } : null;
@@ -185,6 +187,7 @@ function loadAndroidApi(platform = 'android', available = true, allowed = false,
         buttons[skip ? 0 : 1].onPress();
       } },
     };
+    if (id === './paywall') return { TIER_SWITCHER_ENABLED: testTools };
     if (id === './liveTimerController') return { createLiveTimerController };
     throw new Error(`Unexpected dependency ${id}`);
   } });
@@ -251,6 +254,85 @@ test('Android below API 33 does not ask for POST_NOTIFICATIONS', async () => {
   assert.equal(count.explanations + count.requests, 0);
   assert.equal(count.starts, 1);
 });
+test('display names retain case, truncate at 40 characters, and fall back when blank', async () => {
+  for (const [input, expected] of [['Deep Work', 'Deep Work'], ['  My custom mode  ', 'My custom mode'], ['  ', 'Focus'], ['', 'Focus'], ['A'.repeat(50), 'A'.repeat(40)]]) {
+    assert.equal(liveTimerLabel(input), expected);
+    const { controller, calls } = fixture();
+    await controller.startLiveTimer({ endsAtMs: 61000, label: input });
+    assert.deepEqual(calls[0], ['start', 61000, expected]);
+  }
+});
+
+test('mode label stays in the native mirror through pause, resume, extend, and delayed permission', async () => {
+  const permission = deferred<boolean>();
+  let nativeLabel = '';
+  const labels: string[] = [];
+  const controller = createLiveTimerController({ now: () => 1000, requestPermission: () => permission.promise, native: {
+    startLiveTimer: (_end, label) => { nativeLabel = label; labels.push(label); },
+    pauseLiveTimer: () => labels.push(nativeLabel), resumeLiveTimer: () => labels.push(nativeLabel), stopLiveTimer: () => {},
+  } });
+  await controller.startLiveTimer({ endsAtMs: 61000, label: 'My custom mode' });
+  await controller.pauseLiveTimer({ remainingMs: 45000 });
+  await controller.resumeLiveTimer({ endsAtMs: 121000 });
+  await controller.resumeLiveTimer({ endsAtMs: 421000 });
+  permission.resolve(true); await flush();
+  assert.equal(labels.length, 5);
+  assert(labels.every(label => label === 'My custom mode'));
+});
+
+test('Home hook receives display names and a mode change between sessions starts with the new name', async () => {
+  const { controller, calls } = fixture();
+  const slots: any[] = [];
+  let cursor = 0;
+  let effects: (() => void)[] = [];
+  const module = { exports: {} as typeof import('../src/domain/useAndroidLiveTimer') };
+  runInNewContext(transpileModule(readFileSync('src/domain/useAndroidLiveTimer.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
+    { exports: module.exports, require: (id: string) => {
+      if (id === 'react') return {
+        useRef: (value: unknown) => slots[cursor++] ?? (slots[cursor - 1] = { current: value }),
+        useEffect: (effect: () => void, deps: unknown[]) => {
+          const index = cursor++, previous = slots[index];
+          if (!previous || deps.some((dep, i) => dep !== previous[i])) { slots[index] = deps; effects.push(effect); }
+        },
+      };
+      if (id === 'react-native') return { Platform: { OS: 'android' } };
+      if (id === './androidLiveTimer') return controller;
+      if (id === './liveTimerState') return { liveTimerSnapshot };
+      throw Error(id);
+    } });
+  const render = async (remainingSeconds: number | null, mode: string) => {
+    cursor = 0; effects = [];
+    module.exports.useAndroidLiveTimer({ remainingSeconds, endsAtMs: remainingSeconds === null ? null : 61000, isPaused: false, awaitingEndChoice: false }, mode);
+    effects.forEach(effect => effect()); await flush();
+  };
+  await render(null, 'Deep Work'); await render(60, 'Deep Work'); await render(null, 'Deep Work');
+  await render(null, 'My custom mode'); await render(60, 'My custom mode');
+  assert.deepEqual(calls.filter(call => call[0] === 'start'), [['start', 61000, 'Deep Work'], ['start', 61000, 'My custom mode']]);
+  const home = readFileSync('src/screens/HomeScreen.tsx', 'utf8');
+  assert(/useAndroidLiveTimer\([\s\S]*?}, activeMode.name\)/.test(home), 'Home must pass the display name, not the tab label');
+});
+
+test('style override is Android-only, persists through reads, and refuses with test tools disabled', () => {
+  const enabled = loadAndroidApi();
+  assert.equal(enabled.api.getLiveTimerStyleOverride(), 'custom');
+  assert.equal(enabled.api.setLiveTimerStyleOverride('standard'), true);
+  assert.equal(enabled.api.getLiveTimerStyleOverride(), 'standard');
+  assert.equal(enabled.api.setLiveTimerStyleOverride('custom'), true);
+  assert.equal(enabled.count.styleWrites, 2);
+  const disabled = loadAndroidApi('android', true, false, false, 36, new Map(), false);
+  assert.equal(disabled.api.getLiveTimerStyleOverride(), null);
+  assert.equal(disabled.api.setLiveTimerStyleOverride('standard'), false);
+  assert.equal(disabled.count.lookups, 0);
+  for (const platform of ['ios', 'web']) {
+    const other = loadAndroidApi(platform);
+    assert.equal(other.api.setLiveTimerStyleOverride('standard'), false);
+    assert.equal(other.api.getLiveTimerStyleOverride(), null);
+    assert.equal(other.count.lookups, 0);
+  }
+  const missing = loadAndroidApi('android', false);
+  assert.equal(missing.api.setLiveTimerStyleOverride('standard'), false);
+});
+
 async function main() {
   let failures = 0;
   for (const { name, run } of tests) {

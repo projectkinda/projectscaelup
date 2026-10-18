@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { Text } from './AppText';
 import type { InstalledApp } from '../domain/appPicker';
+import { ruleAppName } from '../domain/appRulesPresentation';
 import { colors } from '../theme/tokens';
 import { typography } from '../theme/typography';
 
@@ -18,9 +19,10 @@ export function RuleIcon({ name, color = colors.muted }: { name: 'clock' | 'hour
   </Svg>;
 }
 export function RuleAppIcon({ pkg, app }: { pkg: string; app?: InstalledApp }) {
+  const name = ruleAppName(pkg, new Map(app ? [[pkg, app]] : []));
   return app?.iconBase64 ? <Image accessibilityLabel={app.displayName} source={{ uri: 'data:image/png;base64,' + app.iconBase64 }} style={ruleStyles.appIcon}/>
-    : <View accessible accessibilityLabel={app?.displayName ?? pkg} style={[ruleStyles.appIcon, ruleStyles.fallback]}>
-      <Text style={ruleStyles.caption}>{(app?.displayName ?? pkg.split('.').at(-1) ?? '?')[0].toUpperCase()}</Text>
+    : <View accessible accessibilityLabel={name} style={[ruleStyles.appIcon, ruleStyles.fallback]}>
+      <Text style={ruleStyles.caption}>{name[0].toUpperCase()}</Text>
     </View>;
 }
 export function RuleModalShell({ visible, onClose, children, testID }: { visible: boolean; onClose: () => void; children: ReactNode; testID?: string }) {

@@ -53,3 +53,6 @@ vscode-launch.png
 # Swift Package Manager
 .build/
 .swiftpm/
+
+# Local browser review artifacts
+/.artifacts/

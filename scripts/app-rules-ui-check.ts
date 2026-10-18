@@ -1,9 +1,10 @@
 ﻿/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ruleDaySummary, RULE_DAY_NAMES, ruleTitle, formatRuleDuration, formatRuleTime, isLooserChange, stepRuleLimit, ruleUsage, ruleEnabledStatus, defaultRuleDraft } from '../src/domain/appRulesPresentation';
+import { ruleAppName, ruleAppSummary, ruleSections, ruleDaySummary, RULE_DAY_NAMES, ruleTitle, formatRuleDuration, formatRuleTime, isLooserChange, stepRuleLimit, ruleUsage, ruleEnabledStatus, defaultRuleDraft } from '../src/domain/appRulesPresentation';
 import { cameraDistanceText, customModeDetail, lookAwayDescription, modeFrameRange } from '../src/domain/customModeCopy';
-import type { AppRule, AppRuleSnapshot } from '../src/domain/appRules';
+import { isRulePackageAllowed, rulePackageExclusionReason, type AppRule, type AppRuleSnapshot } from '../src/domain/appRules';
+import { formatPickerDiagnostics } from '../src/domain/appPickerDiagnostics';
 const cases: { name: string; run: () => void }[] = [];
 const test = (name: string, run: () => void) => cases.push({ name, run });
 const schedule: AppRuleSnapshot = { ...defaultRuleDraft(), apps: ['example.social', 'example.video'] };
@@ -51,7 +52,7 @@ test('usage sums distinct packages, caps progress, rounds remaining time up, and
   const summary = ruleUsage({ ...limit, limitMinutes: 300 }, { 'example.social': 120 * 60_000, 'example.video': 70 * 60_000 });
   assert.equal(summary.used, '3h 10m used today'); assert.equal(summary.left, '1h 50m left');
   assert.equal(ruleUsage(limit, {}).used, '0m used today');
-  assert.equal(ruleUsage(limit, { 'example.social': 3_600_000 }).left, 'Limit reached');
+  assert.equal(ruleUsage(limit, { 'example.social': 3_600_000 }).left, 'Reached, back at 12:00 am');
   assert.equal(ruleUsage(limit, { 'example.social': 9_999_999 }).progress, 1);
   assert.equal(ruleUsage(limit, { 'example.social': 3_599_999 }).left, '1m left');
 });
@@ -85,7 +86,43 @@ test('Settings integration and History extraction preserve intended scope', () =
   assert(!/Grace period|Frame default:|s grace|min grace/.test(settings));
   assert(settings.includes('gracePeriodSeconds') && readFileSync('src/data/settingsRepository.ts', 'utf8').includes('grace_period_seconds'));
   const history = readFileSync('src/screens/HistoryScreen.tsx', 'utf8');
-  assert(history.includes('<PaywallSheet') && !history.includes('function CoachPaywallSheet'));
+  assert(history.includes("paywall.show('coach')") && !history.includes('<PaywallSheet'));
+});
+test('name summaries use installed names, compact groups, and readable fallbacks', () => {
+  const names = new Map([['com.instagram.android', { displayName: 'Instagram' }], ['com.snapchat.android', { displayName: 'Snapchat' }]]);
+  const one = ['com.instagram.android'], two = [...one, 'com.snapchat.android'];
+  assert.equal(ruleAppSummary(one, names), 'Instagram');
+  assert.equal(ruleAppSummary(two, names), 'Instagram, Snapchat');
+  assert.equal(ruleAppSummary([...two, 'vendor.video_player'], names), 'Instagram +2');
+  assert.equal(ruleAppName('vendor.video_player', names), 'Video Player');
+  assert.equal(ruleAppName('vendor.myApp', names), 'My App');
+});
+test('section split preserves order and shares one ten-rule cap; creation presets both types', () => {
+  const make = (kind: 'schedule' | 'limit', id: string): AppRule => ({ ...defaultRuleDraft(kind), id, retired: [], createdAt: '', updatedAt: '' });
+  const list = [make('limit', 'a'), make('schedule', 'b'), make('limit', 'c')];
+  assert.deepEqual(ruleSections(list).schedule.map(rule => rule.id), ['b']);
+  assert.deepEqual(ruleSections(list).limit.map(rule => rule.id), ['a', 'c']);
+  assert.equal(ruleSections([]).canAdd, true);
+  assert.equal(ruleSections(Array.from({ length: 9 }, (_, i) => make(i % 2 ? 'limit' : 'schedule', String(i)))).canAdd, true);
+  assert.equal(ruleSections(Array.from({ length: 10 }, (_, i) => make(i % 2 ? 'limit' : 'schedule', String(i)))).canAdd, false);
+  assert.equal(defaultRuleDraft('limit').limitMinutes, 60);
+  assert.equal(defaultRuleDraft('schedule').days, 31);
+});
+test('Snapchat and a mere tel handler stay selectable; roles and diagnostic reasons agree', () => {
+  const packages = ['com.snapchat.android', 'com.instagram.android', 'vendor.keyboard', 'vendor.home', 'com.projectscaleup.app', 'vendor.telhandler'];
+  const reasons = { 'vendor.keyboard': 'enabled ime', 'vendor.home': 'default home' };
+  const selected = packages.filter(pkg => isRulePackageAllowed(pkg, Object.keys(reasons)));
+  assert.deepEqual(selected, ['com.snapchat.android', 'com.instagram.android', 'vendor.telhandler']);
+  assert.equal(rulePackageExclusionReason('com.snapchat.android'), null);
+  assert.equal(rulePackageExclusionReason('bad-package'), 'regex');
+  assert.equal(rulePackageExclusionReason('com.projectscaleup.app'), 'denylist');
+  assert.equal(rulePackageExclusionReason('vendor.home', reasons), 'runtime exclusion: default home');
+  const installed = packages.map(packageName => ({ packageName, displayName: packageName, iconBase64: '' }));
+  const output = formatPickerDiagnostics(installed, Object.keys(reasons), installed.filter(app => selected.includes(app.packageName)), reasons, ['com.snapchat.android', 'missing.app'], () => 0);
+  assert(output.includes('Installed: 6') && output.includes('Selectable: 3'));
+  assert(output.includes('com.snapchat.android: installed yes; selectable'));
+  assert(output.includes('vendor.home: installed yes; runtime exclusion: default home'));
+  assert(output.includes('missing.app: installed no'));
 });
 let failed = 0;
 for (const item of cases) { try { item.run(); console.log('PASS ' + item.name); } catch (error) { failed++; console.error('FAIL ' + item.name, error); } }

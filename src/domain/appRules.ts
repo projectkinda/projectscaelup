@@ -3,18 +3,18 @@ export const RULE_LIMITS = { rules: 10, apps: 20, minimumLimitMinutes: 5, maximu
 // Mirrored in Kotlin AppRuleDenylist; fixture checks keep these identical.
 export const APP_RULE_DENYLIST = [
   'com.projectscaleup.app', 'com.android.systemui', 'com.android.settings',
-  'com.android.phone', 'com.android.server.telecom', 'com.android.dialer',
-  'com.google.android.dialer', 'com.samsung.android.dialer', 'com.samsung.android.incallui',
+  'com.android.phone', 'com.android.server.telecom', 'com.samsung.android.incallui',
   'com.android.emergency', 'com.google.android.apps.safetyhub',
-  'com.sec.android.app.launcher', 'com.android.launcher', 'com.android.launcher3',
-  'com.google.android.apps.nexuslauncher',
 ] as const;
-export function isRulePackageAllowed(pkg: string, excludedPackages: readonly string[] = []): boolean {
+export function rulePackageExclusionReason(pkg: string, runtimeReasons: Readonly<Record<string, string>> = {}): string | null {
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(pkg)) return 'regex';
   const normalized = pkg.toLowerCase();
-  return /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_]+)+$/.test(pkg) &&
-    !(APP_RULE_DENYLIST as readonly string[]).includes(normalized) &&
-    !excludedPackages.includes(pkg) && !normalized.includes('inputmethod') &&
-    !normalized.includes('keyboard') && !normalized.includes('emergency');
+  if ((APP_RULE_DENYLIST as readonly string[]).includes(normalized)) return 'denylist';
+  for (const part of ['inputmethod', 'keyboard', 'emergency']) if (normalized.includes(part)) return 'contains ' + part;
+  return runtimeReasons[pkg] ? 'runtime exclusion: ' + runtimeReasons[pkg] : null;
+}
+export function isRulePackageAllowed(pkg: string, excludedPackages: readonly string[] = []): boolean {
+  return rulePackageExclusionReason(pkg, Object.fromEntries(excludedPackages.map(name => [name, 'protected role']))) === null;
 }
 export type AppRuleSnapshot = {
   kind: 'schedule' | 'limit'; apps: string[]; days: number | null;

@@ -1,5 +1,9 @@
 import { liveTimerRemainingMs, pausedLiveTimerTimeoutMs } from './liveTimerState';
 
+export function liveTimerLabel(name: string): string {
+  return name.trim().slice(0, 40) || 'Focus';
+}
+
 type Mirror = { state: 'running'; endsAtMs: number; label: string }
   | { state: 'paused'; remainingMs: number; label: string } | null;
 
@@ -47,7 +51,7 @@ export function createLiveTimerController({ native, requestPermission, now = Dat
   return {
     startLiveTimer({ endsAtMs, label }: { endsAtMs: number; label: string }) {
       const currentSession = ++session;
-      mirror = { state: 'running', endsAtMs, label };
+      mirror = { state: 'running', endsAtMs, label: liveTimerLabel(label) };
       needsStart = true;
       const posted = publish();
       // The permission result republishes CURRENT state, never a stale start snapshot.

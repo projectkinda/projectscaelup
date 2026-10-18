@@ -27,7 +27,7 @@ class LiveTimerModule : Module() {
 
     Function("startLiveTimer") { endsAtMs: Double, value: String ->
       safely {
-        label = value
+        label = value.trim().ifBlank { "Focus" }.take(40)
         notifications().newSession()
         notifications().running(endsAtMs.toLong(), label)
       }
@@ -37,6 +37,11 @@ class LiveTimerModule : Module() {
     }
     Function("resumeLiveTimer") { endsAtMs: Double ->
       safely { notifications().running(endsAtMs.toLong(), label) }
+    }
+    Function("getStyleOverride") { notifications().styleOverride() }
+    // JS supplies DEV_FLAGS.tierSwitcher, including in release test APKs; never __DEV__.
+    Function("setStyleOverride") { value: String, testToolsEnabled: Boolean ->
+      notifications().setStyleOverride(value, testToolsEnabled)
     }
     Function("stopLiveTimer") { safely { notifications().stop() } }
 

@@ -14,6 +14,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
+import android.view.View
+import android.widget.RemoteViews
 import java.util.Locale
 
 internal const val OPEN_TIMER = "expo.modules.livetimer.OPEN_TIMER"
@@ -28,8 +30,17 @@ internal class LiveTimerNotifications(private val context: Context) {
   private val manager = context.getSystemService(NotificationManager::class.java)
   private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+  fun styleOverride(): String = prefs.getString("style_override", "custom").let { if (it == "standard") "standard" else "custom" }
+
+  fun setStyleOverride(value: String, testToolsEnabled: Boolean): Boolean {
+    if (!testToolsEnabled || value !in listOf("custom", "standard")) return false
+    return prefs.edit().putString("style_override", value).commit()
+  }
+
   fun newSession() {
-    prefs.edit().putBoolean("dismissed", false).putLong(TOKEN, System.nanoTime()).apply()
+    // Pin the override once; pause/resume/extend must retain this session's style.
+    prefs.edit().putBoolean("dismissed", false).putLong(TOKEN, System.nanoTime())
+      .putString("session_style", styleOverride()).apply()
   }
 
   fun running(endsAtMs: Long, label: String) {
@@ -38,14 +49,23 @@ internal class LiveTimerNotifications(private val context: Context) {
       stop()
       return
     }
-    post(label, remainingMs) { builder ->
-      builder.setWhen(endsAtMs).setShowWhen(true)
-        .setUsesChronometer(true).setChronometerCountDown(true)
-      // Standard style is promotion eligible; a stale progress bar would misrepresent the timer.
-      // Public Builder.setRequestPromotedOngoing arrived in SDK 36.1. The documented
-      // extras key also works on Android 16 OEM builds that implement promotion on API 36.
-      if (Build.VERSION.SDK_INT >= 36) {
-        builder.addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
+    post(label, remainingMs) { builder, custom ->
+      if (custom) {
+        val row = focusRow(label)
+        row.setViewVisibility(R.id.focus_countdown, View.VISIBLE)
+        row.setViewVisibility(R.id.focus_paused, View.GONE)
+        row.setChronometerCountDown(R.id.focus_countdown, true)
+        row.setChronometer(R.id.focus_countdown, SystemClock.elapsedRealtime() + remainingMs, null, true)
+        decorate(builder, row)
+      } else {
+        builder.setWhen(endsAtMs).setShowWhen(true)
+        if (Build.VERSION.SDK_INT >= 24) builder.setUsesChronometer(true).setChronometerCountDown(true)
+        else builder.setUsesChronometer(false).setContentText(formatTime(remainingMs))
+        // Only the standard path is Live Update / status-bar chip eligible.
+        // SDK 36.1 adds a Builder method; the documented extra works with compileSdk 36.
+        if (Build.VERSION.SDK_INT >= 36) {
+          builder.addExtras(Bundle().apply { putBoolean("android.requestPromotedOngoing", true) })
+        }
       }
     }
   }
@@ -55,15 +75,42 @@ internal class LiveTimerNotifications(private val context: Context) {
       stop()
       return
     }
-    post(label, timeoutMs) { builder ->
-      val seconds = (remainingMs + 999L) / 1000L
-      val time = String.format(Locale.getDefault(), "%d:%02d", seconds / 60L, seconds % 60L)
-      builder.setUsesChronometer(false).setShowWhen(false).setContentText("$time · Paused")
+    post(label, timeoutMs) { builder, custom ->
+      val time = formatTime(remainingMs)
+      builder.setUsesChronometer(false).setShowWhen(false).setContentText(if (custom) "$time paused" else "$time \u00b7 Paused")
+      if (custom) {
+        val row = focusRow(label)
+        row.setViewVisibility(R.id.focus_countdown, View.GONE)
+        row.setViewVisibility(R.id.focus_paused, View.VISIBLE)
+        row.setChronometer(R.id.focus_countdown, 0L, null, false)
+        row.setTextViewText(R.id.focus_paused, "$time paused")
+        decorate(builder, row)
+      }
       // A paused activity remains visible in the shade, without requesting promotion.
     }
   }
 
-  private fun post(label: String, timeoutMs: Long, configure: (Notification.Builder) -> Unit) {
+  private fun formatTime(remainingMs: Long): String {
+    val seconds = (remainingMs + 999L) / 1000L
+    return String.format(Locale.getDefault(), "%d:%02d", seconds / 60L, seconds % 60L)
+  }
+
+  private fun focusRow(label: String) = RemoteViews(context.packageName, R.layout.notification_focus_row).apply {
+    val name = label.trim().ifBlank { "Focus" }.take(40)
+    setTextViewText(R.id.focus_name, name)
+    setContentDescription(R.id.focus_row, "$name, focus session")
+  }
+
+  private fun decorate(builder: Notification.Builder, row: RemoteViews) {
+    // All required custom APIs exist at minSdk 24. Older APIs use the plain path.
+    if (Build.VERSION.SDK_INT >= 24) {
+      builder.setUsesChronometer(false).setShowWhen(false)
+        .setStyle(Notification.DecoratedCustomViewStyle())
+        .setCustomContentView(row).setCustomBigContentView(row)
+    }
+  }
+
+  private fun post(label: String, timeoutMs: Long, configure: (Notification.Builder, Boolean) -> Unit) {
     if (prefs.getBoolean("dismissed", false) || !manager.areNotificationsEnabled()) return
     if (Build.VERSION.SDK_INT >= 33 &&
       context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
@@ -90,7 +137,7 @@ internal class LiveTimerNotifications(private val context: Context) {
     @Suppress("DEPRECATION")
     val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL_ID) else Notification.Builder(context)
     builder.setSmallIcon(R.drawable.ic_focus_timer)
-      .setContentTitle(label.ifBlank { "Focus" }.take(40))
+      .setContentTitle(label.trim().ifBlank { "Focus" }.take(40))
       .setContentIntent(tap).setDeleteIntent(delete)
       .setOngoing(true).setAutoCancel(false).setOnlyAlertOnce(true)
       .setCategory(if (Build.VERSION.SDK_INT >= 31) Notification.CATEGORY_STOPWATCH else Notification.CATEGORY_STATUS)
@@ -106,8 +153,20 @@ internal class LiveTimerNotifications(private val context: Context) {
       context.getSystemService(AlarmManager::class.java).set(
         AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + timeoutMs, expiryIntent())
     }
-    configure(builder)
-    manager.notify(NOTIFICATION_ID, builder.build())
+    val custom = Build.VERSION.SDK_INT >= 24 && prefs.getString("session_style", "custom") != "standard"
+    try {
+      configure(builder, custom)
+      manager.notify(NOTIFICATION_ID, builder.build())
+    } catch (error: RuntimeException) {
+      if (!custom) throw error
+      // Retain a plain, titled notification if custom-view construction/posting fails.
+      Log.w("LiveTimer", "Custom row unavailable; using standard notification", error)
+      if (Build.VERSION.SDK_INT >= 24) {
+        builder.setCustomContentView(null).setCustomBigContentView(null).setStyle(null)
+      }
+      configure(builder, false)
+      manager.notify(NOTIFICATION_ID, builder.build())
+    }
   }
 
   private fun expiryIntent() = PendingIntent.getBroadcast(context, NOTIFICATION_ID + 1,

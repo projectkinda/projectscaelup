@@ -1,3 +1,4 @@
+import { TIER_SWITCHER_ENABLED } from '../domain/paywall';
 import { Platform } from 'react-native';
 
 import { ensureSchema, getDatabase } from './database';
@@ -28,6 +29,7 @@ function seededStartedAt(now: number, index: number) {
 }
 
 export async function seedCoachSessions(pattern: CoachSeedPattern) {
+  if (!TIER_SWITCHER_ENABLED) throw new Error('Test tools are disabled.');
   const database = await getDatabase();
   await ensureSchema(database);
   const now = Date.now();
@@ -78,6 +80,7 @@ export async function seedCoachSessions(pattern: CoachSeedPattern) {
 }
 
 export async function clearSeededCoachSessions() {
+  if (!TIER_SWITCHER_ENABLED) throw new Error('Test tools are disabled.');
   const database = await getDatabase();
   await ensureSchema(database);
 

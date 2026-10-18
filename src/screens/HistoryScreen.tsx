@@ -1,4 +1,4 @@
-import { PaywallSheet } from '../components/PaywallSheet';
+import { usePaywall } from '../components/PaywallProvider';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
 import { useFonts } from 'expo-font';
@@ -496,7 +496,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
   const [visibleSessionCount, setVisibleSessionCount] = useState(
     INITIAL_VISIBLE_SESSIONS,
   );
-  const [coachPaywallVisible, setCoachPaywallVisible] = useState(false);
+  const paywall = usePaywall();
   const hasLoadedOnceRef = useRef(false);
   const paidUser = useIsPaidUser();
   const [coachDataRevision, setCoachDataRevision] = useState(0);
@@ -570,7 +570,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
     }
 
     if (!paidUser && history.hasHiddenHistory) {
-      onNavigate('paywall');
+      paywall.show('history');
       return;
     }
 
@@ -636,7 +636,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
               <FocusCoachCard
                 coach={focusCoach}
                 paidUser={paidUser}
-                onLockedSection={() => setCoachPaywallVisible(true)}
+                onLockedSection={() => paywall.show('coach')}
               />
             </View>
           ) : null}
@@ -688,11 +688,6 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
         bottomInset={insets.bottom}
         backgroundColor={HISTORY_BACKGROUND}
         onSelect={onNavigate}
-      />
-      <PaywallSheet
-        visible={coachPaywallVisible}
-        onClose={() => setCoachPaywallVisible(false)}
-        bottomInset={insets.bottom}
       />
     </View>
   );

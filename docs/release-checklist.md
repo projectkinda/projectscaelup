@@ -14,3 +14,5 @@
 - [ ] Android app rules: dev test panel hidden in release (`__DEV__` false and `DEV_FLAGS.tierSwitcher=false`).
 - [ ] Play accessibility declaration describes app blocking for schedules and shared daily limits; no window-content retrieval is enabled.
 - [ ] App rules overlay permission allow/deny/revoke/regrant flow tested on Samsung and Pixel; run and record the device checklist in [app-rules.md](app-rules.md).
+
+- DEV_FLAGS.tierSwitcher = false hides ALL test tools (tier switcher, coach sample data, coach seeding, app rule test buttons, picker diagnostics); confirm none appear in Settings in the release APK.
