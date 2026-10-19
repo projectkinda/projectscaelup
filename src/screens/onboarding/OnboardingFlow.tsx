@@ -1,3 +1,4 @@
+import { warn } from '../../domain/releaseLog';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
@@ -155,7 +156,7 @@ export function OnboardingFlow({
     }
 
     restoreStep().catch(error => {
-      console.warn('Failed to restore onboarding step:', error);
+      warn('Failed to restore onboarding step:', error);
       if (!cancelled) {
         setCurrentStep('welcome');
         setIsRestoringStep(false);

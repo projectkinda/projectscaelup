@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 ﻿import { NativeModules, Platform } from 'react-native';
 import { getInstalledApps, type InstalledApp } from './appPicker';
 import { isRulePackageAllowed, type EnforcedRuleVersion } from './appRules';
@@ -16,15 +17,15 @@ export const AppRulesModule = {
       const native = bridge();
       await native?.setTestToolsEnabled?.(TIER_SWITCHER_ENABLED);
       await native?.setRules(JSON.stringify(versions));
-    } catch (error) { console.warn('Could not sync app rules:', error); }
+    } catch (error) { warn('Could not sync app rules:', error); }
   },
   async getTodayUsage(packages: string[]): Promise<Record<string, number>> {
     try { return await bridge()?.getTodayUsage(packages) ?? {}; }
-    catch (error) { console.warn('Could not read rule usage:', error); return {}; }
+    catch (error) { warn('Could not read rule usage:', error); return {}; }
   },
   async getExcludedPackages(): Promise<string[]> {
     try { return await bridge()?.getExcludedPackages() ?? []; }
-    catch (error) { console.warn('Could not resolve protected apps:', error); return []; }
+    catch (error) { warn('Could not resolve protected apps:', error); return []; }
   },
   async getExcludedPackageReasons(): Promise<Record<string, string>> {
     const native = bridge();

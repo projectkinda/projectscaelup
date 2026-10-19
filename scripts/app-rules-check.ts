@@ -1,4 +1,4 @@
-﻿/// <reference types="node" />
+/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -14,7 +14,7 @@ const model = (): AppRule => ({ ...base, id: 'r', retired: [], createdAt: monday
 function load(file: string, dependencies: (id: string) => unknown, globals = {}) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
-    { exports: module.exports, require: dependencies, console, ...globals });
+    { exports: module.exports, require: (id: string) => id.endsWith('/releaseLog') ? { warn: (...args: unknown[]) => ((globals as any).console ?? console).warn(...args) } : dependencies(id), console, ...globals });
   return module.exports;
 }
 

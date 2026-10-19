@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
 import { Camera, CameraView } from 'expo-camera';
@@ -180,7 +181,7 @@ export function PreSessionReadinessScreen({
           await PresenceModule.reportFrame(photo.base64);
         }
       } catch (error) {
-        console.warn('Failed to capture readiness presence frame:', error);
+        warn('Failed to capture readiness presence frame:', error);
       } finally {
         await deletePresencePhotoQuietly(photoUri);
         captureInFlight.current = false;

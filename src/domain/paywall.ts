@@ -43,10 +43,10 @@ export function appCapPromptAction(alreadyShown: boolean): 'sheet' | 'flash' {
 
 export const DEV_FLAGS = {
   forcePaidUser: false,
-  // MUST be false for store release. When false, the switcher is hidden, the
+  // Opt in per build with EXPO_PUBLIC_TEST_TOOLS=1. When false, the switcher is hidden, the
   // override is ignored and cleared, and isPaidUser() behaves as it does for
   // real users.
-  tierSwitcher: true,
+  tierSwitcher: process.env.EXPO_PUBLIC_TEST_TOOLS === '1',
   resetOnboarding: false,
   // Runs the iPhone onboarding and permissions gate before the App.tsx
   // bypass comes out. Pair with resetOnboarding to see it from the start.
@@ -62,7 +62,7 @@ const tierListeners = new Set<(tier: TestTierOverride) => void>();
 
 if (TIER_SWITCHER_ENABLED && typeof __DEV__ !== 'undefined' && !__DEV__) {
   console.warn(
-    'RELEASE WARNING: DEV_FLAGS.tierSwitcher is true. Set tierSwitcher=false and forcePaidUser=false before store release.',
+    'RELEASE WARNING: test tools are enabled (EXPO_PUBLIC_TEST_TOOLS=1). Do not upload this build to a store.',
   );
 }
 

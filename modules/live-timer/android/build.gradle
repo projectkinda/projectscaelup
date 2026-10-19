@@ -6,9 +6,13 @@ plugins {
 group = 'expo.modules.livetimer'
 version = '1.0.0'
 
+def testToolsEnabled = System.getenv('EXPO_PUBLIC_TEST_TOOLS') == '1'
+
 android {
+  buildFeatures { buildConfig true }
   namespace 'expo.modules.livetimer'
   defaultConfig {
+    buildConfigField "boolean", "TEST_TOOLS_ENABLED", testToolsEnabled.toString()
     versionCode 1
     versionName '1.0.0'
   }

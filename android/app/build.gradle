@@ -4,6 +4,37 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
+// Build-time switch shared by Expo's JS bundle and the live-timer Android library.
+def testToolsEnabled = System.getenv('EXPO_PUBLIC_TEST_TOOLS') == '1'
+def releaseSigningNames = ['RELEASE_STORE_FILE', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD']
+def releaseSigningValues = releaseSigningNames.collectEntries { name ->
+    [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull]
+}
+def missingReleaseSigning = releaseSigningNames.findAll { !releaseSigningValues[it] }
+def hasReleaseSigning = missingReleaseSigning.isEmpty()
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseBundleRequested = graph.allTasks.any { task -> task.project == project &&
+        (task.name == 'bundleRelease' || task.name == 'signReleaseBundle' || task.name == 'packageReleaseBundle') }
+    if (releaseBundleRequested && !hasReleaseSigning) {
+        throw new GradleException('Store bundle requires release signing. Set ' + missingReleaseSigning.join(', ') +
+            ' in ~/.gradle/gradle.properties or the build environment; never commit credentials or a keystore.')
+    }
+    if (!hasReleaseSigning && graph.allTasks.any { it.project == project && it.name == 'assembleRelease' }) {
+        logger.warn('*** WARNING: release APK uses the DEBUG KEY because release signing is missing. NOT STORE-UPLOADABLE. ***')
+    }
+}
+
+// React Native does not track shell env changes as bundle inputs by default.
+tasks.configureEach { task ->
+    if (task.name == 'createBundleReleaseJsAndAssets') {
+        task.inputs.property('EXPO_PUBLIC_TEST_TOOLS', testToolsEnabled)
+        task.inputs.file(file('../../scripts/verify-release-bundle.cjs'))
+        task.outputs.file(layout.buildDirectory.file('release-proof/test-tools.json'))
+    }
+}
+
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -19,6 +50,7 @@ react {
     // works correctly with Expo projects.
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
+    nodeExecutableAndArgs = ["node", "--require", file("../../scripts/verify-release-bundle.cjs").absolutePath]
 
     /* Folders */
      //   The root of your project, i.e. where "package.json" lives. Default is '../..'
@@ -97,10 +129,19 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
+        buildConfigField "boolean", "TEST_TOOLS_ENABLED", testToolsEnabled.toString()
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
     signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile rootProject.file(releaseSigningValues.RELEASE_STORE_FILE)
+                storePassword releaseSigningValues.RELEASE_STORE_PASSWORD
+                keyAlias releaseSigningValues.RELEASE_KEY_ALIAS
+                keyPassword releaseSigningValues.RELEASE_KEY_PASSWORD
+            }
+        }
         debug {
             storeFile file('debug.keystore')
             storePassword 'android'
@@ -113,9 +154,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

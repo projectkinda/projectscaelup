@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import type { AwayDisplay } from './awayTime';
 import type { FocusCoachAway, FocusCoachSession } from './focusCoach';
 
@@ -49,7 +50,7 @@ export async function safeLoadFocusCoachAway({
       platform,
     });
   } catch (error) {
-    console.warn('Failed to load coach away data:', error);
+    warn('Failed to load coach away data:', error);
     return null;
   }
 }

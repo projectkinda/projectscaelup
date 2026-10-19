@@ -1,4 +1,4 @@
-﻿/// <reference types="node" />
+/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
@@ -20,7 +20,7 @@ console.log('PASS pure Home ordering: zero/two custom modes, newest-first input,
 function loadModule(file: string, dependencies: (id: string) => unknown) {
   const module = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText,
-    { exports: module.exports, require: dependencies, console });
+    { exports: module.exports, require: (id: string) => id.endsWith('/releaseLog') ? { warn: () => {} } : dependencies(id), console });
   return module.exports;
 }
 async function main() {

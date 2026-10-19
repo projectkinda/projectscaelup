@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { CUSTOM_MODE_DEFAULT_MINUTES, isValidDefaultMinutes, TIMER_MAX_MINUTES } from '../domain/modeDurations';
 import { useEffect, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -80,7 +81,7 @@ export function CustomModeEditorModal({
       });
       await onSaved(savedMode);
     } catch (error) {
-      console.warn('Failed to save custom mode:', error);
+      warn('Failed to save custom mode:', error);
       Alert.alert('Unable to save mode', 'Try again in a moment.');
     } finally {
       setIsSaving(false);

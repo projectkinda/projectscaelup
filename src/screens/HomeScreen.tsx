@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { resolveModeDuration, withModeDuration, type ModeDurations } from '../domain/modeDurations';
 import { CustomModeEditorModal } from '../components/CustomModeEditorModal';
 import { usePaywall } from '../components/PaywallProvider';
@@ -154,7 +155,7 @@ function ActiveSessionCameraPreview({
           await PresenceModule.reportFrame(photo.base64);
         }
       } catch (error) {
-        console.warn('Failed to capture active presence frame:', error);
+        warn('Failed to capture active presence frame:', error);
       } finally {
         await deletePresencePhotoQuietly(photoUri);
         captureInFlight.current = false;
@@ -293,7 +294,7 @@ export function HomeScreen({
   }), [activeMode, rememberedModeDurations]);
   const rememberStartedDuration = (modeId: string, duration: number) => {
     setRememberedModeDurations(current => withModeDuration(current, modeId, duration));
-    void saveModeSessionDuration(modeId, duration).catch(error => console.warn('Failed to remember mode duration:', error));
+    void saveModeSessionDuration(modeId, duration).catch(error => warn('Failed to remember mode duration:', error));
   };
 
   useAndroidLiveTimer({
@@ -312,7 +313,7 @@ export function HomeScreen({
     getAwayDisplay()
       .then(setAwayDisplay)
       .catch(error => {
-        console.warn('Failed to load away-time display:', error);
+        warn('Failed to load away-time display:', error);
         setAwayDisplay({ kind: 'hidden' });
       });
   }, []);
@@ -346,7 +347,7 @@ export function HomeScreen({
         }
       })
       .catch(error => {
-        console.warn('Failed to load focus coach:', error);
+        warn('Failed to load focus coach:', error);
         if (!cancelled) {
           setFocusCoach(null);
         }
@@ -367,8 +368,8 @@ export function HomeScreen({
     const version = ++modesLoadVersion.current;
 
     Promise.all([
-      loadAvailableModes(paidUser).catch(error => { console.warn('Failed to load modes:', error); return null; }),
-      loadModeSessionDurations().catch(error => { console.warn('Failed to load mode durations:', error); return null; }),
+      loadAvailableModes(paidUser).catch(error => { warn('Failed to load modes:', error); return null; }),
+      loadModeSessionDurations().catch(error => { warn('Failed to load mode durations:', error); return null; }),
     ]).then(([modes, remembered]) => {
       if (!cancelled && version === modesLoadVersion.current) {
         if (modes) setHomeModes(modes.length > 0 ? modes : fallbackModes);
@@ -522,7 +523,7 @@ export function HomeScreen({
           startedAt,
         });
       } catch (error) {
-        console.warn('Failed to start session in database:', error);
+        warn('Failed to start session in database:', error);
         sessionId = Date.now();
       }
 
@@ -535,7 +536,7 @@ export function HomeScreen({
           durationFormatted: formatDuration(durationSeconds),
         });
       } catch (error) {
-        console.warn('onStartSession handler error:', error);
+        warn('onStartSession handler error:', error);
       }
 
       setActiveSessionId(sessionId);
@@ -548,12 +549,12 @@ export function HomeScreen({
           app => app.appIdentifier,
         );
       } catch (error) {
-        console.warn('Failed to load flagged apps for usage monitor:', error);
+        warn('Failed to load flagged apps for usage monitor:', error);
         try {
           activeFlaggedAppIdentifiers.current =
             await loadFlaggedAppIdentifiersDirectly();
         } catch (fallbackError) {
-          console.warn(
+          warn(
             'Failed to load flagged apps directly for usage monitor:',
             fallbackError,
           );
@@ -565,7 +566,7 @@ export function HomeScreen({
         activeFlaggedAppIdentifiers.current,
       );
       startFocusLock(sessionId, mode.name, sessionEndTime).catch(
-        error => console.warn('Failed to lock flagged apps:', error),
+        error => warn('Failed to lock flagged apps:', error),
       );
     })();
   };
@@ -586,7 +587,7 @@ export function HomeScreen({
       await PresenceModule.start(activeMode);
       setPreparedModeName(activeMode.tabLabel);
     } catch (error) {
-      console.warn('Failed to start presence module:', error);
+      warn('Failed to start presence module:', error);
       Alert.alert(
         'Camera setup failed',
         'Unable to prepare the camera detector for this session.',
@@ -604,7 +605,7 @@ export function HomeScreen({
     if (activeSessionId !== null) {
       const nextEndMs = Date.now() + ((remainingSeconds ?? 0) + 5 * 60) * 1000;
       startFocusLock(activeSessionId, activeMode.name, nextEndMs).catch(error =>
-        console.warn('Failed to extend the flagged-app lock:', error),
+        warn('Failed to extend the flagged-app lock:', error),
       );
     }
     setRemainingSeconds(current => {
@@ -656,7 +657,7 @@ export function HomeScreen({
 
         sessionEndTimeMs.current = Date.now() + remainingSeconds * 1000;
         resumeFocusLock(sessionEndTimeMs.current).catch(error =>
-          console.warn('Failed to re-lock flagged apps:', error),
+          warn('Failed to re-lock flagged apps:', error),
         );
         activeSegmentStartMs.current = Date.now();
         setIsPaused(false);
@@ -740,7 +741,7 @@ export function HomeScreen({
       usageMonitorUnsubscribe.current?.();
       usageMonitorUnsubscribe.current = null;
       pauseFocusLock().catch(error =>
-        console.warn('Failed to unlock flagged apps for the pause:', error),
+        warn('Failed to unlock flagged apps for the pause:', error),
       );
       setIsPaused(true);
     } finally {
@@ -793,12 +794,12 @@ export function HomeScreen({
       try {
         await finishFocusLock(sessionId, { keepDistractions: false });
       } catch (error) {
-        console.warn('Failed to unlock flagged apps:', error);
+        warn('Failed to unlock flagged apps:', error);
       }
       try {
         await voidSession(sessionId, timing ?? undefined);
       } catch (error) {
-        console.warn('Failed to void session in database:', error);
+        warn('Failed to void session in database:', error);
       }
     }
   };
@@ -835,7 +836,7 @@ export function HomeScreen({
     try {
       await finishFocusLock(sessionId, { keepDistractions: true });
     } catch (error) {
-      console.warn('Failed to collect iOS distractions:', error);
+      warn('Failed to collect iOS distractions:', error);
     }
 
     const previousCount = sessionCount;
@@ -858,7 +859,7 @@ export function HomeScreen({
         completed.sessionId,
       );
     } catch (error) {
-      console.warn('Failed to complete session in database:', error);
+      warn('Failed to complete session in database:', error);
     }
     setSessionCount(nextCount);
     setShowingUpDays(nextShowingUpDays);
@@ -904,7 +905,7 @@ export function HomeScreen({
           ],
         );
       })
-      .catch(error => console.warn('Failed to show away-time prompt:', error));
+      .catch(error => warn('Failed to show away-time prompt:', error));
 
     const groupIndex = Math.floor(previousCount / TALLY_GROUP_SIZE);
     if (groupIndex < TALLY_GRID_SIZE) {
@@ -923,12 +924,12 @@ export function HomeScreen({
   const handleModeSaved = async (savedMode: CustomMode) => {
     // Invalidate older reloads so they cannot overwrite the new mode/selection.
     const version = ++modesLoadVersion.current;
-    const rememberedPromise = loadModeSessionDurations().catch(error => { console.warn('Failed to load mode durations:', error); return null; });
+    const rememberedPromise = loadModeSessionDurations().catch(error => { warn('Failed to load mode durations:', error); return null; });
     let modes;
     try {
       modes = await loadAvailableModes(paidUser);
     } catch (error) {
-      console.warn('Failed to reload saved mode:', error);
+      warn('Failed to reload saved mode:', error);
       const builtInIds = new Set(BUILT_IN_MODES.map(mode => mode.id));
       modes = getHomeModes(paidUser, [customModeToSessionMode(savedMode),
         ...homeModes.filter(mode => !builtInIds.has(mode.id) && mode.id !== savedMode.id)]);

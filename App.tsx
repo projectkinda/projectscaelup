@@ -1,3 +1,4 @@
+import { warn } from './src/domain/releaseLog';
 import { startAppRulesSync, syncRulesToNative } from './src/data/appRulesRepository';
 import { useFonts } from 'expo-font';
 import React, { useEffect, useRef, useState } from 'react';
@@ -65,7 +66,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     sweepPresencePhotoCacheQuietly();
     purgeOldAwayLog().catch(error =>
-      console.warn('Failed to purge old away-time rows:', error),
+      warn('Failed to purge old away-time rows:', error),
     );
   }, []);
 
@@ -83,7 +84,7 @@ function App(): React.JSX.Element {
         const stored = parseStoredTier(await getAppState(TEST_TIER_OVERRIDE_KEY));
         setTestTierOverride(stored);
       } catch (error) {
-        console.warn('Failed to load test tier override:', error);
+        warn('Failed to load test tier override:', error);
         setTestTierOverride(null);
       } finally {
         if (!cancelled) {
@@ -104,16 +105,16 @@ function App(): React.JSX.Element {
   useEffect(() => {
     const reconcile = () =>
       reconcileScreenTime().catch(error =>
-        console.warn('Failed to reconcile Screen Time locks:', error),
+        warn('Failed to reconcile Screen Time locks:', error),
       );
     const checkGate = () => {
       evaluateLaunchGate(sessionActive).catch(error =>
-        console.warn('Failed to evaluate onboarding gate:', error),
+        warn('Failed to evaluate onboarding gate:', error),
       );
     };
     const drainAway = () =>
       drainAwayLog().catch(error =>
-        console.warn('Failed to drain away-time log:', error),
+        warn('Failed to drain away-time log:', error),
       );
     reconcile();
     checkGate();
@@ -132,7 +133,7 @@ function App(): React.JSX.Element {
   useEffect(() => {
     if (!sessionActive) {
       evaluateLaunchGate(false).catch(error =>
-        console.warn('Failed to evaluate onboarding gate:', error),
+        warn('Failed to evaluate onboarding gate:', error),
       );
     }
   }, [sessionActive]);

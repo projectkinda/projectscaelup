@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as LegacyFileSystem from 'expo-file-system/legacy';
 
@@ -18,7 +19,7 @@ export async function deletePresencePhotoQuietly(photoUri?: string | null) {
     try {
       await LegacyFileSystem.deleteAsync(photoUri, { idempotent: true });
     } catch (deleteError) {
-      console.warn('Failed to delete cached presence photo:', deleteError);
+      warn('Failed to delete cached presence photo:', deleteError);
     }
   }
 }
@@ -38,10 +39,10 @@ export function sweepPresencePhotoCacheQuietly() {
       try {
         entry.delete();
       } catch (error) {
-        console.warn('Failed to delete cached presence camera file:', error);
+        warn('Failed to delete cached presence camera file:', error);
       }
     });
   } catch (error) {
-    console.warn('Failed to sweep cached presence camera photos:', error);
+    warn('Failed to sweep cached presence camera photos:', error);
   }
 }

@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { Platform } from 'react-native';
 import { ensureSchema, getDatabase } from './database';
 import { AppRulesModule } from '../domain/appRulesModule';
@@ -51,12 +52,12 @@ async function readRules(now: Date): Promise<AppRule[]> {
 export async function listRules(now = new Date()): Promise<AppRule[]> {
   if (Platform.OS !== 'android') return [];
   try { return (await readRules(now)).filter(rule => !rule.deleted); }
-  catch (error) { console.warn('Could not list app rules:', error); return []; }
+  catch (error) { warn('Could not list app rules:', error); return []; }
 }
 export async function getEnforcedVersions(now = new Date()): Promise<EnforcedRuleVersion[]> {
   if (Platform.OS !== 'android') return [];
   try { return (await readRules(now)).flatMap(rule => enforcedVersions(rule, now)); }
-  catch (error) { console.warn('Could not load enforced rules:', error); return []; }
+  catch (error) { warn('Could not load enforced rules:', error); return []; }
 }
 export function syncRulesToNative(): Promise<void> {
   const work = async () => {
@@ -65,7 +66,7 @@ export function syncRulesToNative(): Promise<void> {
       const versions = isPaidUser() ? (await readRules(new Date())).flatMap(rule => enforcedVersions(rule, new Date())) : [];
       // Check again after the asynchronous DB read: a downgrade must not race a stale paid sync.
       await AppRulesModule.setRules(isPaidUser() ? versions : []);
-    } catch (error) { console.warn('Could not sync app rules:', error); }
+    } catch (error) { warn('Could not sync app rules:', error); }
   };
   syncQueue = syncQueue.then(work, work);
   return syncQueue;
@@ -78,7 +79,7 @@ function mutate(work: () => Promise<AppRule>): Promise<RuleWriteResult> {
       const rule = await work();
       await syncRulesToNative();
       return { ok: true, rule };
-    } catch (error) { console.warn('Could not save app rule:', error); return { ok: false, error: error instanceof Error ? error.message : 'Could not save app rule.' }; }
+    } catch (error) { warn('Could not save app rule:', error); return { ok: false, error: error instanceof Error ? error.message : 'Could not save app rule.' }; }
   };
   const result = queue.then(run, run); queue = result; return result;
 }
@@ -133,6 +134,6 @@ export function createDevTestRule(pkg: string, kind: 'schedule' | 'limit', now =
 export async function clearDevAppRules(): Promise<void> {
   if (!DEV_FLAGS.tierSwitcher || Platform.OS !== 'android') return;
   const work = async () => { try { const db = await database(); await db.withTransactionAsync(async () => { await db.runAsync('DELETE FROM app_rules;'); await db.runAsync("DELETE FROM app_state WHERE key LIKE 'app_rule_deleted:%';"); }); await syncRulesToNative(); }
-    catch (error) { console.warn('Could not clear dev app rules:', error); } };
+    catch (error) { warn('Could not clear dev app rules:', error); } };
   const result = queue.then(work, work); queue = result; await result;
 }

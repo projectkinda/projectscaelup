@@ -56,3 +56,13 @@ vscode-launch.png
 
 # Local browser review artifacts
 /.artifacts/
+
+# Local Android signing material and machine-specific properties
+*.keystore
+!android/app/debug.keystore
+local.properties
+*.local.properties
+local-*.properties
+key.properties
+keystore.properties
+signing.properties

@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { TIER_SWITCHER_ENABLED } from '../domain/paywall';
 import { DEV_SAMPLE_SESSION_IDS_KEY } from './coachDataEvents';
 import { Platform } from 'react-native';
@@ -200,7 +201,7 @@ export async function loadFocusCoachData({ isPaidUser = false }: { isPaidUser?: 
         if (label) appLabels.set(row.session_id, label);
       });
     } catch (error) {
-      console.warn('Could not resolve coach app labels:', error);
+      warn('Could not resolve coach app labels:', error);
     }
   }
   const modeNames: Record<string, string> = Object.fromEntries(BUILT_IN_MODES.map(mode => [mode.id, mode.name]));
@@ -211,7 +212,7 @@ export async function loadFocusCoachData({ isPaidUser = false }: { isPaidUser?: 
       if (label) modeNames[mode.id] = label;
     });
   } catch (error) {
-    console.warn('Could not resolve coach mode names:', error);
+    warn('Could not resolve coach mode names:', error);
   }
   const sessions = mapRows(rows).map(session => ({ ...session,
     firstDistractionApp: session.firstDistractionType === 'app_touched' && session.platform === 'android'
@@ -219,7 +220,7 @@ export async function loadFocusCoachData({ isPaidUser = false }: { isPaidUser?: 
   }));
   let awayTrackingOptedIn = false;
   try { awayTrackingOptedIn = await isAwayTrackingOptedIn(); }
-  catch (error) { console.warn('Could not load coach away opt-in:', error); }
+  catch (error) { warn('Could not load coach away opt-in:', error); }
   const options = { isPaidUser, modeNames, awayTrackingOptedIn, platform: Platform.OS };
   const firstPass = evaluateFocusCoach(sessions, null, null, options);
   if (firstPass.validCount === 0) {

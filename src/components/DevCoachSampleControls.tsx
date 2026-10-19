@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { typography } from '../theme/typography';
 import { Text } from './AppText';
 import { useState } from 'react';
@@ -20,7 +21,7 @@ export function DevCoachSampleControls() {
         else await samples.removeSampleSessions();
         setOutput(action === 'load' ? 'Sample sessions loaded.' : 'Sample sessions removed.');
       } catch (error) {
-        console.warn('Could not change sample sessions:', error);
+        warn('Could not change sample sessions:', error);
         setOutput(COACH_SAMPLE_COPY.failed + ' ' + COACH_SAMPLE_COPY.retry);
       } finally { setBusy(false); }
     }

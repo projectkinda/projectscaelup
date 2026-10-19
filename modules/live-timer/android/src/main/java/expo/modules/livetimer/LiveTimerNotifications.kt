@@ -30,10 +30,10 @@ internal class LiveTimerNotifications(private val context: Context) {
   private val manager = context.getSystemService(NotificationManager::class.java)
   private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-  fun styleOverride(): String = prefs.getString("style_override", "custom").let { if (it == "standard") "standard" else "custom" }
+  fun styleOverride(): String = if (!BuildConfig.TEST_TOOLS_ENABLED) "custom" else prefs.getString("style_override", "custom").let { if (it == "standard") "standard" else "custom" }
 
   fun setStyleOverride(value: String, testToolsEnabled: Boolean): Boolean {
-    if (!testToolsEnabled || value !in listOf("custom", "standard")) return false
+    if (!BuildConfig.TEST_TOOLS_ENABLED || !testToolsEnabled || value !in listOf("custom", "standard")) return false
     return prefs.edit().putString("style_override", value).commit()
   }
 
@@ -153,7 +153,8 @@ internal class LiveTimerNotifications(private val context: Context) {
       context.getSystemService(AlarmManager::class.java).set(
         AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + timeoutMs, expiryIntent())
     }
-    val custom = Build.VERSION.SDK_INT >= 24 && prefs.getString("session_style", "custom") != "standard"
+    val custom = Build.VERSION.SDK_INT >= 24 &&
+      (!BuildConfig.TEST_TOOLS_ENABLED || prefs.getString("session_style", "custom") != "standard")
     try {
       configure(builder, custom)
       manager.notify(NOTIFICATION_ID, builder.build())

@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import { ensureSchema, getDatabase } from '../data/database';
 import { UsageTrackingModule } from './usageTrackingModule';
 
@@ -81,7 +82,7 @@ export function startUsageMonitor(
     currentState.hasCountedThisVisit = true;
     const occurredAtMs = crossedAtMs(currentState);
     recordAppTouch(appIdentifier, occurredAtMs).catch(error => {
-      console.warn('Failed to record app usage distraction:', error);
+      warn('Failed to record app usage distraction:', error);
     });
   };
 

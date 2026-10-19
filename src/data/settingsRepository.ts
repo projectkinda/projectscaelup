@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { setAppState } from './appStateRepository';
 import { clampSessionSeconds, CUSTOM_MODE_DEFAULT_MINUTES, isValidDefaultMinutes, modeDurationKey, MODE_DURATION_KEY_PREFIX, type ModeDurations } from '../domain/modeDurations';
 import { CUSTOM_MODE_ORDER_BY } from './modesRepository';
@@ -71,7 +72,7 @@ async function syncNativeFlaggedPackages() {
       rows.map(row => row.app_identifier),
     );
   } catch (error) {
-    console.warn('Could not sync native flagged packages:', error);
+    warn('Could not sync native flagged packages:', error);
   }
 }
 
@@ -126,7 +127,7 @@ export async function loadSettingsData({
       flaggedApps.map(app => app.appIdentifier),
     );
   } catch (error) {
-    console.warn('Could not sync native flagged packages:', error);
+    warn('Could not sync native flagged packages:', error);
   }
   const appsMissingIcons = flaggedApps.some(app => !app.iconBase64);
 
@@ -158,7 +159,7 @@ export async function loadSettingsData({
         );
       }
     } catch (error) {
-      console.warn('Could not hydrate flagged app icons:', error);
+      warn('Could not hydrate flagged app icons:', error);
     }
   }
 

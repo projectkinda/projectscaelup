@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import { NativeModules, Platform } from 'react-native';
 
 import type { SessionMode } from './sessionModes';
@@ -126,7 +127,7 @@ export const PresenceModule = {
 
       emit(result);
     } catch (error) {
-      console.warn('Failed to process presence frame:', error);
+      warn('Failed to process presence frame:', error);
     }
   },
 

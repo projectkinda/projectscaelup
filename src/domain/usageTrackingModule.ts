@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import {
   NativeEventEmitter,
   NativeModules,
@@ -38,7 +39,7 @@ const emitter =
     : null;
 
 function warnAwayTimeFailure(methodName: string, error: unknown) {
-  console.warn(`Away-time native method ${methodName} failed:`, error);
+  warn(`Away-time native method ${methodName} failed:`, error);
 }
 
 export const UsageTrackingModule = {

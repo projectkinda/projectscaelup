@@ -41,7 +41,7 @@ class LiveTimerModule : Module() {
     Function("getStyleOverride") { notifications().styleOverride() }
     // JS supplies DEV_FLAGS.tierSwitcher, including in release test APKs; never __DEV__.
     Function("setStyleOverride") { value: String, testToolsEnabled: Boolean ->
-      notifications().setStyleOverride(value, testToolsEnabled)
+      notifications().setStyleOverride(value, BuildConfig.TEST_TOOLS_ENABLED && testToolsEnabled)
     }
     Function("stopLiveTimer") { safely { notifications().stop() } }
 

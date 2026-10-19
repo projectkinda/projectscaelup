@@ -1,3 +1,4 @@
+import { warn } from '../../domain/releaseLog';
 import { typography } from '../../theme/typography';
 import { Text } from '../../components/AppText';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -94,7 +95,7 @@ export function AppsStep({
           );
         }
       } catch (error) {
-        console.warn('Failed to load onboarding apps:', error);
+        warn('Failed to load onboarding apps:', error);
         Alert.alert('Unable to load apps', 'Try again in a moment.');
       } finally {
         if (!cancelled) {
@@ -164,7 +165,7 @@ export function AppsStep({
       setSavedIds(selectedIds);
       onContinue();
     } catch (error) {
-      console.warn('Failed to save onboarding apps:', error);
+      warn('Failed to save onboarding apps:', error);
       Alert.alert('Unable to save apps', 'Try again in a moment.');
     } finally {
       setIsSaving(false);

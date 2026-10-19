@@ -1207,7 +1207,7 @@ test('dev sample load/remove uses the real schema, lights all gates, and restore
   const schema = loadModule('src/data/database.ts', () => ({ openDatabaseAsync: async () => adapter }));
   await schema.ensureSchema(adapter);
   db.exec(`INSERT INTO flagged_apps VALUES ('com.real.app','Real flagged app',NULL);
-    INSERT INTO custom_modes VALUES ('real-mode','Real custom mode',5,15,40);
+    INSERT INTO custom_modes (id,name,grace_period_seconds,frame_width_min,frame_width_max) VALUES ('real-mode','Real custom mode',5,15,40);
     INSERT INTO sessions (mode_id,started_at,duration_seconds,completed,distraction_count,lockdown_minutes,
       focus_seconds,clean_seconds,first_distraction_type,pause_count,paused_seconds,ended_early,platform,ended_at)
       VALUES ('deep-work','2020-01-01T10:00:00Z',1800,1,1,0,1800,1200,'app_touched',1,30,0,'android','2020-01-01T10:30:30Z');

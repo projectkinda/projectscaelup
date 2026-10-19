@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { CustomModeEditorModal } from '../components/CustomModeEditorModal';
 import { getLiveTimerStyleOverride, setLiveTimerStyleOverride, type LiveTimerStyle } from '../domain/androidLiveTimer';
 import { AppRulesSection } from '../components/AppRulesSection';
@@ -395,7 +396,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       setIsAppPickerVisible(true);
       setInstalledApps(await getInstalledApps());
     } catch (error) {
-      console.warn('Failed to load apps:', error);
+      warn('Failed to load apps:', error);
       Alert.alert('Unable to load apps', 'Try again in a moment.');
       setIsAppPickerVisible(false);
     } finally {
@@ -463,7 +464,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       });
       closeAppPicker();
     } catch (error) {
-      console.warn('Failed to save selected apps:', error);
+      warn('Failed to save selected apps:', error);
       Alert.alert('Unable to add apps', 'Try again in a moment.');
     } finally {
       setIsPickingApp(false);
@@ -497,7 +498,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       await setAwayTrackingEnabled(next);
     } catch (error) {
       setAwayTrackingOptedIn(!next);
-      console.warn('Failed to update away-time tracking:', error);
+      warn('Failed to update away-time tracking:', error);
       Alert.alert('Unable to update setting', 'Try again in a moment.');
     }
   };
@@ -510,7 +511,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       await seedCoachSessions(pattern);
       setCoachSeedOutput(`${pattern.replace('_', ' ')} sessions added.`);
     } catch (error) {
-      console.warn('Failed to seed coach sessions:', error);
+      warn('Failed to seed coach sessions:', error);
       setCoachSeedOutput('Unable to seed coach sessions. Try again in a moment.');
     }
   };
@@ -521,7 +522,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       await clearSeededCoachSessions();
       setCoachSeedOutput('Seeded sessions cleared.');
     } catch (error) {
-      console.warn('Failed to clear seeded coach sessions:', error);
+      warn('Failed to clear seeded coach sessions:', error);
       setCoachSeedOutput('Unable to clear seeded sessions. Try again in a moment.');
     }
   };
@@ -532,7 +533,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     try {
       await setAppState(TEST_TIER_OVERRIDE_KEY, tier);
     } catch (error) {
-      console.warn('Failed to save test tier override:', error);
+      warn('Failed to save test tier override:', error);
     }
   };
 
@@ -936,9 +937,6 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                     <View style={styles.row}>
                       <View style={styles.rowTextWrap}>
                         <Text style={styles.rowTitle}>Current tier</Text>
-                        <Text style={styles.rowDetail}>
-                          RevenueCat entitlement check pending.
-                        </Text>
                       </View>
                       <Text
                         style={[

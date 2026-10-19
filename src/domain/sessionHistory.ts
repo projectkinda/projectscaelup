@@ -1,3 +1,4 @@
+import { warn } from './releaseLog';
 import { ensureSchema, getDatabase } from '../data/database';
 import { LockdownModule } from './lockdownModule';
 import {
@@ -170,7 +171,7 @@ export async function getSessionCount(): Promise<number> {
 
     return repairedCount;
   } catch (err) {
-    console.warn('Could not getSessionCount from SQLite:', err);
+    warn('Could not getSessionCount from SQLite:', err);
     return 0;
   }
 }
@@ -190,7 +191,7 @@ export async function getShowingUpDayCount(): Promise<number> {
 
     return result?.count ?? 0;
   } catch (err) {
-    console.warn('Could not getShowingUpDayCount from SQLite:', err);
+    warn('Could not getShowingUpDayCount from SQLite:', err);
     return 0;
   }
 }
@@ -221,7 +222,7 @@ export async function startSession({
 
     return result.lastInsertRowId;
   } catch (err) {
-    console.warn('Could not record startSession in SQLite:', err);
+    warn('Could not record startSession in SQLite:', err);
     return Date.now();
   }
 }
@@ -242,7 +243,7 @@ export async function recordSessionPauseStart(
     );
     return result.lastInsertRowId;
   } catch (err) {
-    console.warn('Could not record session pause in SQLite:', err);
+    warn('Could not record session pause in SQLite:', err);
     return null;
   }
 }
@@ -268,7 +269,7 @@ export async function recordSessionPauseResume(
       ],
     );
   } catch (err) {
-    console.warn('Could not record session resume in SQLite:', err);
+    warn('Could not record session resume in SQLite:', err);
   }
 }
 
@@ -440,7 +441,7 @@ export async function voidSession(
       ],
     );
   } catch (err) {
-    console.warn('Could not voidSession in SQLite:', err);
+    warn('Could not voidSession in SQLite:', err);
   }
 }
 
@@ -513,7 +514,7 @@ export async function completeSession(
       try {
         await LockdownModule.applyLockdown(touchedApps, expiresAt);
       } catch (error) {
-        console.warn('Could not apply native lockdown:', error);
+        warn('Could not apply native lockdown:', error);
       }
     }
     const completedAt = new Date();
@@ -591,7 +592,7 @@ export async function completeSession(
       touchedApps,
     };
   } catch (err) {
-    console.warn('Could not completeSession in SQLite:', err);
+    warn('Could not completeSession in SQLite:', err);
     return {
       sessionId,
       distractionCount: 0,

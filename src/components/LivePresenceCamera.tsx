@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
 
@@ -25,7 +26,7 @@ export function LivePresenceCamera({ active, analysisIntervalMs, onCameraReady, 
       analysisIntervalMs={analysisIntervalMs}
       onCameraReady={onCameraReady}
       onPresence={event => PresenceModule.reportLiveReading(event.nativeEvent)}
-      onCameraUnavailable={event => console.warn('Presence camera unavailable:', event.nativeEvent.reason)}
+      onCameraUnavailable={event => warn('Presence camera unavailable:', event.nativeEvent.reason)}
       style={style}
     />
   );

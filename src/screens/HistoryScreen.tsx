@@ -1,3 +1,4 @@
+import { warn } from '../domain/releaseLog';
 import { usePaywall } from '../components/PaywallProvider';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
@@ -542,7 +543,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
           setFocusCoach(coach);
         }
       } catch (error) {
-        console.warn('Failed to load focus coach:', error);
+        warn('Failed to load focus coach:', error);
         if (!cancelled) {
           setFocusCoach(null);
         }
