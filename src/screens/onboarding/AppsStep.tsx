@@ -1,9 +1,12 @@
+import { usePickerBack } from '../../components/usePickerBack';
 import { warn } from '../../domain/releaseLog';
 import { typography } from '../../theme/typography';
 import { Text } from '../../components/AppText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
   Alert,
   StyleSheet,
   View,
@@ -22,7 +25,7 @@ import {
   saveFlaggedApp,
 } from '../../data/settingsRepository';
 import { getInstalledApps, type InstalledApp } from '../../domain/appPicker';
-import { isPaidUser } from '../../domain/paywall';
+import { isPaidUser, toggleAllFlaggedApps } from '../../domain/paywall';
 import { colors, layout } from '../../theme/tokens';
 import { BackButton } from './DoneStep';
 import { PrimaryBar } from './WelcomeStep';
@@ -35,6 +38,7 @@ const DEFAULT_APP_IDS = [
 
 type AppsStepProps = {
   selectedIds: string[];
+  selectionInitialized?: boolean;
   onSelectedIdsChange: (ids: string[]) => void;
   onBack: () => void;
   onContinue: () => void;
@@ -42,6 +46,7 @@ type AppsStepProps = {
 
 export function AppsStep({
   selectedIds,
+  selectionInitialized = selectedIds.length > 0,
   onSelectedIdsChange,
   onBack,
   onContinue,
@@ -50,6 +55,7 @@ export function AppsStep({
   const [apps, setApps] = useState<InstalledApp[]>([]);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [query, setQuery] = useState('');
+  const { back, keyboardVisible } = usePickerBack(query, () => setQuery(''), onBack);
   const [hint, setHint] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -87,7 +93,7 @@ export function AppsStep({
         if (!didInitializeSelectionRef.current) {
           didInitializeSelectionRef.current = true;
           onSelectedIdsChange(
-            selectedIds.length > 0
+            selectionInitialized || selectedIds.length > 0
               ? selectedIds
               : currentSavedIds.length > 0
                 ? currentSavedIds
@@ -173,22 +179,23 @@ export function AppsStep({
   };
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.screen}>
       <View
         style={[
           styles.content,
           {
-            paddingTop: insets.top + 26,
-            paddingBottom: insets.bottom + 112,
+            paddingTop: insets.top + 16,
           },
         ]}
       >
-        <BackButton onPress={onBack} />
-        <Text style={styles.title}>Pick up to 3 apps</Text>
-        <Text style={styles.subtitle}>
+        <View style={styles.header}>
+          <BackButton onPress={back} />
+          <Text style={[styles.title, keyboardVisible && styles.compactTitle]}>{paidUser ? 'Pick your apps' : `Pick up to ${FREE_TIER_APP_CAP} apps`}</Text>
+        </View>
+        {!keyboardVisible ? <Text style={styles.subtitle}>
           The ones that pull you away most. You can change this any time in
           Settings.
-        </Text>
+        </Text> : null}
 
         {hint ? (
           <Text accessibilityLiveRegion="polite" style={styles.hint}>
@@ -206,6 +213,7 @@ export function AppsStep({
               apps={orderedApps}
               selectedIds={selectedIds}
               onToggle={toggleApp}
+              onToggleAllVisible={visible => onSelectedIdsChange(toggleAllFlaggedApps(selectedIds, visible.map(app => app.packageName), maxSelectable ?? Infinity))}
               maxSelectable={maxSelectable}
               preCheckedIds={preCheckedIds}
               query={query}
@@ -215,13 +223,16 @@ export function AppsStep({
           )}
         </View>
       </View>
-      <PrimaryBar
-        label={isSaving ? 'Saving...' : 'Continue'}
-        disabled={selectedIds.length === 0 || isSaving || isLoading}
-        onPress={continueWithSelection}
-        bottomInset={insets.bottom}
-      />
-    </View>
+      <View style={styles.footer}>
+        {!paidUser ? <Text style={styles.counter}>{selectedIds.length} of {FREE_TIER_APP_CAP} free apps</Text> : null}
+        <PrimaryBar inline
+          label={isSaving ? 'Saving...' : 'Continue'}
+          disabled={selectedIds.length === 0 || isSaving || isLoading}
+          onPress={continueWithSelection}
+          bottomInset={keyboardVisible ? 0 : insets.bottom}
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -234,17 +245,22 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    minHeight: 0,
     width: '100%',
     maxWidth: layout.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: layout.horizontalPadding,
   },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  footer: { flexShrink: 0 },
+  counter: { ...typography.label, color: colors.muted, paddingHorizontal: layout.horizontalPadding, marginTop: 8 },
   title: {
-    marginTop: 42,
+    flex: 1,
     color: colors.ink,
     ...typography.title,
     fontWeight: '800',
   },
+  compactTitle: { ...typography.heading },
   subtitle: {
     marginTop: 10,
     color: colors.muted,

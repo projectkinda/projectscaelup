@@ -109,6 +109,20 @@ export function startUsageMonitor(
     }, 1000);
   };
 
+  // Settings removal updates the native list through the same shared wrapper.
+  // Remove active-session entries too, without counting a final touch after deletion.
+  const unsubscribeFlaggedPackages = UsageTrackingModule.onFlaggedPackagesChanged(packages => {
+    const allowed = new Set(packages);
+    for (const appIdentifier of Object.keys(usageByApp)) {
+      if (allowed.has(appIdentifier)) continue;
+      delete usageByApp[appIdentifier];
+      if (currentForegroundApp === appIdentifier) {
+        stopThresholdLoop();
+        currentForegroundApp = null;
+      }
+    }
+  });
+
   const unsubscribe = UsageTrackingModule.onAppUsageTick(({ appIdentifier }) => {
     if (
       appIdentifier === currentForegroundApp ||
@@ -130,6 +144,7 @@ export function startUsageMonitor(
   });
 
   return () => {
+    unsubscribeFlaggedPackages();
     leaveCurrentApp();
     unsubscribe();
   };

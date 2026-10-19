@@ -1,3 +1,4 @@
+import { lockedTeaserCopy } from '../src/domain/focusCoachCopy';
 import { transpileModule, ModuleKind } from 'typescript';
 import {
   evaluateFocusCoach,
@@ -12,7 +13,6 @@ import { formatApproxDuration } from '../src/domain/durationFormat';
 import { selectCoachCardSections } from '../src/domain/focusCoachCardSections';
 import {
   HEADLINE_VARIANTS,
-  lockedTeaserCopy,
   safeCopyLine,
   selectHistoryHeadlineCopy,
   selectCoachVariantIndex,
@@ -67,6 +67,27 @@ function assert(condition: unknown, message: string) {
     throw new Error(message);
   }
 }
+
+
+test('coach copy runtime imports contain no require cycles', () => {
+  const { readFileSync, existsSync } = require('node:fs');
+  const { resolve, dirname } = require('node:path');
+  const visiting = new Set<string>(), visited = new Set<string>();
+  function walk(file: string) {
+    assert(!visiting.has(file), 'Runtime require cycle: ' + [...visiting, file].join(' -> '));
+    if (visited.has(file)) return;
+    visiting.add(file);
+    const compiled = transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText;
+    for (const match of compiled.matchAll(/require\(["'](\.[^"']+)["']\)/g)) {
+      const target = resolve(dirname(file), match[1]);
+      const dependency = [target + '.ts', target + '.tsx', resolve(target, 'index.ts')].find(path => existsSync(path));
+      if (dependency) walk(dependency);
+    }
+    visiting.delete(file); visited.add(file);
+  }
+  walk(resolve('src/domain/focusCoachCopy.ts'));
+  walk(resolve('src/domain/focusCoachCopyRules.ts'));
+});
 
 function assertSuggestionShape(value: number | null) {
   assert(value !== null, 'suggestion should exist');

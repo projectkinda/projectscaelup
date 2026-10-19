@@ -6,9 +6,8 @@ import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import type { CoachNote, PendingNote, FocusCoachResult } from '../domain/focusCoach';
 import { MIN_FOCUS_SECONDS } from '../domain/focusCoach';
 import { selectCoachCardSections } from '../domain/focusCoachCardSections';
-import { lockedTeaserCopy } from '../domain/focusCoachCopyRules';
 import {
-  COMING_UP_COPY, pendingProgressCopy, pendingAccessibilityCopy, weeklyTestTitle, experimentDayCopy,
+  lockedTeaserCopy, COMING_UP_COPY, pendingProgressCopy, pendingAccessibilityCopy, weeklyTestTitle, experimentDayCopy,
   COACH_COPY, MORE_PATTERNS_COPY, WEEKDAY_INITIALS, barsVisualCopy, coachFootnote,
   dotsVisualCopy, evidenceLabel, percentValueCopy, progressVisualCopy, remainingSessionsCopy, slipVisualCopy, weeklyTestCopy, weekVisualCopy,
 } from '../domain/focusCoachCopy';

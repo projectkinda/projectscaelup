@@ -127,7 +127,7 @@ export function AppRuleEditorModal({ rule, apps, initialKind, appsError, appsLoa
           </View>
         </RuleModalShell> : null}
     {picker ? <AppPickerModal visible variant="rule" loadError={appsError} isLoading={appsLoading} onRetry={() => { void onReloadApps?.(); }} apps={apps} isSaving={false} query={query} remainingSlots={20}
-      selectedAppIdentifiers={pickerSelection} onCancel={() => setPicker(false)} onChangeQuery={setQuery}
+      selectedAppIdentifiers={pickerSelection} onCancel={() => { setPicker(false); setPickerSelection([]); setQuery(''); }} onChangeQuery={setQuery}
       onSave={() => { patch({ apps: pickerSelection }); setPicker(false); }}
       onToggleApp={app => setPickerSelection(current => current.includes(app.packageName) ? current.filter(pkg => pkg !== app.packageName) : current.length < 20 ? [...current, app.packageName] : current)}
       onToggleAllVisible={visible => setPickerSelection(current => visible.every(app => current.includes(app.packageName))

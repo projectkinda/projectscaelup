@@ -1,3 +1,4 @@
+import { usePickerBack } from '../../components/usePickerBack';
 import { warn } from '../../domain/releaseLog';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
@@ -73,6 +74,8 @@ export function OnboardingFlow({
     initialStatus ?? null,
   );
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
+  const [selectionInitialized, setSelectionInitialized] = useState(false);
+  const updateSelectedAppIds = useCallback((ids: string[]) => { setSelectedAppIds(ids); setSelectionInitialized(true); }, []);
   const [selectedAppNames, setSelectedAppNames] = useState<string[]>([]);
   const [isRestoringStep, setIsRestoringStep] = useState(mode === 'onboarding');
 
@@ -133,6 +136,7 @@ export function OnboardingFlow({
 
       setStatus(permissionStatus);
       setSelectedAppIds(flaggedApps.map(app => app.appIdentifier));
+      setSelectionInitialized(flaggedApps.length > 0);
       setSelectedAppNames(flaggedApps.map(app => app.displayName));
 
       let nextStep: OnboardingStep = isOnboardingStep(savedStepValue)
@@ -176,6 +180,11 @@ export function OnboardingFlow({
     const previousStep = steps[stepIndex(currentStep) - 1];
     void moveToStep(previousStep);
   };
+
+  usePickerBack('', () => {}, () => {
+    if (permissionStep) { setPermissionStep(null); void refreshStatus(); }
+    else goBack();
+  }, !(mode === 'onboarding' && currentStep === 'apps' && Platform.OS === 'android'));
 
   const selectedAppNamesForPermission = useMemo(
     () => selectedAppNames.filter(Boolean),
@@ -222,7 +231,8 @@ export function OnboardingFlow({
     return (
       <AppsStep
         selectedIds={selectedAppIds}
-        onSelectedIdsChange={setSelectedAppIds}
+        selectionInitialized={selectionInitialized}
+        onSelectedIdsChange={updateSelectedAppIds}
         onBack={goBack}
         onContinue={() => {
           void (async () => {

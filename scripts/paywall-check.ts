@@ -1,3 +1,5 @@
+import { runInNewContext } from 'node:vm';
+import { transpileModule, ModuleKind } from 'typescript';
 ﻿/// <reference types="node" />
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -45,3 +47,14 @@ for (const [file, feature] of [['src/screens/SettingsScreen.tsx', 'apps'], ['src
   assert(readFileSync(file, 'utf8').includes("paywall.show('" + feature + "')"), file + ': ' + feature);
 }
 console.log('PASS canonical feature values/order/platforms/copy, gate references, five callers, one host and no obsolete route/screen/surface');
+
+const purchase = { exports: {} as any }; const calls: unknown[][] = [];
+runInNewContext(transpileModule(readFileSync('src/domain/purchases.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, {
+  exports: purchase.exports, require: () => ({ Alert: { alert: (...args: unknown[]) => calls.push(args) } }),
+});
+purchase.exports.beginProPurchase();
+assert.equal(calls[0][0], "Pro isn't available yet");
+assert.equal(calls[0][1], "Purchases open soon. We'll let you know when Pro launches.");
+assert.equal((calls[0][2] as any[])[0].text, 'OK');
+assert.deepEqual(sources.filter(({code}) => /onPress=\{beginProPurchase\}/.test(code)).map(({file}) => file.replaceAll('\\', '/')), ['src/components/PaywallScreen.tsx']);
+console.log('PASS single purchase entry point uses the launch alert');

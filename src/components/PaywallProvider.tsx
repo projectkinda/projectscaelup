@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaywallFeature } from '../domain/paywall';
 import { PaywallScreen } from './PaywallScreen';
 
-type Paywall = { show: (feature: PaywallFeature) => void };
+type Paywall = { isVisible: boolean; show: (feature: PaywallFeature) => void };
 const PaywallContext = createContext<Paywall | null>(null);
 
 /** One overlay above the mounted tabs; showing it never changes navigation. */
@@ -11,7 +11,7 @@ export function PaywallProvider({ children }: { children: ReactNode }) {
   const [feature, setFeature] = useState<PaywallFeature | null>(null);
   const insets = useSafeAreaInsets();
   const show = useCallback((next: PaywallFeature) => setFeature(next), []);
-  const value = useMemo(() => ({ show }), [show]);
+  const value = useMemo(() => ({ show, isVisible: feature !== null }), [show, feature]);
   return <PaywallContext.Provider value={value}>
     {children}
     {feature !== null ? <PaywallScreen feature={feature} topInset={insets.top} bottomInset={insets.bottom} onClose={() => setFeature(null)}/> : null}

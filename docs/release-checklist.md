@@ -1,45 +1,19 @@
 # Android release checklist
 
-Android-only preparation, checked 2026-10-19. Read [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) before changing the build. iOS bypass/onboarding flags were left unchanged.
+There is one release configuration: test tools are always off. Read [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) before changing the build. iOS bypass/flags, RevenueCat and restore/manage-subscription behavior are unchanged.
 
-## Build configurations
+Testing with tools uses the debug build: run `npx expo run:android --variant debug` from the repository root.
 
-From the repository root in PowerShell, with Java/Android SDK configured:
+## Store AAB: Harsha supplies signing credentials
 
-```powershell
-$env:NODE_ENV = 'production'
-Remove-Item Env:EXPO_PUBLIC_TEST_TOOLS -ErrorAction SilentlyContinue
-cd android
-.\gradlew.bat :app:assembleRelease
-```
-
-This is the store **configuration**, not necessarily a store-signed artifact. With no signing credentials, assembleRelease prints `NOT STORE-UPLOADABLE` and uses the existing debug key. With all four credentials it uses release signing. APK: `android/app/build/outputs/apk/release/app-release.apk`.
-
-For a test APK, explicitly opt in before running the same command:
-
-```powershell
-$env:EXPO_PUBLIC_TEST_TOOLS = '1'
-.\gradlew.bat :app:assembleRelease
-```
-
-Remove that variable before a store build. Do not set it to 1 in shared `.env` files. Public Expo variables are plaintext build configuration, never secrets. Expo's [environment variable documentation](https://docs.expo.dev/guides/environment-variables/) describes inlining. Both actual Gradle release bundling runs verified it here; no source-constant fallback was needed.
-
-`scripts/verify-release-bundle.cjs` inspects the actual Metro JS before Hermes compiles it. It fails bundling if the resolved flag disagrees with the initial shell value, including a conflicting dotenv value. It also requires forcePaidUser/resetOnboarding/iosOnboardingPreview to remain false. Proof: `android/app/build/release-proof/test-tools.json`. Gradle tracks the switch as a bundle input so changing it invalidates the cached bundle. Both the app and live-timer native BuildConfig receive the same shell switch.
-
-All test surfaces/actions use DEV_FLAGS.tierSwitcher, independently of debug/release: tier overrides, coach seeding/sample controls, app-rules fixtures, picker diagnostics, notification style toggle, and paywall disabled purchase block. Tools-on release JS retains the loud RELEASE WARNING. Tools-off startup removes the exact `test_tier_override` app_state key and clears the in-memory override. Native tools-off notification posting ignores both leftover style_override and session_style preferences and selects custom (with the existing standard-row fallback if custom rendering fails).
-
-## Signing: Harsha runs these steps
-
-No new keystore was created. No signing password or private key was added to the repository. Existing `android/app/debug.keystore` remains for local builds only.
-
-1. Create a private directory outside the repository and generate an upload key yourself, keeping the prompted passwords in a password manager:
+No new keystore was created. The existing `android/app/debug.keystore` is for local testing only. Harsha runs these commands himself, outside the repository, and stores the prompted passwords securely:
 
 ```powershell
 New-Item -ItemType Directory -Force "$env:USERPROFILE\.android-keys"
 keytool -genkeypair -v -keystore "$env:USERPROFILE\.android-keys\project-scaleup-upload.jks" -alias project-scaleup-upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-2. Put these values in your user `~/.gradle/gradle.properties` (or inject the same four environment variables in the build environment). Gradle properties take precedence. Use an absolute path, preferably forward slashes on Windows:
+Put these four values in user `~/.gradle/gradle.properties` or inject the same environment variables. Gradle properties take precedence. Use an absolute keystore path, preferably forward slashes on Windows:
 
 ```properties
 RELEASE_STORE_FILE=C:/Users/<user>/.android-keys/project-scaleup-upload.jks
@@ -48,30 +22,49 @@ RELEASE_KEY_ALIAS=project-scaleup-upload
 RELEASE_KEY_PASSWORD=<private key password>
 ```
 
-3. Unset EXPO_PUBLIC_TEST_TOOLS, run `:app:bundleRelease`, verify the upload certificate, and upload `android/app/build/outputs/bundle/release/app-release.aab` to Play's internal testing track. Missing any credential fails bundleRelease before app packaging with the missing variable names. Invalid credentials/files fail normal Gradle signing validation.
-4. Enroll in Play App Signing when setting up the app. The upload key authenticates uploads; Google manages the distribution signing key. Back up the upload key/passwords outside Git and restrict access. See [Android app signing](https://developer.android.com/studio/publish/app-signing).
-5. Complete the declarations below and test the Play-delivered build before production rollout. Never upload the test-tools build or a debug-signed APK.
+With Java/Android SDK configured, from the repository root:
 
-`*.jks`, `*.keystore` except the existing debug key, `local.properties`, `*.local.properties`, `local-*.properties`, key.properties, keystore.properties and signing.properties are ignored. Verified with git check-ignore; the debug keystore is the only tracked signing/local-properties file. Do not place secrets in other repository Gradle properties files.
+```powershell
+$env:NODE_ENV = 'production'
+cd android
+.\gradlew.bat :app:bundleRelease
+```
 
-Native versionCode remains **1**, versionName **1.0.0**, matching app.json's **1.0.0** (Expo's implicit Android versionCode is 1; app.json has no explicit android.versionCode). **Increase versionCode on every Play upload** and keep Expo/native versions aligned. R8/minify remains off; no size optimization was enabled.
+Output: `android/app/build/outputs/bundle/release/app-release.aab`. Missing any signing credential fails bundleRelease clearly before packaging; invalid credentials/files fail normal signing validation. Verify the upload certificate before uploading to Play internal testing. Enroll in Play App Signing: your upload key authenticates uploads, while Google manages the distribution signing key. Back up your key/passwords outside Git and restrict access. See [Android app signing](https://developer.android.com/studio/publish/app-signing).
 
-## Build results and local artifacts
+Keystores (except the existing debug key) and local/signing properties files are gitignored. Never put credentials in repository Gradle properties files. versionCode remains **1**, versionName **1.0.0**, matching app.json version **1.0.0** (its Android versionCode is implicitly 1). **Increase versionCode for every Play upload.** R8/minify remains off.
 
-Both universal release APKs include all four configured ABIs and passed apksigner verification:
+## Local release APK
 
-| Configuration | APK size | Compiled JS/native test flag | Signing |
-| --- | ---: | --- | --- |
-| Environment unset | 181,723,152 bytes (173.30 MiB) | false / false | Existing Android Debug certificate |
-| EXPO_PUBLIC_TEST_TOOLS=1 | 181,723,156 bytes (173.30 MiB) | true / true | Existing Android Debug certificate |
+From the repository root, with Java/Android SDK configured:
 
-Preserved, ignored local files: `.artifacts/release-builds/store-config.apk`, `test-tools.apk`, matching `*.flags.json` and native `*.BuildConfig.java` records, plus the store merged manifest. Build logs are `.artifacts/release-store.log` and `.artifacts/release-test-tools.log`. Standard Gradle output currently contains the last build (test tools ON); choose the explicitly named preserved APK for testing.
+```powershell
+$env:NODE_ENV = 'production'
+cd android
+.\gradlew.bat :app:assembleRelease
+```
 
-AAB size: **not available**. The attempted bundleRelease failed as required because all four signing credentials were absent; no AAB was produced by this work. Both APKs are **NOT STORE-UPLOADABLE**. No screenshots were committed.
+The only APK destination is `android/app/build/outputs/apk/release/app-release.apk`; each build replaces it. Do not copy APKs into extra artifact folders. All four signing credentials select the release key; otherwise assembleRelease uses the existing debug key and prints a loud **NOT STORE-UPLOADABLE** warning. Debug signing never enables test tools in a release APK.
+
+## Flag safety and debug workflow
+
+`DEV_FLAGS.tierSwitcher = typeof __DEV__ !== 'undefined' && __DEV__`. forcePaidUser, resetOnboarding and iosOnboardingPreview remain false constants. All existing test surfaces/actions gate on DEV_FLAGS.tierSwitcher. Release startup removes the exact `test_tier_override` app_state key and clears its in-memory value.
+
+The normal debug variant is debuggable and the React Native Gradle plugin skips embedded JS bundling for it. Expo's debug workflow starts Metro and requests development JS, where __DEV__ is true; tools render there. `assembleDebug` alone builds the native debug APK and needs Metro to run this app. No embedded debug variant is configured. A manually embedded production JS bundle would have __DEV__ false and would hide tools even in a debug APK; this is not worked around.
+
+The live-timer library generates TEST_TOOLS_ENABLED=true for debug and false for release. The release notification ignores both leftover style_override and session_style, uses custom by default, and retains the standard-row fallback when custom rendering fails. Both generated variant BuildConfig files were checked.
+
+`scripts/verify-release-bundle.cjs` inspects the exact Metro release JS before Hermes compilation and fails the build unless all four DEV_FLAGS resolve to false. It rejects unresolved expressions and any true flag. Proof: `android/app/build/release-proof/release-flags.json`, including resolved flags and Metro JS SHA-256. Expected pass line:
+
+```text
+PASS verify-release-bundle: all DEV_FLAGS are false (test tools OFF)
+```
+
+The obsolete environment switch is no longer read by app/build code. A separate real Metro release bundling regression check confirmed an old shell setting cannot enable tools; the final APK is built once after clean. No release-with-tools path exists.
 
 ## Merged release permission audit
 
-Evidence: `android/app/build/outputs/logs/manifest-merger-release-report.txt` and the preserved store merged manifest. Final manifest has exactly these 12 uses-permission entries; names below omit android.permission except the app-specific signature permission.
+Evidence: `android/app/build/outputs/logs/manifest-merger-release-report.txt` and `android/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml`. Final manifest has exactly these 12 uses-permission entries; names below omit android.permission except the app-specific signature permission.
 
 | Permission | Manifest contributor(s) | App use / retention reason | Play / user action |
 | --- | --- | --- | --- |
@@ -98,29 +91,33 @@ Retained FOREGROUND_SERVICE_SPECIAL_USE because the app actually starts that ser
 
 allowBackup remains **true**. There are no custom fullBackupContent/dataExtractionRules exclusions in the app manifest. Subject to Android backup/transfer rules, private databases, ordinary files and preferences can include session/history/usage records, custom modes, flagged-app selections, app_state/settings, AsyncStorage values and native rule/timer preferences. Cache/code-cache/no-backup directories are excluded by Android defaults; cached camera frames should not be ordinary backup data. This pass did not change backup policy. See [Android Auto Backup](https://developer.android.com/identity/data/autobackup).
 
-App.tsx + src JS/TS audit: **74 console calls before**, now **4 direct console sites** and **72 warnings routed through releaseLog.warn**. The four sites are the logger's two branches, the tools-on release warning, and a static coach-copy validation warning. Tools-off warnings retain a static diagnostic message and omit error/native/SQL payloads, paths, session records, usage, package names and user text. Tools-on builds retain detail arguments for debugging. Dependency/native error logging was not globally stripped; harmless error context remains. `scripts/release-logging-check.ts` checks source call sites and executes both logger modes.
+App.tsx + src JS/TS audit: **74 console calls before**, now **3 direct console sites** and **72 warnings routed through releaseLog.warn**. The three sites are the logger's two branches and a static coach-copy validation warning. Tools-off warnings retain a static diagnostic message and omit error/native/SQL payloads, paths, session records, usage, package names and user text. Development JS retains detail arguments for debugging. Dependency/native error logging was not globally stripped; harmless error context remains. `scripts/release-logging-check.ts` checks source call sites and executes both logger modes.
 
-## Remaining user-visible integration gaps (unchanged by request)
+## Remaining user-visible integration gaps
 
 | File | Current release behavior with tools off |
 | --- | --- |
 | src/screens/SettingsScreen.tsx, handleRestore | Restore Purchases displays: "RevenueCat is not connected yet. This button is ready for the restore call when billing is added." No restore or entitlement API is called. |
 | src/screens/SettingsScreen.tsx, openSubscriptionManagement | Opens the generic https://play.google.com/store/account/subscriptions page on Android using Linking. No account/package-specific billing integration. |
-| src/components/PaywallScreen.tsx | Upgrade to Pro / Purchases coming soon block is absent when tools are off; Not now and close remain. No working purchase flow. |
+| src/components/PaywallScreen.tsx / src/domain/purchases.ts | Upgrade to Pro is always visible and opens the launch-information Alert through beginProPurchase. Purchases coming soon is dev-only. No working purchase flow yet. |
 | src/domain/paywall.ts, isPaidUser | Real entitlement check is still a stub returning false. With tools off and forcePaidUser=false, users resolve to free. This preparation does not make subscriptions functional. |
 
 Removed only "RevenueCat entitlement check pending." from Current tier. Source TODOs about iOS app rules are comments, not rendered text; iOS is out of scope. Coach pending/progress/Coming up copy represents real progress gates, not unfinished integrations. Ordinary TextInput placeholders are intentional form guidance. No other unfinished TODO/TEMP/stub/coming-soon UI was found with tools off.
 
+- [ ] replace beginProPurchase stub; Restore/Manage placeholders
+
 ## Verification and remaining device work
 
-Passed: tsc --noEmit; scripts/test-tools-check.ts (actual Settings/paywall rendered trees for flag off/on in debug/release, exact stored override removal, fixture guards and native style guards); scripts/release-logging-check.ts; custom-modes-check.ts; mode-durations-check.ts; app-rules-check.ts; coach-check.ts; history-check.ts; live-timer-check.ts. Actual release Metro proof records and generated native BuildConfig values agree for both APKs. Missing-credentials bundleRelease fails clearly. Keystore ignore rules and debug signatures verified.
+Passed: tsc --noEmit and every scripts/*check.ts script. Tests cover actual Settings/paywall rendered trees for development/release flags, ignored obsolete environment settings, exact stored override removal, fixture guards, native style guards and all-false bundle validation. Both generated live-timer BuildConfig variants were inspected. App and live-timer Gradle clean removed old outputs and the previous extra APK copies/logs were deleted. Final build evidence and size are reported with the standard output path only.
 
-No Android device/emulator was connected (`adb devices` empty). Render tests use mocked React Native/bridges; they do not establish on-device behavior. Before uploading:
+No Android device/emulator was connected. Render tests mock React Native/bridges and do not prove hardware behavior. Before uploading:
 
-- [ ] Install the store-config APK over a tools-on installation: confirm every test surface is absent, saved paid test override is cleared, and stale style_override/session_style cannot change the custom notification row.
-- [ ] Install the test-tools APK: confirm all tools still appear and work; capture RELEASE WARNING in logs.
-- [ ] Test presence camera, private file/cache cleanup, local completion chime and haptics after removal of storage/media-FGS permissions on supported Android versions.
+- [ ] Install the release APK over a prior test installation: confirm every test surface is absent, the saved paid override is cleared, and stale notification preferences cannot change the custom row.
+- [ ] Run the debug app with Metro development JS: confirm all testing tools appear and work.
+- [ ] Test presence camera, private file/cache cleanup, local completion chime and haptics on supported Android versions.
 - [ ] Test notification allow/deny (max two prompts), shade countdown, tap, pause/resume/overrun, early/normal end, extension, process kill, orphan cleanup, reboot and silent channel on API 33+. Check normal fallback and secret lock-screen visibility; check Android 16 / Samsung One UI 8 Live Update behavior where supported. Follow [android-live-timer.md](android-live-timer.md).
-- [ ] Test app-rule schedules/daily limits and overlay allow/deny/revoke/regrant on Pixel and Samsung; follow [app-rules.md](app-rules.md). Verify the specialUse service stays healthy under background/OEM restrictions.
-- [ ] Review backup/restore on the intended devices and complete privacy policy/Data safety from observed SDK behavior.
-- [ ] Supply the real upload credentials, build and verify the signed AAB, complete Play declarations, then test Play-delivered splits. Actual release-key signing, AAB size, Play review and purchase/restore flows remain unverified/unimplemented as described above.
+- [ ] Test app-rule schedules/daily limits and overlay allow/deny/revoke/regrant on Pixel and Samsung; follow [app-rules.md](app-rules.md). Verify specialUse service background/OEM behavior.
+- [ ] Review backup/restore and complete privacy policy/Data safety based on observed SDK behavior.
+- [ ] Supply real upload credentials, build/verify the signed AAB, complete Accessibility API and specialUse FGS declarations, then test Play-delivered splits. Actual release-key signing, AAB size and Play approval remain unverified. Existing purchase/restore integration gaps remain unchanged.
+
+No screenshots, APKs, keystores or build outputs are committed.

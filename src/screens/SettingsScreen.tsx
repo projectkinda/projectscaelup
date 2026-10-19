@@ -177,6 +177,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const [flaggedApps, setFlaggedApps] = useState<FlaggedApp[]>([]);
+  const [isEditingFlaggedApps, setIsEditingFlaggedApps] = useState(false);
   const [customModes, setCustomModes] = useState<CustomMode[]>([]);
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -319,6 +320,12 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     }
   }, [isActive, load]);
 
+  useEffect(() => {
+    if (!isActive || flaggedApps.length === 0 || isAppPickerVisible) {
+      setIsEditingFlaggedApps(false);
+    }
+  }, [isActive, flaggedApps.length, isAppPickerVisible]);
+
   const removeApp = async (app: FlaggedApp) => {
     await removeFlaggedApp(app.appIdentifier);
     setFlaggedApps(current =>
@@ -393,6 +400,7 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     try {
       setAppPickerQuery('');
       setSelectedAppIdentifiers([]);
+      setIsEditingFlaggedApps(false);
       setIsAppPickerVisible(true);
       setInstalledApps(await getInstalledApps());
     } catch (error) {
@@ -569,7 +577,20 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
           ) : (
             <>
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Flagged apps</Text>
+                <View style={styles.flaggedAppsHeader}>
+                  <Text style={styles.sectionLabel}>Flagged apps</Text>
+                  {isAppPickerSupported && flaggedApps.length > 0 ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={isEditingFlaggedApps ? 'Done editing flagged apps' : 'Edit flagged apps'}
+                      hitSlop={12}
+                      onPress={() => setIsEditingFlaggedApps(current => !current)}
+                      style={styles.editAppsButton}
+                    >
+                      <Text style={styles.editAppsText}>{isEditingFlaggedApps ? 'Done' : 'Edit'}</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
                 <View style={styles.panelShell}>
                   <LinearGradient
                     colors={['#333333', '#141414']}
@@ -591,31 +612,45 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                           contentContainerStyle={styles.flaggedAppStrip}
                         >
                           {flaggedApps.map(app => (
-                            <Pressable
-                              key={app.appIdentifier}
-                              accessibilityRole="button"
-                              accessibilityLabel={`${app.displayName}. Long press to remove.`}
-                              onLongPress={() => removeApp(app)}
-                              style={({ pressed }) => [
-                                styles.appIconButton,
-                                pressed && styles.pressed,
-                              ]}
-                            >
-                              {app.iconBase64 ? (
-                                <Image
-                                  source={{
-                                    uri: `data:image/png;base64,${app.iconBase64}`,
-                                  }}
-                                  style={styles.appIconImage}
-                                />
-                              ) : (
-                                <View style={styles.appIconFallback}>
-                                  <Text style={styles.appIconText}>
-                                    {appInitial(app.displayName)}
-                                  </Text>
-                                </View>
-                              )}
-                            </Pressable>
+                            <View key={app.appIdentifier} style={styles.appIconWrap}>
+                              <Pressable
+                                accessibilityRole="button"
+                                accessible={!isEditingFlaggedApps}
+                                disabled={isEditingFlaggedApps}
+                                accessibilityLabel={`${app.displayName}. Long press to remove.`}
+                                onLongPress={isEditingFlaggedApps ? undefined : () => removeApp(app)}
+                                style={({ pressed }) => [
+                                  styles.appIconButton,
+                                  pressed && styles.pressed,
+                                ]}
+                              >
+                                {app.iconBase64 ? (
+                                  <Image
+                                    source={{
+                                      uri: `data:image/png;base64,${app.iconBase64}`,
+                                    }}
+                                    style={styles.appIconImage}
+                                  />
+                                ) : (
+                                  <View style={styles.appIconFallback}>
+                                    <Text style={styles.appIconText}>
+                                      {appInitial(app.displayName)}
+                                    </Text>
+                                  </View>
+                                )}
+                              </Pressable>
+                              {isEditingFlaggedApps ? (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Remove ${app.displayName}`}
+                                  hitSlop={8}
+                                  onPress={() => removeApp(app)}
+                                  style={({ pressed }) => [styles.removeAppBadge, pressed && styles.pressed]}
+                                >
+                                  <View style={styles.removeAppMinus} />
+                                </Pressable>
+                              ) : null}
+                            </View>
                           ))}
                           <Pressable
                             accessibilityRole="button"
@@ -1029,6 +1064,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   section: { marginTop: 28 },
+  flaggedAppsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  editAppsButton: { minHeight: 44, justifyContent: 'center' },
+  editAppsText: { ...typography.label, color: colors.ink },
   sectionLabel: {
     color: colors.ink,
     ...typography.body,
@@ -1070,6 +1112,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  appIconWrap: { width: 46, height: 46 },
+  removeAppBadge: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.mutedRust,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeAppMinus: { width: 8, height: 2, borderRadius: 1, backgroundColor: colors.white },
   appIconButton: {
     width: 46,
     height: 46,

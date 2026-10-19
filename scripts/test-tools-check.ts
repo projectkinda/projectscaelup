@@ -68,11 +68,11 @@ async function testStoredOverride(enabled: boolean) {
   });
   assert(ready); assert.deepEqual(removed, enabled ? [] : [key]); assert.deepEqual(read, enabled ? [key] : []); assert.deepEqual(values, enabled ? ['paid'] : [null]);
 }
-function testActualFlags(env: string | undefined, dev: boolean) {
+function testActualFlags(env: string | undefined, dev: boolean | undefined) {
   const module = { exports: {} as any }, warnings: unknown[][] = [];
   runInNewContext(compile(readFileSync('src/domain/paywall.ts', 'utf8')), { exports: module.exports, process: { env: { EXPO_PUBLIC_TEST_TOOLS: env } }, __DEV__: dev,
     console: { warn: (...args: unknown[]) => warnings.push(args) } });
-  const enabled = env === '1';
+  const enabled = dev === true;
   assert.equal(module.exports.DEV_FLAGS.tierSwitcher, enabled);
   assert.equal(module.exports.TIER_SWITCHER_ENABLED, enabled);
   assert.equal(module.exports.DEV_FLAGS.forcePaidUser, false);
@@ -81,12 +81,14 @@ function testActualFlags(env: string | undefined, dev: boolean) {
   module.exports.setTestTierOverride('paid');
   assert.equal(module.exports.getTestTierOverride(), enabled ? 'paid' : null);
   assert.equal(module.exports.isPaidUser(), enabled);
-  assert.equal(warnings.length, enabled && !dev ? 1 : 0);
+  assert.equal(warnings.length, 0);
 }
 async function main() {
+  testActualFlags('1', undefined);
   for (const dev of [true, false]) {
-    for (const env of [undefined, '', '0', 'true', '1']) testActualFlags(env, dev);
-    for (const enabled of [true, false]) {
+    testActualFlags(undefined, dev);
+    testActualFlags('1', dev); // An obsolete shell setting must never affect release JS.
+    for (const enabled of [dev]) {
       assert.equal(load(files[0], enabled, dev).api.DevAppRulesControls({ flaggedPackages: [] }) !== null, enabled);
       assert.equal(load(files[1], enabled, dev).api.DevCoachSampleControls() !== null, enabled);
       assert.equal(load(files[0], enabled, dev, 'ios').api.DevAppRulesControls({ flaggedPackages: [] }), null);
@@ -97,7 +99,7 @@ async function main() {
       assert.equal(settings.ids.includes('dev-app-rules'), enabled);
       assert(!text.includes('RevenueCat entitlement check pending.'));
       const paywall = render(load('src/components/PaywallScreen.tsx', enabled, dev).api.PaywallScreen({ feature: 'modes', onClose: () => {} }));
-      assert.equal(paywall.texts.includes('Upgrade to Pro'), enabled);
+      assert(paywall.texts.includes('Upgrade to Pro'));
       assert.equal(paywall.texts.includes('Purchases coming soon'), enabled);
       assert(paywall.texts.includes('Not now'));
       await testStoredOverride(enabled);
@@ -115,12 +117,25 @@ async function main() {
     await rules.api.clearDevAppRules();
     assert.equal(rules.touchedDatabase(), false);
   }
+  const paywallSource = readFileSync('src/domain/paywall.ts', 'utf8');
+  assert(!paywallSource.includes('EXPO_PUBLIC_TEST_TOOLS') && !paywallSource.includes('RELEASE WARNING'));
+  for (const file of ['android/app/build.gradle', 'modules/live-timer/android/build.gradle', 'scripts/verify-release-bundle.cjs']) assert(!readFileSync(file, 'utf8').includes('EXPO_PUBLIC_TEST_TOOLS'), file);
+  const nativeBuild = readFileSync('modules/live-timer/android/build.gradle', 'utf8');
+  assert(nativeBuild.includes("debug { buildConfigField 'boolean', 'TEST_TOOLS_ENABLED', 'true' }"));
+  assert(nativeBuild.includes("release { buildConfigField 'boolean', 'TEST_TOOLS_ENABLED', 'false' }"));
+  const { inspectBundle } = require('./verify-release-bundle.cjs');
+  const names = ['tierSwitcher', 'forcePaidUser', 'resetOnboarding', 'iosOnboardingPreview'];
+  for (const enabledName of names) {
+    assert.throws(() => inspectBundle('const flags = {' + names.map(name => name + ':' + (name === enabledName)).join(',') + '}'), /must all be false/);
+  }
+  assert.equal(inspectBundle('const flags = { tierSwitcher: typeof false !== "undefined" && false, forcePaidUser:false, resetOnboarding:false, iosOnboardingPreview:false }').tierSwitcher, false);
+  assert.throws(() => inspectBundle('const flags = { tierSwitcher: __DEV__, forcePaidUser:false, resetOnboarding:false, iosOnboardingPreview:false }'), /not inlined/);
   const native = readFileSync('android/app/src/main/java/com/projectscaleup/app/RuleStore.kt', 'utf8');
   assert(!native.includes('FLAG_DEBUGGABLE') && native.includes('"test_tools"'));
   const timer = readFileSync('modules/live-timer/android/src/main/java/expo/modules/livetimer/LiveTimerNotifications.kt', 'utf8');
   assert(timer.includes('if (!BuildConfig.TEST_TOOLS_ENABLED) "custom"'));
   assert(timer.includes('!BuildConfig.TEST_TOOLS_ENABLED || !testToolsEnabled'));
   assert(timer.includes('!BuildConfig.TEST_TOOLS_ENABLED || prefs.getString("session_style"'));
-  console.log('PASS real env defaults/warning matrix, rendered Settings/paywall surfaces, stored override key clearing, disabled fixture writers, native style guards');
+  console.log('PASS debug-only flags (obsolete env ignored), rendered Settings/paywall surfaces, stored override key clearing, disabled fixture writers, native style guards');
 }
 void main().catch(error => { console.error(error); process.exitCode = 1; });

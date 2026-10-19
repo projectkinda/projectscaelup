@@ -1,5 +1,3 @@
-import type { CoachLockedRow } from './focusCoachCardSections';
-import { COACH_COPY, lockedNotesCopy } from './focusCoachCopy';
 import type {
   FocusCoachState,
 } from './focusCoach';
@@ -24,10 +22,6 @@ export function safeCopyLine(copy: string, fallback: string) {
   }
 
   return copy;
-}
-
-export function lockedTeaserCopy(row: CoachLockedRow) {
-  return [lockedNotesCopy(row.count), row.weeklyTest ? COACH_COPY.weeklyTest : null].filter(Boolean).join(' \u00b7 ');
 }
 
 export function selectCoachVariantIndex({

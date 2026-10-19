@@ -51,14 +51,16 @@ export function PrimaryBar({
   disabled = false,
   onPress,
   bottomInset,
+  inline = false,
 }: {
   label: string;
   disabled?: boolean;
   onPress: () => void;
   bottomInset: number;
+  inline?: boolean;
 }) {
   return (
-    <View style={[styles.bottomBar, { paddingBottom: bottomInset + 18 }]}>
+    <View style={[styles.bottomBar, inline && { position: 'relative' }, { paddingBottom: bottomInset + 18 }]}>
       <Pressable
         accessibilityRole="button"
         accessibilityState={{ disabled }}

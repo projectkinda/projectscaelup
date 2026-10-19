@@ -1,3 +1,4 @@
+import type { CoachLockedRow } from './focusCoachCardSections';
 import {
   type FocusCoachAwayInsight,
   type FocusCoachAwayInsightType,
@@ -251,6 +252,10 @@ export const COACH_COPY = {
   shortBreak: 'Short break', longBreak: 'Long break', shorter: 'Shorter', longer: 'Longer', zero: '0',
 } as const;
 export const MORE_PATTERNS_COPY = COACH_COPY.morePatterns;
+
+export function lockedTeaserCopy(row: CoachLockedRow) {
+  return [lockedNotesCopy(row.count), row.weeklyTest ? COACH_COPY.weeklyTest : null].filter(Boolean).join(' \u00b7 ');
+}
 
 // External labels are optional; opaque identifiers and unsafe text never become copy.
 export function readableCoachLabel(value: string | null | undefined, maximum = 30) {

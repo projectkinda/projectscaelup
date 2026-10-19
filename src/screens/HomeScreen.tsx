@@ -1,3 +1,4 @@
+import { UsageTrackingModule } from '../domain/usageTrackingModule';
 import { warn } from '../domain/releaseLog';
 import { resolveModeDuration, withModeDuration, type ModeDurations } from '../domain/modeDurations';
 import { CustomModeEditorModal } from '../components/CustomModeEditorModal';
@@ -270,6 +271,10 @@ export function HomeScreen({
   const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
   const usageMonitorUnsubscribe = useRef<(() => void) | null>(null);
   const activeFlaggedAppIdentifiers = useRef<string[]>([]);
+  useEffect(() => UsageTrackingModule.onFlaggedPackagesChanged(packages => {
+    const allowed = new Set(packages);
+    activeFlaggedAppIdentifiers.current = activeFlaggedAppIdentifiers.current.filter(id => allowed.has(id));
+  }), []);
   const activeSegmentStartMs = useRef<number | null>(null);
   const focusMsAccumulated = useRef(0);
   const activePauseId = useRef<number | null>(null);

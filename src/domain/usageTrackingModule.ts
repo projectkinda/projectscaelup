@@ -42,7 +42,13 @@ function warnAwayTimeFailure(methodName: string, error: unknown) {
   warn(`Away-time native method ${methodName} failed:`, error);
 }
 
+const flaggedPackageListeners = new Set<(packages: readonly string[]) => void>();
+
 export const UsageTrackingModule = {
+  onFlaggedPackagesChanged(callback: (packages: readonly string[]) => void): () => void {
+    flaggedPackageListeners.add(callback);
+    return () => { flaggedPackageListeners.delete(callback); };
+  },
   onAppUsageTick(callback: AppUsageCallback): () => void {
     let subscription: EmitterSubscription | null = null;
 
@@ -69,6 +75,10 @@ export const UsageTrackingModule = {
   },
 
   setFlaggedPackages(packages: string[]): Promise<void> {
+    for (const listener of flaggedPackageListeners) {
+      try { listener(packages); }
+      catch (error) { warn('Could not update active flagged packages:', error); }
+    }
     return (
       UsageTrackingBridge?.setFlaggedPackages?.(packages).catch(error => {
         warnAwayTimeFailure('setFlaggedPackages', error);

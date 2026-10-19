@@ -1,3 +1,4 @@
+import Svg, { Path } from 'react-native-svg';
 import { typography } from '../../theme/typography';
 import { Text } from '../../components/AppText';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -53,12 +54,12 @@ export function BackButton({ onPress }: { onPress: () => void }) {
         pressed && styles.pressed,
       ]}
     >
-      <Text style={styles.backButtonText}>{'<'}</Text>
+      <Svg testID="back-chevron" width={24} height={24} viewBox="0 0 24 24" accessible={false}>
+        <Path d="M15 5l-7 7 7 7" fill="none" stroke={colors.ink} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
     </Pressable>
   );
 }
-
-const CARD_BORDER = 'rgba(255, 255, 255, 0.12)';
 
 const styles = StyleSheet.create({
   screen: {
@@ -76,22 +77,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.horizontalPadding,
   },
   backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.module,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-  },
-  backButtonText: {
-    color: colors.ink,
-    ...typography.title,
-    fontWeight: '600',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.14)',
   },
   pressed: {
-    opacity: 0.82,
+    opacity: 0.6,
   },
   center: {
     flex: 1,

@@ -1,6 +1,7 @@
+import { beginProPurchase } from '../domain/purchases';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
-import { Text } from './AppText';
+import { Text, InlineText } from './AppText';
 import { DEV_FLAGS, PAYWALL_COPY, PAYWALL_LAYOUT, proFeaturesFor, type PaywallFeature, type ProFeature } from '../domain/paywall';
 import { colors } from '../theme/tokens';
 import { typography } from '../theme/typography';
@@ -83,19 +84,18 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
         showsVerticalScrollIndicator={false} bounces={false} removeClippedSubviews={false}>
         {/* Natural-height hero text stays measurable inside the bounded scroll viewport. */}
         <View testID="upgrade-hero" collapsable={false} style={styles.hero}>
-          <Text testID="upgrade-title" style={styles.title}>{title.split(/(\bPro\b)/).map((part, index) => part === 'Pro'
-            ? <Text key={index} style={[styles.titleType, styles.amber]}>{part}</Text> : part)}</Text>
+          <Text testID="upgrade-title" textBreakStrategy="simple" style={styles.title}>{title.split(/(\bPro\b)/).map((part, index) => part === 'Pro'
+            ? <InlineText key={index} style={styles.amber}>{part}</InlineText> : part)}</Text>
           <Text testID="upgrade-subtitle" style={styles.subtitle}>{subtitle}</Text>
         </View>
         {PAYWALL_LAYOUT === 'list' ? <FeatureList rows={rows} feature={feature}/> : <FeatureTable rows={rows} feature={feature}/>}
       </ScrollView>
       <View testID="upgrade-footer" style={[styles.footer, { paddingBottom: Math.max(24, bottomInset + 16) }]}>
-        {DEV_FLAGS.tierSwitcher ? <>
-          <Pressable testID="upgrade-primary" accessibilityRole="button" accessibilityLabel="Upgrade to Pro" accessibilityState={{ disabled: true }} disabled style={styles.primary}>
-            <Text style={styles.primaryText}>Upgrade to Pro</Text>
-          </Pressable>
-          <Text style={styles.comingSoon}>Purchases coming soon</Text>
-        </> : null}
+        <Pressable testID="upgrade-primary" accessibilityRole="button" accessibilityLabel="Upgrade to Pro" onPress={beginProPurchase}
+          style={({ pressed }) => [styles.primary, pressed && styles.pressed]}>
+          <Text style={styles.primaryText}>Upgrade to Pro</Text>
+        </Pressable>
+        {DEV_FLAGS.tierSwitcher ? <Text style={styles.comingSoon}>Purchases coming soon</Text> : null}
         <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={onClose} style={({ pressed }) => [styles.notNow, pressed && styles.pressed]}>
           <Text style={styles.notNowText}>Not now</Text>
         </Pressable>
@@ -107,13 +107,12 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   scroll: { flex: 1, minHeight: 0 },
-  content: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 16 },
+  content: { flexGrow: 0, paddingHorizontal: 24, paddingBottom: 16 },
   closeRow: { flexShrink: 0, paddingHorizontal: 24, alignItems: 'flex-start', paddingBottom: 40 },
   close: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: .55 },
   hero: { flexShrink: 0, alignItems: 'center', marginBottom: 40 },
-  titleType: { ...typography.title, lineHeight: 38, fontWeight: '700' as const },
-  title: { ...typography.title, lineHeight: 38, fontWeight: '700', color: colors.white, textAlign: 'center', alignSelf: 'stretch' },
+  title: { ...typography.title, lineHeight: 44, fontWeight: '700', color: colors.white, textAlign: 'center', textAlignVertical: 'top', includeFontPadding: true, width: '100%', flexShrink: 0, paddingVertical: 4 },
   amber: { color: colors.rewardAmber },
   subtitle: { ...typography.body, lineHeight: 24, color: colors.muted, textAlign: 'center', maxWidth: 320, marginTop: 12 },
   list: { flexShrink: 0 },
@@ -136,7 +135,7 @@ const styles = StyleSheet.create({
   cellText: { color: colors.muted, ...typography.label, textAlign: 'center' },
   proText: { color: colors.white },
   footer: { flexShrink: 0, paddingTop: 16, paddingHorizontal: 24, backgroundColor: colors.background },
-  primary: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink, opacity: .4 },
+  primary: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
   primaryText: { color: colors.background, ...typography.body, fontWeight: '700' },
   comingSoon: { marginTop: 12, color: colors.muted, ...typography.caption, textAlign: 'center' },
   notNow: { marginTop: 4, height: 48, alignItems: 'center', justifyContent: 'center' },

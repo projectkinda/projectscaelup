@@ -1,3 +1,4 @@
+import { BackButton } from './DoneStep';
 import { typography } from '../../theme/typography';
 import { Text } from '../../components/AppText';
 import { Camera, type PermissionResponse } from 'expo-camera';
@@ -258,17 +259,7 @@ export function PermissionStep({
         ]}
       >
         <View style={styles.content}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={onBack}
-            style={({ pressed }) => [
-              styles.backButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.backArrow}>‹</Text>
-          </Pressable>
+          <BackButton onPress={onBack} />
 
           <View style={styles.card}>
             {body}
@@ -520,22 +511,6 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: layout.contentMaxWidth,
     paddingHorizontal: layout.horizontalPadding,
-  },
-  backButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.module,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-  },
-  backArrow: {
-    color: colors.ink,
-    ...typography.display,
-    fontWeight: '500',
-    marginTop: -4,
   },
   card: {
     marginTop: 34,

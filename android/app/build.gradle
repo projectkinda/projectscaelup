@@ -4,8 +4,6 @@ apply plugin: "com.facebook.react"
 
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
 
-// Build-time switch shared by Expo's JS bundle and the live-timer Android library.
-def testToolsEnabled = System.getenv('EXPO_PUBLIC_TEST_TOOLS') == '1'
 def releaseSigningNames = ['RELEASE_STORE_FILE', 'RELEASE_STORE_PASSWORD', 'RELEASE_KEY_ALIAS', 'RELEASE_KEY_PASSWORD']
 def releaseSigningValues = releaseSigningNames.collectEntries { name ->
     [(name): providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull]
@@ -25,12 +23,11 @@ gradle.taskGraph.whenReady { graph ->
     }
 }
 
-// React Native does not track shell env changes as bundle inputs by default.
+// Verify the exact release JS before Hermes compilation.
 tasks.configureEach { task ->
     if (task.name == 'createBundleReleaseJsAndAssets') {
-        task.inputs.property('EXPO_PUBLIC_TEST_TOOLS', testToolsEnabled)
         task.inputs.file(file('../../scripts/verify-release-bundle.cjs'))
-        task.outputs.file(layout.buildDirectory.file('release-proof/test-tools.json'))
+        task.outputs.file(layout.buildDirectory.file('release-proof/release-flags.json'))
     }
 }
 
@@ -129,7 +126,6 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0.0"
-        buildConfigField "boolean", "TEST_TOOLS_ENABLED", testToolsEnabled.toString()
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }

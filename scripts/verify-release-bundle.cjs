@@ -2,7 +2,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const initialTestTools = process.env.EXPO_PUBLIC_TEST_TOOLS === '1';
 function inspectBundle(source) {
   const ts = require('typescript');
   const ast = ts.createSourceFile('release.js', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -14,7 +13,12 @@ function inspectBundle(source) {
     if (ts.isVoidExpression(node) || ts.isIdentifier(node) && node.text === 'undefined') return undefined;
     if (ts.isParenthesizedExpression(node)) return value(node.expression);
     if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) return !value(node.operand);
-    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) return value(node.left) === value(node.right);
+    if (ts.isTypeOfExpression(node)) return typeof value(node.expression);
+    if (ts.isBinaryExpression(node)) {
+      if (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) return value(node.left) === value(node.right);
+      if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) return value(node.left) !== value(node.right);
+      if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) return value(node.left) && value(node.right);
+    }
     throw Error('Test-tools flag was not inlined to a build-time literal: ' + node.getText(ast));
   }
   let flags;
@@ -30,7 +34,7 @@ function inspectBundle(source) {
   }
   visit(ast);
   if (!flags) throw Error('DEV_FLAGS was not found in Metro release bundle');
-  if (flags.forcePaidUser !== false || flags.resetOnboarding !== false || flags.iosOnboardingPreview !== false) throw Error('Non-release entitlement/onboarding defaults');
+  if (['tierSwitcher', 'forcePaidUser', 'resetOnboarding', 'iosOnboardingPreview'].some(name => flags[name] !== false)) throw Error('Release DEV_FLAGS must all be false');
   return flags;
 }
 if (process.argv.includes('export:embed')) {
@@ -40,14 +44,13 @@ if (process.argv.includes('export:embed')) {
     try {
       const source = fs.readFileSync(bundlePath, 'utf8');
       const flags = inspectBundle(source);
-      if (flags.tierSwitcher !== initialTestTools) throw Error('Expo bundle disagrees with shell EXPO_PUBLIC_TEST_TOOLS (check .env files)');
-      const proof = { shellTestToolsEnabled: initialTestTools, resolvedFlags: flags,
+      const proof = { resolvedFlags: flags,
         metroBundleSha256: crypto.createHash('sha256').update(source).digest('hex'),
         bundleCommand: 'expo export:embed --platform android --dev false' };
-      const proofPath = path.resolve(__dirname, '../android/app/build/release-proof/test-tools.json');
+      const proofPath = path.resolve(__dirname, '../android/app/build/release-proof/release-flags.json');
       fs.mkdirSync(path.dirname(proofPath), { recursive: true });
       fs.writeFileSync(proofPath, JSON.stringify(proof, null, 2) + '\n');
-      console.log('Verified release bundle: test tools ' + (flags.tierSwitcher ? 'ON (TEST APK)' : 'OFF (store configuration)'));
+      console.log('PASS verify-release-bundle: all DEV_FLAGS are false (test tools OFF)');
     } catch (error) {
       console.error('Release bundle verification failed:', error.message);
       process.exitCode = 1;
