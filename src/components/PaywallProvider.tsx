@@ -1,7 +1,7 @@
-﻿import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PaywallFeature } from '../domain/paywall';
-import { PaywallSheet } from './PaywallSheet';
+import { PaywallScreen } from './PaywallScreen';
 
 type Paywall = { show: (feature: PaywallFeature) => void };
 const PaywallContext = createContext<Paywall | null>(null);
@@ -14,7 +14,7 @@ export function PaywallProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({ show }), [show]);
   return <PaywallContext.Provider value={value}>
     {children}
-    {feature !== null ? <PaywallSheet feature={feature} bottomInset={insets.bottom} onClose={() => setFeature(null)}/> : null}
+    {feature !== null ? <PaywallScreen feature={feature} topInset={insets.top} bottomInset={insets.bottom} onClose={() => setFeature(null)}/> : null}
   </PaywallContext.Provider>;
 }
 

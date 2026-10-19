@@ -1,3 +1,5 @@
+import { resolveModeDuration, withModeDuration, type ModeDurations } from '../domain/modeDurations';
+import { CustomModeEditorModal } from '../components/CustomModeEditorModal';
 import { usePaywall } from '../components/PaywallProvider';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
@@ -30,7 +32,7 @@ import { getAppState, setAppState } from '../data/appStateRepository';
 import { ensureSchema, getDatabase } from '../data/database';
 import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { loadAvailableModes } from '../data/modesRepository';
-import { loadSettingsData } from '../data/settingsRepository';
+import { loadModeSessionDurations, saveModeSessionDuration, loadSettingsData, type CustomMode } from '../data/settingsRepository';
 import type { FocusCoachResult } from '../domain/focusCoach';
 import {
   getAwayDisplay,
@@ -55,7 +57,7 @@ import {
   resumeFocusLock,
   startFocusLock,
 } from '../domain/iosScreenTime';
-import { getHomeModes } from '../domain/sessionModes';
+import { BUILT_IN_MODES, customModeToSessionMode, getHomeModes } from '../domain/sessionModes';
 import {
   completeSession,
   type DistractionEventSummary,
@@ -225,8 +227,22 @@ export function HomeScreen({
   const fallbackModes = useMemo(() => getHomeModes(paidUser), [paidUser]);
   const [homeModes, setHomeModes] = useState(fallbackModes);
   const [activeModeId, setActiveModeId] = useState(fallbackModes[0].id);
-  const [minutes, setMinutes] = useState(10);
-  const [seconds, setSeconds] = useState(0);
+  const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
+  const modesLoadVersion = useRef(0);
+  const modeTabsRef = useRef<ScrollView>(null);
+  const modeTabLayouts = useRef(new Map<string, { x: number; width: number }>());
+  const modeTabsWidth = useRef(0);
+  const pendingModeReveal = useRef<string | null>(null);
+  const revealCreatedMode = useCallback(() => {
+    const id = pendingModeReveal.current;
+    const tab = id ? modeTabLayouts.current.get(id) : undefined;
+    if (!tab || !modeTabsRef.current || modeTabsWidth.current <= 0) return;
+    modeTabsRef.current.scrollTo({ x: Math.max(0, tab.x), animated: true });
+    pendingModeReveal.current = null;
+  }, []);
+  const [rememberedModeDurations, setRememberedModeDurations] = useState<ModeDurations>({});
+  const [modeDurationEdits, setModeDurationEdits] = useState<ModeDurations>({});
+  const [modeDurationsLoaded, setModeDurationsLoaded] = useState(false);
   const [pendingDurationSeconds, setPendingDurationSeconds] = useState<
     number | null
   >(null);
@@ -248,7 +264,7 @@ export function HomeScreen({
     kind: 'hidden',
   });
   const [focusCoach, setFocusCoach] = useState<FocusCoachResult | null>(null);
-  const contentProgress = useRef(new Animated.Value(1)).current;
+  const contentProgress = useRef(new Animated.Value(0)).current;
   const sessionEndTimeMs = useRef<number | null>(null);
   const sessionMonitorUnsubscribe = useRef<(() => Promise<void>) | null>(null);
   const usageMonitorUnsubscribe = useRef<(() => void) | null>(null);
@@ -263,6 +279,22 @@ export function HomeScreen({
 
   const activeMode =
     homeModes.find(mode => mode.id === activeModeId) ?? homeModes[0];
+  // Derive in the same render as the tab, rather than copying the old timer through an effect.
+  const selectedDurationSeconds = resolveModeDuration(activeMode, rememberedModeDurations, modeDurationEdits) ?? 0;
+  const minutes = Math.floor(selectedDurationSeconds / 60);
+  const seconds = selectedDurationSeconds % 60;
+  const setMinutes = useCallback((value: number) => setModeDurationEdits(current => {
+    const duration = resolveModeDuration(activeMode, rememberedModeDurations, current) ?? 0;
+    return withModeDuration(current, activeMode.id, value * 60 + duration % 60);
+  }), [activeMode, rememberedModeDurations]);
+  const setSeconds = useCallback((value: number) => setModeDurationEdits(current => {
+    const duration = resolveModeDuration(activeMode, rememberedModeDurations, current) ?? 0;
+    return withModeDuration(current, activeMode.id, Math.floor(duration / 60) * 60 + value);
+  }), [activeMode, rememberedModeDurations]);
+  const rememberStartedDuration = (modeId: string, duration: number) => {
+    setRememberedModeDurations(current => withModeDuration(current, modeId, duration));
+    void saveModeSessionDuration(modeId, duration).catch(error => console.warn('Failed to remember mode duration:', error));
+  };
 
   useAndroidLiveTimer({
     remainingSeconds,
@@ -325,17 +357,23 @@ export function HomeScreen({
     };
   }, [hasActiveSession, isActive, paidUser]);
 
-  // Reload whenever Home comes back into view so modes edited in Settings show up.
+  // Reload when Home returns; keep its in-memory selection if the mode still exists.
   useEffect(() => {
     if (!isActive) {
       return;
     }
 
     let cancelled = false;
+    const version = ++modesLoadVersion.current;
 
-    loadAvailableModes(paidUser).then(modes => {
-      if (!cancelled) {
-        setHomeModes(modes.length > 0 ? modes : fallbackModes);
+    Promise.all([
+      loadAvailableModes(paidUser).catch(error => { console.warn('Failed to load modes:', error); return null; }),
+      loadModeSessionDurations().catch(error => { console.warn('Failed to load mode durations:', error); return null; }),
+    ]).then(([modes, remembered]) => {
+      if (!cancelled && version === modesLoadVersion.current) {
+        if (modes) setHomeModes(modes.length > 0 ? modes : fallbackModes);
+        if (remembered) setRememberedModeDurations(remembered);
+        setModeDurationsLoaded(true);
       }
     });
 
@@ -349,6 +387,10 @@ export function HomeScreen({
       setActiveModeId(homeModes[0].id);
     }
   }, [activeModeId, homeModes]);
+
+  useEffect(() => {
+    if (!paidUser) setIsModeEditorVisible(false);
+  }, [paidUser]);
 
   const topInsetPadding = insets.top + 27;
   const bottomInsetPadding = layout.bottomNavHeight + insets.bottom + 24;
@@ -402,13 +444,15 @@ export function HomeScreen({
   }, [hasActiveSession, onSessionActiveChange]);
 
   useEffect(() => {
+    contentProgress.stopAnimation();
     contentProgress.setValue(0);
+    if (!modeDurationsLoaded) return;
     Animated.timing(contentProgress, {
       toValue: 1,
       duration: 220,
       useNativeDriver: true,
     }).start();
-  }, [activeMode.id, contentProgress]);
+  }, [activeMode.id, contentProgress, modeDurationsLoaded]);
 
   useEffect(() => {
     if (!hasActiveSession || isPaused || awaitingEndChoice) {
@@ -454,6 +498,7 @@ export function HomeScreen({
   const beginActiveSession = (durationSeconds: number) => {
     const startedAt = new Date();
     const mode = activeMode;
+    rememberStartedDuration(mode.id, durationSeconds);
     const sessionEndTime = Date.now() + durationSeconds * 1000;
 
     sessionEndTimeMs.current = sessionEndTime;
@@ -526,6 +571,7 @@ export function HomeScreen({
   };
 
   const handleStart = async () => {
+    if (!modeDurationsLoaded) return;
     const durationSeconds = minutes * 60 + seconds;
     if (durationSeconds === 0) {
       Alert.alert(
@@ -870,7 +916,31 @@ export function HomeScreen({
   };
 
   const handleMoreModes = () => {
-    paywall.show('modes');
+    if (paidUser) setIsModeEditorVisible(true);
+    else paywall.show('modes');
+  };
+
+  const handleModeSaved = async (savedMode: CustomMode) => {
+    // Invalidate older reloads so they cannot overwrite the new mode/selection.
+    const version = ++modesLoadVersion.current;
+    const rememberedPromise = loadModeSessionDurations().catch(error => { console.warn('Failed to load mode durations:', error); return null; });
+    let modes;
+    try {
+      modes = await loadAvailableModes(paidUser);
+    } catch (error) {
+      console.warn('Failed to reload saved mode:', error);
+      const builtInIds = new Set(BUILT_IN_MODES.map(mode => mode.id));
+      modes = getHomeModes(paidUser, [customModeToSessionMode(savedMode),
+        ...homeModes.filter(mode => !builtInIds.has(mode.id) && mode.id !== savedMode.id)]);
+    }
+    const remembered = await rememberedPromise;
+    if (version !== modesLoadVersion.current) return;
+    if (remembered) setRememberedModeDurations(remembered);
+    setModeDurationsLoaded(true);
+    pendingModeReveal.current = savedMode.id;
+    setHomeModes(modes);
+    setActiveModeId(savedMode.id);
+    setIsModeEditorVisible(false);
   };
 
   const suggestionMinutes = paidUser
@@ -885,8 +955,7 @@ export function HomeScreen({
       return;
     }
 
-    setMinutes(suggestionMinutes);
-    setSeconds(0);
+    setModeDurationEdits(current => withModeDuration(current, activeMode.id, suggestionMinutes * 60));
   };
 
   const modeContentStyle = {
@@ -1030,20 +1099,23 @@ export function HomeScreen({
           style={[styles.content, { minHeight: availableContentHeight }]}
         >
           <View accessibilityRole="tablist" style={styles.modeBar}>
-            {!paidUser ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="More modes available"
-                onPress={handleMoreModes}
-                style={({ pressed }) => [
-                  styles.moreModesButton,
-                  pressed && styles.textPressed,
-                ]}
-              >
-                <Text style={styles.moreModesIcon}>+</Text>
-              </Pressable>
-            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              testID="home-create-mode"
+              accessibilityLabel={paidUser ? "Create a custom mode" : "Create a custom mode, requires Pro"}
+              onPress={handleMoreModes}
+              style={({ pressed }) => [
+                styles.moreModesButton,
+                pressed && styles.textPressed,
+              ]}
+            >
+              <Text style={styles.moreModesIcon}>+</Text>
+            </Pressable>
             <ScrollView
+              testID="home-mode-tabs"
+              ref={modeTabsRef}
+              onLayout={event => { modeTabsWidth.current = event.nativeEvent.layout.width; revealCreatedMode(); }}
+              onContentSizeChange={revealCreatedMode}
               horizontal
               bounces={false}
               nestedScrollEnabled
@@ -1056,6 +1128,8 @@ export function HomeScreen({
                 return (
                   <Pressable
                     key={mode.id}
+                    testID={'home-mode-' + mode.id}
+                    onLayout={event => { modeTabLayouts.current.set(mode.id, event.nativeEvent.layout); revealCreatedMode(); }}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: active }}
                     onPress={() => setActiveModeId(mode.id)}
@@ -1102,6 +1176,7 @@ export function HomeScreen({
               </Pressable>
             ) : null}
             <TimerSelector
+              key={activeMode.id + ':' + activeMode.defaultMinutes + ':' + modeDurationsLoaded}
               minutes={minutes}
               seconds={seconds}
               onMinutesChange={setMinutes}
@@ -1111,7 +1186,7 @@ export function HomeScreen({
               accessibilityRole="button"
               accessibilityLabel={`Start ${activeMode.name} session`}
               onPress={handleStart}
-              disabled={isPreparingPresence}
+              disabled={isPreparingPresence || !modeDurationsLoaded}
               style={({ pressed }) => [
                 styles.startShell,
                 pressed && styles.pressed,
@@ -1155,6 +1230,12 @@ export function HomeScreen({
         </View>
       </ScrollView>
       <BottomNavigation bottomInset={insets.bottom} onSelect={onNavigate} />
+      <CustomModeEditorModal
+        visible={isModeEditorVisible}
+        mode={null}
+        onCancel={() => setIsModeEditorVisible(false)}
+        onSaved={handleModeSaved}
+      />
     </View>
   );
 }

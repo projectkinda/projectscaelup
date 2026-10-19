@@ -2,13 +2,17 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { FREE_TIER_APP_CAP, FREE_HISTORY_DAYS, PRO_FEATURES, PAYWALL_COPY, proFeaturesFor, type PaywallFeature } from '../src/domain/paywall';
+import { FREE_TIER_APP_CAP, FREE_HISTORY_DAYS, PRO_FEATURES, PAYWALL_COPY, PAYWALL_LAYOUT, proFeaturesFor, type PaywallFeature } from '../src/domain/paywall';
 const features: PaywallFeature[] = ['apps', 'app-rules', 'coach', 'history', 'modes'];
+assert.equal(PAYWALL_LAYOUT, 'list');
+assert(PRO_FEATURES.find(row => row.id === 'apps')!.description.includes(String(FREE_TIER_APP_CAP)));
+assert(PRO_FEATURES.find(row => row.id === 'history')!.description.includes(FREE_HISTORY_DAYS + ' days'));
+assert(!existsSync('src/components/Paywall' + 'Sheet.tsx'));
 assert.deepEqual(PRO_FEATURES.map(row => row.id), features);
 assert.equal(PRO_FEATURES.find(row => row.id === 'apps')!.freeValue, String(FREE_TIER_APP_CAP));
 assert.equal(PRO_FEATURES.find(row => row.id === 'history')!.freeValue, FREE_HISTORY_DAYS + ' days');
 assert.equal(PRO_FEATURES.find(row => row.id === 'coach')!.freeValue, 'Basic');
-assert.equal(PRO_FEATURES.find(row => row.id === 'modes')!.freeValue, 'No');
+assert.equal(PRO_FEATURES.find(row => row.id === 'modes')!.freeValue, '\u2014');
 for (const platform of ['android', 'ios']) for (const feature of features) {
   const rows = proFeaturesFor(feature, platform);
   const expected = PRO_FEATURES.filter(row => row.platforms.includes(platform));
@@ -21,11 +25,12 @@ function files(dir: string): string[] {
 }
 const sourceFiles = ['App.tsx', ...files('src').filter(file => /\.tsx?$/.test(file))];
 const sources = sourceFiles.map(file => ({ file, code: readFileSync(file, 'utf8') }));
-const instances = sources.flatMap(({ file, code }) => [...code.matchAll(/<PaywallSheet\b/g)].map(() => file.replaceAll('\\', '/')));
+const instances = sources.flatMap(({ file, code }) => [...code.matchAll(/<PaywallScreen\b/g)].map(() => file.replaceAll('\\', '/')));
 assert.deepEqual(instances, ['src/components/PaywallProvider.tsx']);
 const removedScreen = 'Paywall' + 'StubScreen';
 for (const { file, code } of sources) {
   assert(!code.includes(removedScreen), file);
+  assert(!code.includes('Paywall' + 'Sheet'), file);
   assert(!code.includes('This is a premium' + ' feature'), file);
   assert(!/onNavigate\(['"]paywall['"]\)/.test(code), file);
 }

@@ -1,3 +1,6 @@
+import { setAppState } from './appStateRepository';
+import { clampSessionSeconds, CUSTOM_MODE_DEFAULT_MINUTES, isValidDefaultMinutes, modeDurationKey, MODE_DURATION_KEY_PREFIX, type ModeDurations } from '../domain/modeDurations';
+import { CUSTOM_MODE_ORDER_BY } from './modesRepository';
 import { canAddFlaggedApp } from '../domain/paywall';
 export { FREE_TIER_APP_CAP } from '../domain/paywall';
 import { ensureSchema, getDatabase } from './database';
@@ -14,6 +17,7 @@ export type CustomMode = {
   id: string;
   name: string;
   gracePeriodSeconds: number;
+  defaultMinutes: number;
   frameWidthRange: [number, number];
 };
 
@@ -27,6 +31,7 @@ type CustomModeRow = {
   id: string;
   name: string;
   grace_period_seconds: number;
+  default_minutes: number;
   frame_width_min: number;
   frame_width_max: number;
 };
@@ -35,6 +40,7 @@ export type SaveCustomModeInput = {
   id?: string;
   name: string;
   gracePeriodSeconds: number;
+  defaultMinutes: number;
 };
 
 export type SettingsData = {
@@ -159,10 +165,10 @@ export async function loadSettingsData({
   const customModeRows = isPaidUser
     ? await database.getAllAsync<CustomModeRow>(
         `
-          SELECT id, name, grace_period_seconds
+          SELECT id, name, grace_period_seconds, default_minutes
                , frame_width_min, frame_width_max
           FROM custom_modes
-          ORDER BY name ASC;
+          ORDER BY ${CUSTOM_MODE_ORDER_BY};
         `,
       )
     : [];
@@ -173,6 +179,7 @@ export async function loadSettingsData({
       id: row.id,
       name: row.name,
       gracePeriodSeconds: row.grace_period_seconds,
+      defaultMinutes: row.default_minutes,
       frameWidthRange: [row.frame_width_min, row.frame_width_max],
     })),
   };
@@ -217,10 +224,12 @@ export async function saveCustomMode({
   id,
   name,
   gracePeriodSeconds,
+  defaultMinutes = CUSTOM_MODE_DEFAULT_MINUTES,
 }: SaveCustomModeInput): Promise<CustomMode> {
   const database = await getDatabase();
   await ensureSchema(database);
 
+  if (!isValidDefaultMinutes(defaultMinutes)) throw new Error('Invalid default session length');
   const trimmedName = name.trim().slice(0, 20);
   const boundedGracePeriod = Math.max(3, Math.min(90, gracePeriodSeconds));
   const frameWidthRange = getFrameWidthRange(boundedGracePeriod);
@@ -232,13 +241,15 @@ export async function saveCustomMode({
         id,
         name,
         grace_period_seconds,
+        default_minutes,
         frame_width_min,
         frame_width_max
       )
-      VALUES (?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         grace_period_seconds = excluded.grace_period_seconds,
+        default_minutes = excluded.default_minutes,
         frame_width_min = excluded.frame_width_min,
         frame_width_max = excluded.frame_width_max;
     `,
@@ -246,6 +257,7 @@ export async function saveCustomMode({
       modeId,
       trimmedName,
       boundedGracePeriod,
+      defaultMinutes,
       frameWidthRange[0],
       frameWidthRange[1],
     ],
@@ -255,6 +267,7 @@ export async function saveCustomMode({
     id: modeId,
     name: trimmedName,
     gracePeriodSeconds: boundedGracePeriod,
+    defaultMinutes,
     frameWidthRange,
   };
 }
@@ -294,5 +307,23 @@ export async function removeCustomMode(id: string) {
   const database = await getDatabase();
   await ensureSchema(database);
 
-  await database.runAsync('DELETE FROM custom_modes WHERE id = ?;', [id]);
+  await database.withTransactionAsync(async () => {
+    await database.runAsync('DELETE FROM custom_modes WHERE id = ?;', [id]);
+    await database.runAsync('DELETE FROM app_state WHERE key = ?;', [modeDurationKey(id)]);
+  });
+}
+
+/** Per-mode last-started lengths use the existing app_state settings store. */
+export async function loadModeSessionDurations(): Promise<ModeDurations> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+  const rows = await database.getAllAsync<{ key: string; value: string }>(
+    'SELECT key, value FROM app_state WHERE key LIKE ?;', [MODE_DURATION_KEY_PREFIX + '%'],
+  );
+  return Object.fromEntries(rows.filter(row => row.value.trim() !== '' && Number.isFinite(Number(row.value)))
+    .map(row => [row.key.slice(MODE_DURATION_KEY_PREFIX.length), clampSessionSeconds(Number(row.value))]));
+}
+
+export async function saveModeSessionDuration(modeId: string, seconds: number): Promise<void> {
+  await setAppState(modeDurationKey(modeId), String(clampSessionSeconds(seconds)));
 }

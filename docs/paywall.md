@@ -1,47 +1,37 @@
-﻿# Shared upgrade sheet
+﻿# Shared upgrade screen
 
-All upgrade entry points call `usePaywall().show(feature)`. `PaywallProvider` is mounted once inside the app root's SafeAreaProvider and above the mounted tabs. It owns the only application JSX instance of PaywallSheet. Showing or closing it never changes the selected tab, unmounts a screen, resets a picker, or changes its selection. The obsolete full-screen route and screen were removed.
+PaywallProvider remains the single host above the mounted tabs. Its five callers still use usePaywall().show(feature). The full-screen PaywallScreen modal replaces the bottom sheet without navigating or unmounting the caller. X, Not now and the Android onRequestClose callback dismiss it. The provider passes the safe-area top and bottom insets.
 
-`src/domain/paywall.ts` supplies `PRO_FEATURES`, `PAYWALL_COPY` and `proFeaturesFor`. Every trigger uses exactly the same table and disabled button area. Its matching row is first and highlighted; all remaining rows preserve the canonical order. Only the title, subtitle and row order/highlight vary.
+PAYWALL_LAYOUT in src/domain/paywall.ts selects list or table; the default is list. Both use PRO_FEATURES, proFeaturesFor and the unchanged PAYWALL_COPY. The triggered supported feature is first. App rules is Android-only; forcing its trigger on iOS still omits that row.
 
-## Feature values and enforcement audit
+## Header investigation
 
-| Row | Free | Pro | Code backing |
-| --- | --- | --- | --- |
-| Flagged apps | 3 | Unlimited | FREE_TIER_APP_CAP; Android Settings plus/picker cap and iOS Screen Time picker maximum. The shared repository canAdd predicate uses the same constant. |
-| App rules | No | Schedules and daily limits | Android-only section and repository paid checks; downgrade sync removes native enforced rules. The row is omitted on iOS. |
-| Focus coach | Basic | Trends, patterns, weekly experiment | selectCoachCardSections exposes the free unlocked note/basic progress and omits paid experiment/next-step content. |
-| Full history | 14 days | Everything | FREE_HISTORY_DAYS is now used by the unchanged repository cutoff calculation, not just the table. Cutoff is local midnight fourteen calendar days before today, inclusive; it also includes the current day. Pro removes this cutoff. |
-| Custom modes | No | More modes | Free Settings hides the custom-mode editor section; loadSettingsData and loadAvailableModes omit custom modes for free accounts. |
+The previous title and X shared the first row inside the scrolling content of an intrinsically sized sheet capped at 85% height. There was no separate persistent close control, so scrolling/clipping that row hid both together while the following subtitle could remain visible. The apps title also used a separate native Text auto-fit path, bypassing AppText. No conditional in the component hid the header.
 
-There is **no numeric custom-mode count cap** in the current code. The table therefore uses No, describing free availability, rather than inventing a count. saveCustomMode itself does not enforce entitlement or a count cap; those restrictions are currently enforced through the UI and loaders. Similarly, saveFlaggedApp does not itself authorize/count-limit writes; the existing picker/add guards enforce that cap. No new entitlement or purchase logic was introduced in this consolidation.
+That code-level failure path is removed: the root fills the modal; X has its own nonshrinking 40dp row outside the ScrollView; the hero is nonshrinking and noncollapsable, uses AppText throughout, and has no flex-basis title or auto-fit branch. Child clipping is explicitly disabled. New feature keys reset scrolling. The specific native disappearance reported by the user could not be reproduced without a connected device; native layout/clipping as the cause remains unconfirmed.
 
-The nominal 14-day history value reflects the existing code's fourteen-day lookback. Because the cutoff starts at midnight fourteen days ago, it includes that boundary date plus today, rather than exactly 336 rolling hours. The boundary fixture verifies exclusion one millisecond before that cutoff, inclusion at the cutoff, and full Pro access.
+## Layout
 
-## Entry points
+The background is the existing #121212 token. Hero and body scroll; X and the footer stay fixed. The hero keeps the complete copy, accents only the word Pro, and wraps naturally without line clamps. At the checked 360dp width and font scales 1/1.3, titles fit within two lines and subtitles within three.
 
-- Settings flagged-app plus, cap caption, picker overflow/Get unlimited, and an over-allowance save after downgrade: apps.
-- Android Settings locked schedules/daily-limits row: app-rules.
-- History coach locked row: coach.
-- History View more when older history is hidden: history.
-- Home More modes: modes.
+List rows use outline SVG icons, descriptions from PRO_FEATURES and the triggered icon's amber accent. Descriptions remain complete within three lines at the checked scales. The table uses the existing panelBottom surface, an amber Pro strip, fixed 80/104dp columns and 56dp rows. Its labels use the existing caption size so all labels fit at font scale 1.3. The 3dp trigger bar occupies the card inset to preserve label width. Numeric cells retain gate values; other availability cells render SVG checks or dashes. Free coach availability is still Basic in the data and accessibility label.
 
-Repository-wide source audit found no other ad hoc premium modal or paywall navigation requiring conversion. The iOS Screen Time picker was left untouched. Android-only app-rules entries remain hidden there; if the app-rules trigger is forced in an iOS preview, its Android row is still omitted and no unsupported row is highlighted.
+The scroll content's 16dp bottom space plus the footer's 16dp top space provide a minimum 32dp body-to-CTA gap. Remaining space on tall screens stays below the body. Footer bottom padding is max(24, safeAreaBottom + 16). The disabled ink CTA has 40% opacity, with the existing Purchases coming soon caption and DEV_FLAGS gating unchanged.
 
-## Layout and behavior
+## Gate audit
 
-The approved 28dp top radius, grab handle, SVG close control, 24dp horizontal/20dp top padding, inset highlight, approximately 120dp Pro column and 56dp primary button remain shared. Titles and subtitles are each one line with ellipsis at narrow widths; full copy remains in accessibility labels. The table scrolls only when needed within the 90% height limit. Feature changes reset the scroll so the highlighted first row is visible immediately.
+- Apps: FREE_TIER_APP_CAP backs the add/picker guards and settingsRepository canAdd check. The list reads that constant.
+- History: historyRepository computes its free cutoff with FREE_HISTORY_DAYS. The list reads the same constant. The existing cutoff is local midnight fourteen calendar days before today, including that boundary date and today; the nominal 14-day copy is preserved.
+- App rules: Android-only and paid-gated.
+- Coach: the free basic selection omits paid coaching sections.
+- Custom modes: free loaders/UI exclude custom modes; there is no numeric custom-mode count cap, so no numeric Free sentence is claimed.
 
-Backdrop, X, Not now and the Modal's Android-back callback dismiss the host. The same mounted picker remains underneath. The automatic apps overflow prompt is still limited to once per picker open; explicit Get unlimited can reopen it.
-
-Upgrade to Pro remains disabled with Purchases coming soon when DEV_FLAGS.tierSwitcher is enabled, including release test APKs. With the flag disabled, only dismissal controls are available. RevenueCat is not implemented; no purchase action or entitlement behavior was invented.
+No unsupported Free limit was added. No purchase or entitlement behavior changed.
 
 ## Verification
 
-- TypeScript and whitespace checks passed.
-- `scripts/paywall-check.ts`: canonical values/order, both platform filters, copy, actual gate references, all five caller features, single root host and absence of old route/screen/ad hoc surface.
-- `scripts/app-rules-ui-preview.cjs`: 54 captures, 1,856 assertions, zero failures at 360dp/fontScale 1 and 1.3. Renders all five triggers on Android and iOS through the real host; checks identical spacing, exact source copy, platform rows, highlighted-and-first visible row, action reachability, host reuse, scroll reset, backdrop/X/Not now dismissal in the browser, retained picker selection, cap behavior and existing rule/editor flows.
-- History: 17 fixtures, including the real SQLite cutoff boundary. Coach: 87 checks. App rules: 18 groups. Live timer: 24 checks. Existing cap, typography and test-tool guard checks passed.
-- Application-source grep returns exactly one sheet instance, in PaywallProvider, and no obsolete premium-message screen or paywall navigation call.
+scripts/paywall-ui-preview.cjs builds ignored browser previews through the real provider for both layouts, all five triggers, Android/iOS platform filters, font scales 1/1.3 and 360x640. Checks cover complete glyph bounds, hero line counts, descriptions, labels/cells, trigger ordering and amber accents, Pro-strip alignment, pinned controls, safe-area padding, purchase gating, scroll reset, and preserved caller state on all three dismissal callbacks. Browser text scaling and Modal presentation are simulated; these are not native device renders.
 
-Not verified on a device: Android back and native modal stacking/focus restoration above the picker, iOS native sheet presentation, safe-area/text measurement, VoiceOver/TalkBack and Samsung rendering. The browser simulates mobile layout and backdrop/X/Not now; native back remains a manual check. No screenshots are committed; generated artifacts stay in ignored `.artifacts/`.
+TypeScript, canonical paywall/gate checks, flagged-app cap checks and typography checks pass. The older app-rules integration preview now expects the screen/list rather than the removed sheet. Source scans show one PaywallScreen instance in PaywallProvider, one provider in App.tsx, and no old sheet component, stub screen, or paywall navigation route/call.
+
+Not verified on a device: native header rendering, Android hardware back delivery and status-bar/edge-to-edge insets, iOS full-screen presentation and modal stacking above a picker, native font measurement, VoiceOver/TalkBack and focus restoration. Browser callbacks verify the host behavior only. No screenshots are committed; previews remain under ignored .artifacts/.

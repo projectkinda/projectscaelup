@@ -1,3 +1,4 @@
+import { TIMER_MAX_MINUTES, TIMER_MAX_SECONDS } from '../domain/modeDurations';
 import { typography } from '../theme/typography';
 import { Text } from './AppText';
 import { StyleSheet, View } from 'react-native';
@@ -43,7 +44,7 @@ export function TimerSelector({
         <TimeModule
           label="Minutes"
           value={minutes}
-          max={59}
+          max={TIMER_MAX_MINUTES}
           scale={scale}
           onChange={onMinutesChange}
         />
@@ -80,7 +81,7 @@ export function TimerSelector({
         <TimeModule
           label="Seconds"
           value={seconds}
-          max={59}
+          max={TIMER_MAX_SECONDS}
           scale={scale}
           onChange={onSecondsChange}
         />

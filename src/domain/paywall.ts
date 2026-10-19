@@ -1,15 +1,16 @@
 export const FREE_TIER_APP_CAP = 3;
 export const FREE_HISTORY_DAYS = 14;
+export const PAYWALL_LAYOUT: 'list' | 'table' = 'list';
 export type PaywallFeature = 'apps' | 'app-rules' | 'coach' | 'history' | 'modes';
-export type ProFeature = { id: PaywallFeature; label: string; freeValue: string; proValue: string; platforms: readonly string[] };
+export type ProFeature = { id: PaywallFeature; label: string; description: string; sublabel?: string; freeValue: string; proValue: string; platforms: readonly string[] };
 /** Product gates: picker cap, Android rules entitlement, basic coach, history cutoff,
  * and paid-only custom-mode availability. There is no numeric custom-mode count cap. */
 export const PRO_FEATURES: readonly ProFeature[] = [
-  { id: 'apps', label: 'Flagged apps', freeValue: String(FREE_TIER_APP_CAP), proValue: 'Unlimited', platforms: ['android', 'ios', 'web'] },
-  { id: 'app-rules', label: 'App rules', freeValue: 'No', proValue: 'Schedules and daily limits', platforms: ['android'] },
-  { id: 'coach', label: 'Focus coach', freeValue: 'Basic', proValue: 'Trends, patterns, weekly experiment', platforms: ['android', 'ios', 'web'] },
-  { id: 'history', label: 'Full history', freeValue: FREE_HISTORY_DAYS + ' days', proValue: 'Everything', platforms: ['android', 'ios', 'web'] },
-  { id: 'modes', label: 'Custom modes', freeValue: 'No', proValue: 'More modes', platforms: ['android', 'ios', 'web'] },
+  { id: 'apps', label: 'Flagged apps', description: 'Free tracks ' + FREE_TIER_APP_CAP + ' apps. Pro tracks as many as you like.', sublabel: 'Apps we track and block', freeValue: String(FREE_TIER_APP_CAP), proValue: 'Unlimited', platforms: ['android', 'ios', 'web'] },
+  { id: 'app-rules', label: 'App rules', description: 'Block apps on a schedule, or cap the time you spend in each one.', sublabel: 'Schedules and daily limits', freeValue: '\u2014', proValue: '\u2713', platforms: ['android'] },
+  { id: 'coach', label: 'Focus coach', description: 'Trends, patterns and a weekly experiment, built from your own sessions.', sublabel: 'Trends, patterns, weekly experiment', freeValue: 'Basic', proValue: '\u2713', platforms: ['android', 'ios', 'web'] },
+  { id: 'history', label: 'Full history', description: 'Free keeps ' + FREE_HISTORY_DAYS + ' days. Pro keeps everything.', sublabel: 'Every past session', freeValue: FREE_HISTORY_DAYS + ' days', proValue: 'Everything', platforms: ['android', 'ios', 'web'] },
+  { id: 'modes', label: 'Custom modes', description: 'Build session types that fit how you work.', sublabel: 'Build your own session types', freeValue: '\u2014', proValue: 'More', platforms: ['android', 'ios', 'web'] },
 ];
 export const PAYWALL_COPY: Record<PaywallFeature, { title: string; subtitle: string }> = {
   apps: { title: 'Add more apps with Pro', subtitle: 'Free covers ' + FREE_TIER_APP_CAP + ' flagged apps. Pro removes the limit.' },

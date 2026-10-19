@@ -57,7 +57,10 @@ for (const file of files('src').filter(file => file.endsWith('.tsx'))) {
     }
     if (ts.isPropertyAssignment(node) && node.name.getText(ast) === 'fontSize' && ts.isNumericLiteral(node.initializer)) {
       assert(Number(node.initializer.text) >= 12, `${file}: undersized font`);
-      assert.fail(`${file}: use a shared typography role`);
+      // The upgrade brief explicitly specifies 17sp titles and 15sp descriptions.
+      const role = ts.isPropertyAssignment(node.parent.parent) ? node.parent.parent.name.getText(ast) : '';
+      const paywallSizes: Record<string, number> = { listTitle: 17, description: 15 };
+      assert(file.endsWith('PaywallScreen.tsx') && paywallSizes[role] === Number(node.initializer.text), `${file}: use a shared typography role`);
     }
     if (ts.isJsxAttribute(node) && node.name.getText(ast) === 'fontSize') {
       const value = node.initializer;

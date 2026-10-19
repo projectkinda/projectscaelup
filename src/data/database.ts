@@ -99,6 +99,7 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       grace_period_seconds INTEGER NOT NULL,
+      default_minutes INTEGER NOT NULL DEFAULT 25,
       frame_width_min INTEGER NOT NULL DEFAULT 15,
       frame_width_max INTEGER NOT NULL DEFAULT 40
     );
@@ -146,6 +147,8 @@ async function runSchemaSetup(database: SQLite.SQLiteDatabase) {
     'frame_width_max',
     'INTEGER NOT NULL DEFAULT 40',
   );
+
+  await addColumnIfMissing(database, 'custom_modes', 'default_minutes', 'INTEGER NOT NULL DEFAULT 25');
 
   await addColumnIfMissing(
     database,

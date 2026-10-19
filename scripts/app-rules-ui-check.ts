@@ -86,7 +86,7 @@ test('Settings integration and History extraction preserve intended scope', () =
   assert(!/Grace period|Frame default:|s grace|min grace/.test(settings));
   assert(settings.includes('gracePeriodSeconds') && readFileSync('src/data/settingsRepository.ts', 'utf8').includes('grace_period_seconds'));
   const history = readFileSync('src/screens/HistoryScreen.tsx', 'utf8');
-  assert(history.includes("paywall.show('coach')") && !history.includes('<PaywallSheet'));
+  assert(history.includes("paywall.show('coach')") && !history.includes('<PaywallScreen'));
 });
 test('name summaries use installed names, compact groups, and readable fallbacks', () => {
   const names = new Map([['com.instagram.android', { displayName: 'Instagram' }], ['com.snapchat.android', { displayName: 'Snapchat' }]]);
