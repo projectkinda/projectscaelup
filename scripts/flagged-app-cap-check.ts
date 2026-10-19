@@ -29,6 +29,36 @@ assert.equal(proFeaturesFor('apps', 'android')[0].freeValue, String(FREE_TIER_AP
 assert(proFeaturesFor('apps', 'ios').every(row => row.id !== 'app-rules'));
 
 
+async function checkAppEnumeration() {
+  const source = readFileSync('src/domain/appPicker.ts', 'utf8');
+  for (const supported of [false, true]) {
+    const exports: any = {}, logs: any[] = [];
+    let reads = 0;
+    const bridge = { getInstalledApps: async () => { reads++; return [
+      { packageName: 'z', displayName: 'Zulu', iconBase64: 'private-icon' },
+      { packageName: 'a', displayName: 'Alpha', iconBase64: 'private-icon' },
+    ]; } };
+    runInNewContext(transpileModule(source, { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, {
+      exports, require: (id: string) => id === 'react-native'
+        ? { Platform: { OS: 'android' }, NativeModules: supported ? { AppPickerBridge: bridge } : {} }
+        : { debug: (...args: any[]) => logs.push(args) },
+    });
+    const apps = await exports.getInstalledApps();
+    assert.equal(reads, supported ? 1 : 0);
+    assert.deepEqual(Array.from(apps, (app: any) => app.displayName), supported ? ['Alpha', 'Zulu'] : []);
+    assert.equal(logs[0][1].defined, supported);
+    assert(!JSON.stringify(logs).includes('private-icon'), 'diagnostics contain metadata, never app icons');
+    if (supported) {
+      assert.equal(logs[1][1].count, 2);
+      bridge.getInstalledApps = async () => [];
+      assert.equal((await exports.getInstalledApps()).length, 0, 'an empty native result is preserved for recovery UI');
+      bridge.getInstalledApps = async () => { throw Error('native query failure'); };
+      await assert.rejects(exports.getInstalledApps(), /native query failure/, 'query failures remain distinguishable in caller diagnostics');
+    }
+  }
+  console.log('PASS picker enumeration: missing bridge, real empty result, sorting, metadata-only diagnostics and native rejection');
+}
+
 async function checkEditing() {
   const settings = readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
   const header = settings.indexOf('<View style={styles.flaggedAppsHeader}>');
@@ -70,7 +100,7 @@ async function checkEditing() {
       setIsPickingApp: () => {}, setAppPickerQuery: () => {}, setSelectedAppIdentifiers: () => {}, setInstalledApps: () => {},
       getInstalledApps: async () => [], paywall: { show: () => {} }, warn: () => {},
       removeFlaggedApp: repoModule.exports.removeFlaggedApp,
-      canAddAnotherFlaggedApp: async () => canAddFlaggedApp(paidUser, db.prepare('SELECT COUNT(*) AS count FROM flagged_apps').get().count),
+      reloadInstalledApps: async () => {}, canAddAnotherFlaggedApp: async () => canAddFlaggedApp(paidUser, db.prepare('SELECT COUNT(*) AS count FROM flagged_apps').get().count),
     };
     runInNewContext(transpileModule(removeHandler + addHandler + '\nexport const resetEdit = ' + reconcile + ';\nexport const panel = () => (' + panel + ');', { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText, context);
     function render() {
@@ -209,7 +239,7 @@ async function main() {
     let sheet = false, picker = false;
     const exports = {} as { run: () => Promise<void> };
     runInNewContext(transpileModule(handler + '\nexport const run = handleAddApp;', { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, {
-      exports, paidUser, Platform: { OS: 'android' }, canAddAnotherFlaggedApp: async () => canAdd,
+      exports, paidUser, reloadInstalledApps: async () => {}, Platform: { OS: 'android' }, canAddAnotherFlaggedApp: async () => canAdd,
       paywall: { show: (feature: string) => { assert.equal(feature, 'apps'); sheet = true; } }, setIsAppPickerVisible: (value: boolean) => { picker = value; },
       setIsEditingFlaggedApps: () => {}, setIsPickingApp: () => {}, setAppPickerQuery: () => {}, setSelectedAppIdentifiers: () => {}, setInstalledApps: () => {},
       getInstalledApps: async () => [], onNavigate: () => { throw Error('Invalid paywall navigation'); },
@@ -217,6 +247,7 @@ async function main() {
     await exports.run();
     assert.equal(sheet, !canAdd); assert.equal(picker, canAdd);
   }
+  await checkAppEnumeration();
   await checkEditing();
   await checkActiveSessionRemoval();
   console.log('PASS flagged-app cap at 2/3/4, paid/free, remaining slots, All, downgrade preservation, once-per-open prompts, benefits and actual Settings + handler/repository');

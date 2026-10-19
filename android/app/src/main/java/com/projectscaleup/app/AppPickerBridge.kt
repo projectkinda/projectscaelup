@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.util.Log
 import android.util.Base64
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -27,9 +28,14 @@ class AppPickerBridge(
       val result = Arguments.createArray()
 
       getLaunchablePackageNames().forEach { packageName ->
-        result.pushMap(buildAppMap(packageName))
+        try {
+          result.pushMap(buildAppMap(packageName))
+        } catch (error: Exception) {
+          if (BuildConfig.TEST_TOOLS_ENABLED) Log.w("AppPicker", "buildAppMap failed for $packageName; skipping app", error)
+        }
       }
 
+      if (BuildConfig.TEST_TOOLS_ENABLED) Log.d("AppPicker", "Built app maps: count=${result.size()}")
       promise.resolve(result)
     } catch (error: Exception) {
       promise.reject("APP_PICKER_ERROR", error)
@@ -42,13 +48,14 @@ class AppPickerBridge(
     }
     val seenPackages = HashSet<String>()
 
-    return reactApplicationContext.packageManager
-      .queryIntentActivities(launcherIntent, 0)
-      .map { resolveInfo -> resolveInfo.activityInfo.packageName }
+    val resolved = reactApplicationContext.packageManager.queryIntentActivities(launcherIntent, 0)
+    if (BuildConfig.TEST_TOOLS_ENABLED) Log.d("AppPicker", "queryIntentActivities: count=${resolved.size}")
+    val packages = resolved.map { resolveInfo -> resolveInfo.activityInfo.packageName }
       .filter { packageName ->
-        packageName != reactApplicationContext.packageName &&
-          seenPackages.add(packageName)
+        packageName != reactApplicationContext.packageName && seenPackages.add(packageName)
       }
+    if (BuildConfig.TEST_TOOLS_ENABLED) Log.d("AppPicker", "After self-package filter and deduplication: count=${packages.size}")
+    return packages
   }
 
   private fun buildAppMap(packageName: String): WritableMap {

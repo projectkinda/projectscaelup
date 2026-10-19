@@ -4,8 +4,8 @@ import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { SvgProps } from 'react-native-svg';
 
-import HistoryIcon from '../assets/icons/history.svg';
 import HomeIcon from '../assets/icons/home.svg';
+import ProgressIcon from '../assets/icons/progress.svg';
 import SettingsIcon from '../assets/icons/settings.svg';
 import { colors, layout } from '../theme/tokens';
 
@@ -17,7 +17,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', Icon: HomeIcon },
-  { id: 'history', label: 'History', Icon: HistoryIcon },
+  { id: 'history', label: 'Progress', Icon: ProgressIcon },
   { id: 'settings', label: 'Settings', Icon: SettingsIcon },
 ];
 
@@ -48,6 +48,7 @@ export function BottomNavigation({
             <Pressable
               key={id}
               accessibilityRole="tab"
+              accessibilityLabel={`${label}, tab`}
               accessibilityState={{ selected: active }}
               onPress={() => onSelect?.(id)}
               style={({ pressed }) => [styles.item, pressed && styles.pressed]}

@@ -1,3 +1,4 @@
+import { debug } from './releaseLog';
 import { NativeModules, Platform } from 'react-native';
 
 export type InstalledApp = {
@@ -20,10 +21,12 @@ export const isAppPickerSupported =
   Platform.OS === 'android' && AppPickerBridge !== undefined;
 
 export async function getInstalledApps(): Promise<InstalledApp[]> {
+  debug('App picker bridge status:', { platform: Platform.OS, defined: AppPickerBridge !== undefined && AppPickerBridge !== null });
   if (!isAppPickerSupported || !AppPickerBridge) {
     return [];
   }
 
   const apps = await AppPickerBridge.getInstalledApps();
+  debug('App picker returned apps:', { count: apps.length });
   return apps.sort((a, b) => a.displayName.localeCompare(b.displayName));
 }

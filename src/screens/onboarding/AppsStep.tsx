@@ -5,6 +5,7 @@ import { Text } from '../../components/AppText';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -59,6 +60,7 @@ export function AppsStep({
   const [hint, setHint] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const didInitializeSelectionRef = useRef(false);
   const paidUser = isPaidUser();
   const maxSelectable = paidUser ? undefined : FREE_TIER_APP_CAP;
@@ -115,7 +117,15 @@ export function AppsStep({
     return () => {
       cancelled = true;
     };
-  }, [onSelectedIdsChange, paidUser]);
+  }, [onSelectedIdsChange, paidUser, loadAttempt]);
+
+  useEffect(() => {
+    if (apps.length > 0 || isLoading) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') setLoadAttempt(attempt => attempt + 1);
+    });
+    return () => subscription.remove();
+  }, [apps.length, isLoading]);
 
   const preCheckedIds = useMemo(
     () => DEFAULT_APP_IDS.filter(packageName =>
@@ -190,9 +200,9 @@ export function AppsStep({
       >
         <View style={styles.header}>
           <BackButton onPress={back} />
-          <Text style={[styles.title, keyboardVisible && styles.compactTitle]}>{paidUser ? 'Pick your apps' : `Pick up to ${FREE_TIER_APP_CAP} apps`}</Text>
+          <Text style={[styles.title, (keyboardVisible || !isLoading && apps.length === 0) && styles.compactTitle]}>{paidUser ? 'Pick your apps' : `Pick up to ${FREE_TIER_APP_CAP} apps`}</Text>
         </View>
-        {!keyboardVisible ? <Text style={styles.subtitle}>
+        {!keyboardVisible && (isLoading || apps.length > 0) ? <Text style={styles.subtitle}>
           The ones that pull you away most. You can change this any time in
           Settings.
         </Text> : null}
@@ -211,6 +221,7 @@ export function AppsStep({
           ) : (
             <AppPickerList
               apps={orderedApps}
+              onRetry={() => setLoadAttempt(attempt => attempt + 1)}
               selectedIds={selectedIds}
               onToggle={toggleApp}
               onToggleAllVisible={visible => onSelectedIdsChange(toggleAllFlaggedApps(selectedIds, visible.map(app => app.packageName), maxSelectable ?? Infinity))}

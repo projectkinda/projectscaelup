@@ -9,6 +9,8 @@
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove"/>
+  <!-- Some OEMs gate launchable-app enumeration with this vendor permission; used only for the user's app picker. -->
+  <uses-permission android:name="com.android.permission.GET_INSTALLED_APPS"/>
   <queries>
     <intent><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.HOME"/></intent>
     <intent><action android:name="android.settings.SETTINGS"/></intent>

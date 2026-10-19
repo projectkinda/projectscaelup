@@ -43,13 +43,17 @@ export function appCapPromptAction(alreadyShown: boolean): 'sheet' | 'flash' {
 
 export const DEV_FLAGS = {
   forcePaidUser: false,
-  // Test surfaces are available only in development JS, never in a release bundle.
-  tierSwitcher: typeof __DEV__ !== 'undefined' && __DEV__,
+  // One gate for development JS and the isolated, standalone QA build.
+  tierSwitcher: (typeof __DEV__ !== 'undefined' && __DEV__) || process.env.EXPO_PUBLIC_TEST_TOOLS === '1',
   resetOnboarding: false,
   // Runs the iPhone onboarding and permissions gate before the App.tsx
   // bypass comes out. Pair with resetOnboarding to see it from the start.
   iosOnboardingPreview: false,
 };
+
+if (!(typeof __DEV__ !== 'undefined' && __DEV__) && DEV_FLAGS.tierSwitcher && process.env.EXPO_PUBLIC_BUILD_VARIANT !== 'qa') {
+  console.warn('RELEASE WARNING: Test tools are enabled in a non-QA production bundle.');
+}
 
 export const TIER_SWITCHER_ENABLED = DEV_FLAGS.tierSwitcher;
 

@@ -72,6 +72,8 @@ import { useIsPaidUser } from '../domain/useIsPaidUser';
 import { colors, layout } from '../theme/tokens';
 
 type SettingsScreenProps = {
+  onRestartOnboarding?: () => Promise<void>;
+  canRestartOnboarding?: boolean;
   isActive: boolean;
   onNavigate: (screen: string) => void;
 };
@@ -173,7 +175,7 @@ async function openSubscriptionManagement() {
   await Linking.openURL(url);
 }
 
-export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
+export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canRestartOnboarding = true }: SettingsScreenProps) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, fontScale } = useWindowDimensions();
   const [flaggedApps, setFlaggedApps] = useState<FlaggedApp[]>([]);
@@ -182,6 +184,16 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
   const [permissions, setPermissions] = useState<PermissionRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isRestartingOnboarding, setIsRestartingOnboarding] = useState(false);
+  const restartSetup = async () => {
+    if (!TIER_SWITCHER_ENABLED || !canRestartOnboarding || isRestartingOnboarding || !onRestartOnboarding) return;
+    setIsRestartingOnboarding(true);
+    try { await onRestartOnboarding(); }
+    catch (error) {
+      warn('Failed to restart onboarding:', error);
+      Alert.alert('Unable to restart onboarding', 'Try again in a moment.');
+    } finally { setIsRestartingOnboarding(false); }
+  };
   const [editingMode, setEditingMode] = useState<CustomMode | null>(null);
   const [isModeEditorVisible, setIsModeEditorVisible] = useState(false);
   const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
@@ -388,28 +400,25 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
     [permissions, screenTimeStatus],
   );
 
+  const installedAppsRequest = useRef(false);
+  const reloadInstalledApps = useCallback(async () => {
+    if (installedAppsRequest.current) return;
+    installedAppsRequest.current = true;
+    setIsPickingApp(true);
+    try { setInstalledApps(await getInstalledApps()); }
+    catch (error) { warn('Failed to load apps:', error); setInstalledApps([]); }
+    finally { installedAppsRequest.current = false; setIsPickingApp(false); }
+  }, []);
+
   const handleAddApp = async () => {
     if (Platform.OS !== 'android') return;
     const canAdd = await canAddAnotherFlaggedApp(paidUser);
-    if (!canAdd) {
-      paywall.show('apps');
-      return;
-    }
-
-    setIsPickingApp(true);
-    try {
-      setAppPickerQuery('');
-      setSelectedAppIdentifiers([]);
-      setIsEditingFlaggedApps(false);
-      setIsAppPickerVisible(true);
-      setInstalledApps(await getInstalledApps());
-    } catch (error) {
-      warn('Failed to load apps:', error);
-      Alert.alert('Unable to load apps', 'Try again in a moment.');
-      setIsAppPickerVisible(false);
-    } finally {
-      setIsPickingApp(false);
-    }
+    if (!canAdd) { paywall.show('apps'); return; }
+    setAppPickerQuery('');
+    setSelectedAppIdentifiers([]);
+    setIsEditingFlaggedApps(false);
+    setIsAppPickerVisible(true);
+    await reloadInstalledApps();
   };
 
   const closeAppPicker = () => {
@@ -861,6 +870,26 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
                 </View>
               ) : null}
 
+              {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Testing</Text>
+                  <View style={styles.panelShell}>
+                    <View style={styles.panel}>
+                      <Pressable testID="restart-onboarding" accessibilityRole="button"
+                        accessibilityLabel="Restart onboarding"
+                        accessibilityState={{ disabled: !canRestartOnboarding || isRestartingOnboarding || !onRestartOnboarding, busy: isRestartingOnboarding }}
+                        disabled={!canRestartOnboarding || isRestartingOnboarding || !onRestartOnboarding}
+                        onPress={restartSetup} style={({ pressed }) => [styles.row, (pressed || !canRestartOnboarding || isRestartingOnboarding) && styles.pressed]}>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowTitle}>{isRestartingOnboarding ? 'Restarting onboarding?' : 'Restart onboarding'}</Text>
+                          <Text style={styles.rowDetail}>{canRestartOnboarding ? 'Run setup again. Saved apps, modes and history stay.' : 'Finish your current session first.'}</Text>
+                        </View>
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
               {TIER_SWITCHER_ENABLED ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Coach dev seeding</Text>
@@ -1028,6 +1057,9 @@ export function SettingsScreen({ isActive, onNavigate }: SettingsScreenProps) {
       />
       <AppPickerModal
         apps={visibleInstalledApps}
+        installedAppCount={installedApps.length}
+        isLoading={isPickingApp}
+        onRetry={reloadInstalledApps}
         isSaving={isPickingApp}
         query={appPickerQuery}
         remainingSlots={remainingFreeAppSlots}
@@ -1086,7 +1118,9 @@ const styles = StyleSheet.create({
   },
   panel: {
     paddingHorizontal: 14,
-    paddingVertical: 4,
+    // Rows draw their own divider underneath; the last one is clipped by the card
+    // so there is no stray line or empty strip at the bottom.
+    marginBottom: -1,
   },
   row: {
     minHeight: 62,
@@ -1107,7 +1141,7 @@ const styles = StyleSheet.create({
   },
   flaggedAppStrip: {
     minHeight: 62,
-    paddingVertical: 10,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -1136,7 +1170,7 @@ const styles = StyleSheet.create({
   plusAmber: { color: colors.rewardAmber },
   plusWithPro: { ...typography.subheading },
   appProLabel: { ...typography.caption, fontWeight: '700', letterSpacing: .8, color: colors.rewardAmber },
-  appCapCaption: { marginTop: 12 },
+  appCapCaption: { marginTop: 2, marginBottom: 16 },
   appCapCaptionText: { ...typography.caption, color: colors.muted },
   appCapLink: { ...typography.caption, color: colors.rewardAmber },
   addAppIconButton: {

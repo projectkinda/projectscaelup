@@ -1,6 +1,6 @@
 # Focus Coach: Android Notes
 
-The coach rules engine, copy, History card, and Home suggestion chip are shared TypeScript. Paid coach surfaces stay behind `isPaidUser()` / `DEV_FLAGS.forcePaidUser`; no Android-specific coach engine or native code is required.
+The coach rules engine, copy, Progress card (the History screen), and Home suggestion chip are shared TypeScript. Paid coach surfaces stay behind `isPaidUser()` / `DEV_FLAGS.forcePaidUser`; no Android-specific coach engine or native code is required.
 
 ## Data Read By The Coach
 
@@ -51,4 +51,4 @@ A valid session has `clean_seconds IS NOT NULL` and `focus_seconds >= 120`. The 
 - Long backgrounded pause records `first_distraction_type = 'pause_overrun'` and clean time ends at pause start. Check once with Doze or battery saver enabled.
 - Five minute session with a flagged app for 60 seconds about 2 minutes in should record `clean_seconds` near 2 minutes plus 30 seconds. Camera absence should be within the mode grace.
 - End Early keeps `ended_early = 1`, fills `clean_seconds`, and counts for coach if `focus_seconds >= 120`.
-- History card and suggestion chip fit on small and large Android screens with gesture and 3-button navigation.
+- Progress card and suggestion chip fit on small and large Android screens with gesture and 3-button navigation.

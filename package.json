@@ -33,7 +33,10 @@
     "android": "expo run:android",
     "android:emulator": "bash scripts/run-expo-emulator.sh",
     "ios": "expo run:ios",
-    "web": "node scripts/start-web-with-coi.js"
+    "web": "node scripts/start-web-with-coi.js",
+    "check:settings-guide": "tsx scripts/settings-guide-check.ts && node scripts/settings-guide-ui-preview.cjs",
+    "build:qa": "node scripts/build-qa-apk.cjs",
+    "verify:qa": "node scripts/verify-qa-build.cjs && tsx scripts/test-tools-check.ts"
   },
   "private": true,
   "overrides": {

@@ -1,6 +1,7 @@
 package com.projectscaleup.app
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -27,6 +28,18 @@ class UsageTrackingBridge(
   @ReactMethod
   fun openAccessibilitySettings() {
     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    reactApplicationContext.startActivity(intent)
+  }
+
+  // App info page for this app: where "Allow restricted settings" lives.
+  @ReactMethod
+  fun openAppDetailsSettings() {
+    val intent = Intent(
+      Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+      Uri.parse("package:${reactApplicationContext.packageName}"),
+    ).apply {
       addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     reactApplicationContext.startActivity(intent)

@@ -1,6 +1,6 @@
 import { usePickerBack } from '../../components/usePickerBack';
 import { warn } from '../../domain/releaseLog';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 
 import { ScreenTime } from '../../../modules/screen-time';
@@ -76,7 +76,6 @@ export function OnboardingFlow({
   const [selectedAppIds, setSelectedAppIds] = useState<string[]>([]);
   const [selectionInitialized, setSelectionInitialized] = useState(false);
   const updateSelectedAppIds = useCallback((ids: string[]) => { setSelectedAppIds(ids); setSelectionInitialized(true); }, []);
-  const [selectedAppNames, setSelectedAppNames] = useState<string[]>([]);
   const [isRestoringStep, setIsRestoringStep] = useState(mode === 'onboarding');
 
   const refreshStatus = useCallback(async () => {
@@ -91,7 +90,6 @@ export function OnboardingFlow({
   const refreshSelectedApps = useCallback(async () => {
     const settingsData = await loadSettingsData();
     setSelectedAppIds(settingsData.flaggedApps.map(app => app.appIdentifier));
-    setSelectedAppNames(settingsData.flaggedApps.map(app => app.displayName));
     return settingsData.flaggedApps;
   }, []);
 
@@ -137,7 +135,6 @@ export function OnboardingFlow({
       setStatus(permissionStatus);
       setSelectedAppIds(flaggedApps.map(app => app.appIdentifier));
       setSelectionInitialized(flaggedApps.length > 0);
-      setSelectedAppNames(flaggedApps.map(app => app.displayName));
 
       let nextStep: OnboardingStep = isOnboardingStep(savedStepValue)
         ? savedStepValue
@@ -186,11 +183,6 @@ export function OnboardingFlow({
     else goBack();
   }, !(mode === 'onboarding' && currentStep === 'apps' && Platform.OS === 'android'));
 
-  const selectedAppNamesForPermission = useMemo(
-    () => selectedAppNames.filter(Boolean),
-    [selectedAppNames],
-  );
-
   if (!status || isRestoringStep) {
     return (
       <View style={styles.loading}>
@@ -204,7 +196,6 @@ export function OnboardingFlow({
       <PermissionStep
         permission={permissionStep}
         status={status}
-        appNames={selectedAppNamesForPermission}
         onBack={() => {
           setPermissionStep(null);
           void refreshStatus();

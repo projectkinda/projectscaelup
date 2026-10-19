@@ -9,8 +9,8 @@ import { validateRule, type AppRule, type AppRuleSnapshot } from '../domain/appR
 import { ruleAppName, defaultRuleDraft, formatRuleDuration, formatRuleTime, isLooserChange, RULE_DAY_INITIALS, RULE_DAY_NAMES, stepRuleLimit } from '../domain/appRulesPresentation';
 import { colors } from '../theme/tokens';
 
-export function AppRuleEditorModal({ rule, apps, initialKind, appsError, appsLoading, onReloadApps, onCancel, onSave, onDelete }: {
-  initialKind?: AppRuleSnapshot['kind']; appsError?: string; appsLoading?: boolean; onReloadApps?: () => Promise<void>;
+export function AppRuleEditorModal({ rule, apps, installedAppCount, initialKind, appsError, appsLoading, onReloadApps, onCancel, onSave, onDelete }: {
+  installedAppCount?: number; initialKind?: AppRuleSnapshot['kind']; appsError?: string; appsLoading?: boolean; onReloadApps?: () => Promise<void>;
   rule: AppRule | null; apps: InstalledApp[]; onCancel: () => void;
   onSave: (draft: AppRuleSnapshot) => Promise<boolean>; onDelete: () => Promise<boolean>;
 }) {
@@ -126,7 +126,7 @@ export function AppRuleEditorModal({ rule, apps, initialKind, appsError, appsLoa
             <Pressable accessibilityRole="button" disabled={busy} onPress={() => submit(true)} style={ruleStyles.secondary}><Text style={ruleStyles.error}>Delete</Text></Pressable>
           </View>
         </RuleModalShell> : null}
-    {picker ? <AppPickerModal visible variant="rule" loadError={appsError} isLoading={appsLoading} onRetry={() => { void onReloadApps?.(); }} apps={apps} isSaving={false} query={query} remainingSlots={20}
+    {picker ? <AppPickerModal visible variant="rule" loadError={appsError} isLoading={appsLoading} onRetry={() => { void onReloadApps?.(); }} apps={apps} installedAppCount={installedAppCount} isSaving={false} query={query} remainingSlots={20}
       selectedAppIdentifiers={pickerSelection} onCancel={() => { setPicker(false); setPickerSelection([]); setQuery(''); }} onChangeQuery={setQuery}
       onSave={() => { patch({ apps: pickerSelection }); setPicker(false); }}
       onToggleApp={app => setPickerSelection(current => current.includes(app.packageName) ? current.filter(pkg => pkg !== app.packageName) : current.length < 20 ? [...current, app.packageName] : current)}

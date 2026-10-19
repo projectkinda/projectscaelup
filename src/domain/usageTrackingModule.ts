@@ -19,6 +19,7 @@ type AppUsageCallback = (tick: AppUsageTick) => void;
 type NativeUsageTrackingBridge = {
   isAccessibilityServiceEnabled: () => Promise<boolean>;
   openAccessibilitySettings: () => void;
+  openAppDetailsSettings?: () => void;
   setFlaggedPackages: (packages: string[]) => Promise<void>;
   drainUseLog: () => Promise<{ package: string; usedAtMs: number }[]>;
   drainGaps: () => Promise<{ startedMs: number; endedMs: number }[]>;
@@ -72,6 +73,10 @@ export const UsageTrackingModule = {
 
   openSettings(): void {
     UsageTrackingBridge?.openAccessibilitySettings();
+  },
+
+  openAppInfo(): void {
+    UsageTrackingBridge?.openAppDetailsSettings?.();
   },
 
   setFlaggedPackages(packages: string[]): Promise<void> {

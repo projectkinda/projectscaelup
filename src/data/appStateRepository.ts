@@ -31,3 +31,13 @@ export async function removeAppState(key: string): Promise<void> {
 
   await database.runAsync('DELETE FROM app_state WHERE key = ?;', [key]);
 }
+
+/** Reset only onboarding progress in one atomic statement; preserve all user data. */
+export async function resetOnboardingProgress(): Promise<void> {
+  const database = await getDatabase();
+  await ensureSchema(database);
+  await database.runAsync(
+    'INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?), (?, ?);',
+    ['onboarding_step', 'welcome', 'onboarding_complete', 'false'],
+  );
+}

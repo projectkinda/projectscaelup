@@ -3,6 +3,7 @@ import { typography } from '../theme/typography';
 import { Text, TextInput } from './AppText';
 import {
   Image,
+  Linking,
   Pressable,
   ScrollView,
   StyleProp,
@@ -16,6 +17,9 @@ import { colors } from '../theme/tokens';
 
 export type AppPickerListProps = {
   apps: InstalledApp[];
+  installedAppCount?: number;
+  loading?: boolean;
+  onRetry?: () => void;
   selectedIds: string[];
   onToggle: (packageName: string) => void;
   maxSelectable?: number;
@@ -70,6 +74,9 @@ export function filterAppsForPicker(apps: InstalledApp[], query: string) {
 
 export function AppPickerList({
   apps,
+  installedAppCount = apps.length,
+  loading = false,
+  onRetry,
   selectedIds,
   onToggle,
   maxSelectable,
@@ -102,7 +109,7 @@ export function AppPickerList({
           showsVerticalScrollIndicator
           contentContainerStyle={styles.list}
         >
-          {onToggleAllVisible ? <View testID="app-picker-list-header" style={styles.listHeader}>
+          {onToggleAllVisible && visibleApps.length > 0 ? <View testID="app-picker-list-header" style={styles.listHeader}>
             <Text style={styles.listLabel}>Apps</Text>
             <Pressable accessibilityRole="button" accessibilityLabel={allVisibleSelected ? 'Clear' : 'Select all'}
               disabled={visibleApps.length === 0} onPress={() => onToggleAllVisible(allVisibleSelected ? visibleApps.filter(app => selectedIdSet.has(app.packageName)) : visibleApps)} style={styles.selectAll}>
@@ -151,10 +158,10 @@ export function AppPickerList({
               </Pressable>
             );
           })}
-          {visibleApps.length === 0 ? (
-            <View style={styles.empty}>
-              <Text style={styles.emptyText}>{emptyText}</Text>
-            </View>
+          {visibleApps.length === 0 && !loading ? query.trim().length > 0 ? (
+            <View style={styles.empty}><Text style={styles.emptyText}>{emptyText}</Text></View>
+          ) : installedAppCount === 0 ? <AppPickerUnavailable onRetry={onRetry} /> : (
+            <View style={styles.empty}><Text style={styles.emptyText}>No additional apps are available.</Text></View>
           ) : null}
         </ScrollView>
       </View>
@@ -162,6 +169,19 @@ export function AppPickerList({
 
     </View>
   );
+}
+
+export function AppPickerUnavailable({ onRetry }: { onRetry?: () => void }) {
+  return <View testID="app-picker-unavailable" style={styles.unavailable}>
+    <Text style={styles.unavailableTitle}>Can't see your installed apps</Text>
+    <Text style={styles.emptyText}>Your phone is blocking the app list. Allow it in settings, then come back.</Text>
+    <Pressable accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => { void Linking.openSettings(); }} style={styles.openSettings}>
+      <Text style={styles.openSettingsText}>Open settings</Text>
+    </Pressable>
+    <Pressable accessibilityRole="button" accessibilityLabel="Retry" onPress={onRetry} style={styles.retry}>
+      <Text style={styles.retryText}>Retry</Text>
+    </Pressable>
+  </View>;
 }
 
 export function AppSearchField({ query, onChangeQuery, placeholder = 'Search' }: { query: string; onChangeQuery: (value: string) => void; placeholder?: string }) {
@@ -246,6 +266,12 @@ const styles = StyleSheet.create({
     color: colors.ink,
     ...typography.stat,
   },
+  unavailable: { padding: 16, gap: 8 },
+  unavailableTitle: { ...typography.body, fontWeight: '600', color: colors.ink },
+  openSettings: { height: 48, borderRadius: 24, backgroundColor: colors.ink, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  openSettingsText: { ...typography.body, fontWeight: '700', color: colors.background },
+  retry: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  retryText: { ...typography.label, color: colors.ink },
   empty: {
     minHeight: 180,
     alignItems: 'center',

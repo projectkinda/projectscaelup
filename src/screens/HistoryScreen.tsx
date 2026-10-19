@@ -605,7 +605,7 @@ export function HistoryScreen({ isActive, onNavigate }: HistoryScreenProps) {
         ]}
       >
         <View style={styles.content}>
-          <Text style={styles.title}>History</Text>
+          <Text style={styles.title}>Progress</Text>
 
           {isFirstRunHistory ? (
             <HistoryFirstRunState onStartSession={() => onNavigate('home')} />

@@ -92,7 +92,7 @@ State lives in App Group UserDefaults (`group.com.projectscaleup.app`):
 - **Picking apps:** tapping **+** presents Apple's `FamilyActivityPicker`, pre-filled with the current selection.
   - The selection is stored in the App Group. JS stores only the count, plus opaque IDs for display.
   - Settings renders a native `FlaggedAppsStrip` (SwiftUI `Label(token)`) on iOS.
-  - The distraction log (post-session summary and History) matches Android's names and icons: JS passes each distraction's app key to the native `FlaggedAppLabel` view, which draws `Label(token)`. Tokens of apps that have ever been flagged are kept in `known-apps.json` in the App Group, so past sessions still show the app after it's unflagged.
+  - The distraction log (post-session summary and the Progress tab) matches Android's names and icons: JS passes each distraction's app key to the native `FlaggedAppLabel` view, which draws `Label(token)`. Tokens of apps that have ever been flagged are kept in `known-apps.json` in the App Group, so past sessions still show the app after it's unflagged.
 - **Free cap:** if a free user picks more than 3 apps, keep 3 and say so. The picker can't enforce a limit itself.
 - **Categories and websites:** v1 ignores them, with a note in the sheet.
 

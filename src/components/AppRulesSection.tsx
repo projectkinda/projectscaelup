@@ -47,19 +47,24 @@ export function PaidRulesPanel({ isActive }: { isActive: boolean }) {
   const [appsError, setAppsError] = useState('');
   const [appsLoading, setAppsLoading] = useState(false);
   const appsRequest = useRef(0);
+  const appsInFlight = useRef(false);
+  const [installedAppCount, setInstalledAppCount] = useState(0);
   const request = useRef(0);
   const alive = useRef(true);
   const reloadApps = useCallback(async () => {
+    if (appsInFlight.current) return;
+    appsInFlight.current = true;
     const id = ++appsRequest.current;
     setAppsLoading(true);
     try {
       const installed = await getInstalledApps();
+      if (alive.current && id === appsRequest.current) setInstalledAppCount(installed.length);
       const eligible = await getSelectableRuleApps(installed);
       if (installed.length && !eligible.length) throw new Error('Empty app list');
       if (alive.current && id === appsRequest.current && isPaidUser()) { setApps(eligible); setAppsError(''); }
     } catch {
       if (alive.current && id === appsRequest.current) setAppsError("Couldn't load your apps. Try again.");
-    } finally { if (alive.current && id === appsRequest.current) setAppsLoading(false); }
+    } finally { appsInFlight.current = false; if (alive.current && id === appsRequest.current) setAppsLoading(false); }
   }, []);
   const load = useCallback(async (refreshApps = false) => {
     const id = ++request.current;
@@ -153,7 +158,7 @@ export function PaidRulesPanel({ isActive }: { isActive: boolean }) {
       {error ? <Text accessibilityLiveRegion="polite" style={[ruleStyles.error, styles.empty]}>{error}</Text> : null}
     </View>
     {editor ? <AppRuleEditorModal key={typeof editor === 'string' ? editor : editor.id} rule={typeof editor === 'string' ? null : editor}
-      initialKind={editor === 'new-limit' ? 'limit' : 'schedule'} apps={apps} appsError={appsError} appsLoading={appsLoading} onReloadApps={reloadApps}
+      initialKind={editor === 'new-limit' ? 'limit' : 'schedule'} apps={apps} installedAppCount={installedAppCount} appsError={appsError} appsLoading={appsLoading} onReloadApps={reloadApps}
       onCancel={() => setEditor(null)} onSave={save} onDelete={remove}/> : null}
   </>;
 }

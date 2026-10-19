@@ -1,6 +1,8 @@
 # Android release checklist
 
-There is one release configuration: test tools are always off. Read [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) before changing the build. iOS bypass/flags, RevenueCat and restore/manage-subscription behavior are unchanged.
+Never ship the qa build.
+
+There is one store/release configuration: test tools are always off. Read [Expo SDK 57](https://docs.expo.dev/versions/v57.0.0/) before changing the build. iOS bypass/flags, RevenueCat and restore/manage-subscription behavior are unchanged.
 
 Testing with tools uses the debug build: run `npx expo run:android --variant debug` from the repository root.
 
@@ -44,15 +46,15 @@ cd android
 .\gradlew.bat :app:assembleRelease
 ```
 
-The only APK destination is `android/app/build/outputs/apk/release/app-release.apk`; each build replaces it. Do not copy APKs into extra artifact folders. All four signing credentials select the release key; otherwise assembleRelease uses the existing debug key and prints a loud **NOT STORE-UPLOADABLE** warning. Debug signing never enables test tools in a release APK.
+The release APK destination is `android/app/build/outputs/apk/release/app-release.apk`; each build replaces it. Do not copy release APKs into extra artifact folders. Standalone QA builds use the separate workflow in [qa-build.md](qa-build.md). All four signing credentials select the release key; otherwise assembleRelease uses the existing debug key and prints a loud **NOT STORE-UPLOADABLE** warning. Debug signing never enables test tools in a release APK.
 
 ## Flag safety and debug workflow
 
-`DEV_FLAGS.tierSwitcher = typeof __DEV__ !== 'undefined' && __DEV__`. forcePaidUser, resetOnboarding and iosOnboardingPreview remain false constants. All existing test surfaces/actions gate on DEV_FLAGS.tierSwitcher. Release startup removes the exact `test_tier_override` app_state key and clears its in-memory value.
+`DEV_FLAGS.tierSwitcher = __DEV__ || process.env.EXPO_PUBLIC_TEST_TOOLS === '1'` (with an undefined guard for __DEV__). Only the QA build helper sets the public test-tools variable to 1; every release bundle must resolve it to false. forcePaidUser, resetOnboarding and iosOnboardingPreview remain false constants. All existing test surfaces/actions gate on DEV_FLAGS.tierSwitcher. Release startup removes the exact `test_tier_override` app_state key and clears its in-memory value.
 
 The normal debug variant is debuggable and the React Native Gradle plugin skips embedded JS bundling for it. Expo's debug workflow starts Metro and requests development JS, where __DEV__ is true; tools render there. `assembleDebug` alone builds the native debug APK and needs Metro to run this app. No embedded debug variant is configured. A manually embedded production JS bundle would have __DEV__ false and would hide tools even in a debug APK; this is not worked around.
 
-The live-timer library generates TEST_TOOLS_ENABLED=true for debug and false for release. The release notification ignores both leftover style_override and session_style, uses custom by default, and retains the standard-row fallback when custom rendering fails. Both generated variant BuildConfig files were checked.
+The app and live-timer library generate TEST_TOOLS_ENABLED=true for debug/qa and false for release. The release notification ignores both leftover style_override and session_style, uses custom by default, and retains the standard-row fallback when custom rendering fails. Both generated variant BuildConfig files were checked.
 
 `scripts/verify-release-bundle.cjs` inspects the exact Metro release JS before Hermes compilation and fails the build unless all four DEV_FLAGS resolve to false. It rejects unresolved expressions and any true flag. Proof: `android/app/build/release-proof/release-flags.json`, including resolved flags and Metro JS SHA-256. Expected pass line:
 
@@ -60,14 +62,15 @@ The live-timer library generates TEST_TOOLS_ENABLED=true for debug and false for
 PASS verify-release-bundle: all DEV_FLAGS are false (test tools OFF)
 ```
 
-The obsolete environment switch is no longer read by app/build code. A separate real Metro release bundling regression check confirmed an old shell setting cannot enable tools; the final APK is built once after clean. No release-with-tools path exists.
+The QA helper scopes EXPO_PUBLIC_TEST_TOOLS=1 to its Gradle child process. Setting it for a release build fails bundle verification; it never produces a release APK with tools on. Gradle tracks the flag as a bundle task input so an old cache cannot bypass this check. Missing flags normalize to 0 inside the bundler. The release verifier retains its all-false rule and proof path; QA has separate qa-proof files. A production bundle with tools enabled outside QA prints RELEASE WARNING.
 
 ## Merged release permission audit
 
-Evidence: `android/app/build/outputs/logs/manifest-merger-release-report.txt` and `android/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml`. Final manifest has exactly these 12 uses-permission entries; names below omit android.permission except the app-specific signature permission.
+Evidence: `android/app/build/outputs/logs/manifest-merger-release-report.txt` and `android/app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml`. Final manifest has exactly these 13 uses-permission entries; names below omit android.permission except the app-specific signature permission.
 
 | Permission | Manifest contributor(s) | App use / retention reason | Play / user action |
 | --- | --- | --- | --- |
+| com.android.permission.GET_INSTALLED_APPS | App | OEM-specific access to launchable apps for the user?s own picker | Some OEMs gate this access; verify their settings/grant behavior on hardware |
 | CAMERA | App; expo-camera 57.0.5 | Foreground presence checks using LivePresenceCamera | Runtime permission, privacy policy and accurate Data safety disclosures |
 | FOREGROUND_SERVICE | App | LockdownOverlayService calls startForeground for app blocking | FGS declaration with specialUse |
 | FOREGROUND_SERVICE_SPECIAL_USE | App | Actual specialUse overlay service for focus blocks, schedules and daily limits | FGS specialUse review/declaration; subtype property now describes that work |
@@ -87,11 +90,13 @@ Retained FOREGROUND_SERVICE_SPECIAL_USE because the app actually starts that ser
 
 `BIND_ACCESSIBILITY_SERVICE` is a permission on UsageTrackingAccessibilityService, not another uses-permission entry. App rules use AccessibilityService for foreground-app tracking/blocking; canRetrieveWindowContent remains false. This focus product is not declared an accessibility tool. Complete Play's Accessibility API declaration, prominent disclosure/consent, listing explanation and supporting demonstration as requested in Console. Complete the FGS declaration for specialUse with an accurate use case and demonstration; eligibility is subject to Play review. See [Accessibility API policy](https://support.google.com/googleplay/android-developer/answer/10964491?hl=en), [FGS declarations](https://support.google.com/googleplay/android-developer/answer/13392821?hl=en), and [specialUse service requirements](https://developer.android.com/develop/background-work/services/fgs/service-types#special-use).
 
+The app lists launchable apps locally for the user's own app picker (flagged apps and app rules). Include this purpose in the Play Data safety/declarations review. The OEM-specific GET_INSTALLED_APPS declaration does not guarantee a permission prompt on every phone; Android launcher queries remain scoped by the existing manifest queries block.
+
 ## Backup and logging
 
 allowBackup remains **true**. There are no custom fullBackupContent/dataExtractionRules exclusions in the app manifest. Subject to Android backup/transfer rules, private databases, ordinary files and preferences can include session/history/usage records, custom modes, flagged-app selections, app_state/settings, AsyncStorage values and native rule/timer preferences. Cache/code-cache/no-backup directories are excluded by Android defaults; cached camera frames should not be ordinary backup data. This pass did not change backup policy. See [Android Auto Backup](https://developer.android.com/identity/data/autobackup).
 
-App.tsx + src JS/TS audit: **74 console calls before**, now **3 direct console sites** and **72 warnings routed through releaseLog.warn**. The three sites are the logger's two branches and a static coach-copy validation warning. Tools-off warnings retain a static diagnostic message and omit error/native/SQL payloads, paths, session records, usage, package names and user text. Development JS retains detail arguments for debugging. Dependency/native error logging was not globally stripped; harmless error context remains. `scripts/release-logging-check.ts` checks source call sites and executes both logger modes.
+App.tsx + src JS/TS audit: **74 console calls before**, now **5 direct console sites** and **74 warnings routed through releaseLog.warn**. The five sites are the logger's two warning branches, its tools-only debug branch, the non-QA release warning, and a static coach-copy validation warning. App-picker diagnostics (bridge availability, package counts, per-app failures) emit only with tools enabled (debug or QA). Tools-off warnings retain a static diagnostic message and omit error/native/SQL payloads, paths, session records, usage, package names and user text. Development JS retains detail arguments for debugging. Dependency/native error logging was not globally stripped; harmless error context remains. `scripts/release-logging-check.ts` checks source call sites and executes both logger modes.
 
 ## Remaining user-visible integration gaps
 
@@ -108,12 +113,13 @@ Removed only "RevenueCat entitlement check pending." from Current tier. Source T
 
 ## Verification and remaining device work
 
-Passed: tsc --noEmit and every scripts/*check.ts script. Tests cover actual Settings/paywall rendered trees for development/release flags, ignored obsolete environment settings, exact stored override removal, fixture guards, native style guards and all-false bundle validation. Both generated live-timer BuildConfig variants were inspected. App and live-timer Gradle clean removed old outputs and the previous extra APK copies/logs were deleted. Final build evidence and size are reported with the standard output path only.
+Passed: tsc --noEmit and every scripts/*check.ts script. Tests cover actual Settings/paywall rendered trees for development/release flags, QA enablement and non-QA release rejection, exact stored override removal, fixture guards, native style guards and all-false release bundle validation. Both generated live-timer BuildConfig variants were inspected. App and live-timer Gradle clean removed old outputs and the previous extra APK copies/logs were deleted. Final build evidence and size are reported with the standard output path only.
 
-No Android device/emulator was connected. Render tests mock React Native/bridges and do not prove hardware behavior. Before uploading:
+App-picker diagnostics were run on a connected Samsung S23 Ultra using the custom debug APK. Render tests still mock React Native/bridges and do not prove OEM permission or release hardware behavior. Before uploading:
 
 - [ ] Install the release APK over a prior test installation: confirm every test surface is absent, the saved paid override is cleared, and stale notification preferences cannot change the custom row.
-- [ ] Run the debug app with Metro development JS: confirm all testing tools appear and work.
+- [ ] Run the custom debug app with Metro development JS: confirm all testing tools appear and work. Use `npx expo run:android --variant debug`; Expo Go cannot include AppPickerBridge.
+- [ ] On a fresh Xiaomi/HyperOS install, test installed-app permission denial/grant, empty-list Open settings/Retry, and automatic reload on return in onboarding, Settings and App rules.
 - [ ] Test presence camera, private file/cache cleanup, local completion chime and haptics on supported Android versions.
 - [ ] Test notification allow/deny (max two prompts), shade countdown, tap, pause/resume/overrun, early/normal end, extension, process kill, orphan cleanup, reboot and silent channel on API 33+. Check normal fallback and secret lock-screen visibility; check Android 16 / Samsung One UI 8 Live Update behavior where supported. Follow [android-live-timer.md](android-live-timer.md).
 - [ ] Test app-rule schedules/daily limits and overlay allow/deny/revoke/regrant on Pixel and Samsung; follow [app-rules.md](app-rules.md). Verify specialUse service background/OEM behavior.

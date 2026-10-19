@@ -40,11 +40,15 @@ for (const path of ['App.tsx', ...files('src')]) {
 for (const enabled of [false, true]) {
   const module = { exports: {} as any }, calls: unknown[][] = [];
   runInNewContext(ts.transpileModule(readFileSync('src/domain/releaseLog.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText,
-    { exports: module.exports, require: () => ({ DEV_FLAGS: { tierSwitcher: enabled } }), console: { warn: (...args: unknown[]) => calls.push(args) } });
+    { exports: module.exports, require: () => ({ DEV_FLAGS: { tierSwitcher: enabled } }), console: { debug: (...args: unknown[]) => calls.push(args), warn: (...args: unknown[]) => calls.push(args) } });
   const sensitive = { packageName: 'example.private.app', userText: 'private mode name', sessionHistory: [1, 2, 3] };
   module.exports.warn('Could not save app data:', sensitive);
   assert.equal(calls[0].length, enabled ? 2 : 1);
   assert.equal(calls[0][0], 'Could not save app data:');
+  if (enabled) assert.equal(calls[0][1], sensitive);
+  calls.length = 0;
+  module.exports.debug('App picker bridge status:', sensitive);
+  assert.equal(calls.length, enabled ? 1 : 0, 'debug diagnostics are absent in release');
   if (enabled) assert.equal(calls[0][1], sensitive);
 }
 console.log(`PASS logging audit: ${previousSites} console calls in HEAD; ${consoleSites} direct console sites now, ${guardedSites} detail-guarded warnings; store logs omit user/native/SQL payloads`);

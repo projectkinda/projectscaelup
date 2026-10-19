@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './AppText';
 import { AppPickerList } from './AppPickerList';
@@ -13,9 +13,10 @@ import { typography } from '../theme/typography';
 
 export function AppPickerModal({ apps, isSaving, query, remainingSlots, selectedAppIdentifiers, visible,
   onCancel, onChangeQuery, onSave, onToggleAllVisible, onToggleApp,
-  variant = 'default', loadError, isLoading, onRetry, freeAppLimit, onUpgrade,
+  variant = 'default', loadError, isLoading, onRetry, freeAppLimit, onUpgrade, installedAppCount = apps.length,
 }: {
   variant?: 'default' | 'rule';
+  installedAppCount?: number;
   freeAppLimit?: { cap: number; savedCount: number }; onUpgrade?: () => void;
   loadError?: string; isLoading?: boolean; onRetry?: () => void;
   apps: InstalledApp[]; isSaving: boolean; query: string; remainingSlots: number; selectedAppIdentifiers: string[]; visible: boolean;
@@ -42,6 +43,13 @@ export function AppPickerModal({ apps, isSaving, query, remainingSlots, selected
       setFlashing(true); flashTimer.current = setTimeout(() => setFlashing(false), 500);
     }
   };
+  useEffect(() => {
+    if (!visible || paywallVisible || installedAppCount > 0 || !onRetry) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active' && !isLoading) onRetry();
+    });
+    return () => subscription.remove();
+  }, [visible, paywallVisible, installedAppCount, isLoading, onRetry]);
   const selectedCount = selectedAppIdentifiers.length;
   return <Modal visible={visible && !paywallVisible} animationType="slide" presentationStyle="fullScreen"
     statusBarTranslucent navigationBarTranslucent onRequestClose={back}>
@@ -57,7 +65,7 @@ export function AppPickerModal({ apps, isSaving, query, remainingSlots, selected
           <Text style={styles.muted}>{loadError}</Text>
           <Pressable accessibilityRole="button" disabled={isLoading} onPress={onRetry} style={styles.retry}><Text style={styles.muted}>Retry</Text></Pressable>
         </View> : null}
-        <AppPickerList apps={apps} query={query} onChangeQuery={onChangeQuery} selectedIds={selectedAppIdentifiers}
+        <AppPickerList apps={apps} installedAppCount={installedAppCount} loading={isLoading} onRetry={onRetry} query={query} onChangeQuery={onChangeQuery} selectedIds={selectedAppIdentifiers}
           onToggle={packageName => { const app = apps.find(item => item.packageName === packageName); if (app) onToggleApp(app); }}
           maxSelectable={remainingSlots} onToggleAllVisible={onToggleAllVisible} onDisabledPress={showFreeLimit ? capAttempt : undefined} />
         <View testID="app-picker-footer" style={styles.footer}>

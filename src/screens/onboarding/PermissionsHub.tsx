@@ -1,6 +1,6 @@
 import { typography } from '../../theme/typography';
 import { Text } from '../../components/AppText';
-import { LinearGradient } from 'expo-linear-gradient';
+import { PillButton } from '../../components/settingsGuide/PillButton';
 import {
   Platform,
   Pressable,
@@ -152,32 +152,7 @@ export function PermissionsHub({
             { paddingBottom: insets.bottom + 18 },
           ]}
         >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: !status.all }}
-            disabled={!status.all}
-            onPress={onContinue}
-            style={({ pressed }) => [
-              styles.primaryShell,
-              pressed && styles.pressed,
-              !status.all && styles.disabledShell,
-            ]}
-          >
-            <LinearGradient
-              colors={['#333333', '#141414']}
-              pointerEvents="none"
-              style={styles.primaryButton}
-            >
-              <Text
-                style={[
-                  styles.primaryLabel,
-                  !status.all && styles.disabledLabel,
-                ]}
-              >
-                Continue
-              </Text>
-            </LinearGradient>
-          </Pressable>
+          <PillButton label="Continue" disabled={!status.all} onPress={() => onContinue?.()} />
         </View>
       ) : null}
     </View>
@@ -300,37 +275,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: layout.horizontalPadding,
     paddingTop: 14,
     backgroundColor: colors.background,
-  },
-  primaryShell: {
-    width: '100%',
-    maxWidth: layout.contentMaxWidth,
-    alignSelf: 'center',
-    height: 53,
-    borderRadius: 12,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  primaryButton: {
-    flex: 1,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  primaryLabel: {
-    color: colors.warmWhite,
-    ...typography.body,
-    fontWeight: '600',
-  },
-  disabledShell: {
-    opacity: 0.44,
-  },
-  disabledLabel: {
-    color: 'rgba(253, 251, 246, 0.6)',
   },
   pressed: {
     opacity: 0.82,

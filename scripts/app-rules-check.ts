@@ -69,7 +69,7 @@ test('crossing-midnight windows belong to the START weekday, end exclusive', () 
 });
 test('Kotlin/TS denylist constants match and runtime keyboard/launcher exclusions apply', () => {
   const native = readFileSync('android/app/src/main/java/com/projectscaleup/app/AppRuleDenylist.kt', 'utf8');
-  const packages = [...native.slice(native.indexOf('val PACKAGES'), native.indexOf('fun allows')).matchAll(/"([a-z][a-z0-9_.]+)"/g)].map(match => match[1]);
+  const packages = [...native.slice(native.indexOf('val PACKAGES'), native.indexOf('fun allows')).replace('BuildConfig.APPLICATION_ID', '"com.projectscaleup.app"').matchAll(/"([a-z][a-z0-9_.]+)"/g)].map(match => match[1]);
   assert.deepEqual(packages, [...APP_RULE_DENYLIST]);
   for (const pkg of [...APP_RULE_DENYLIST, 'vendor.keyboard', 'vendor.inputmethod', 'vendor.emergency', 'not-a-package']) {
     assert.equal(isRulePackageAllowed(pkg), false); assert(validateRule({ ...base, apps: [pkg] }).length);

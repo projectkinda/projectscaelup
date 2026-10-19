@@ -25,9 +25,13 @@ gradle.taskGraph.whenReady { graph ->
 
 // Verify the exact release JS before Hermes compilation.
 tasks.configureEach { task ->
-    if (task.name == 'createBundleReleaseJsAndAssets') {
+    if (task.name in ['createBundleReleaseJsAndAssets', 'createBundleQaJsAndAssets']) {
+        def variant = task.name == 'createBundleQaJsAndAssets' ? 'qa' : 'release'
+        task.inputs.property('testToolsBundleFlag', providers.environmentVariable('EXPO_PUBLIC_TEST_TOOLS').orElse('0'))
+        task.inputs.property('testToolsBundleVariant', providers.environmentVariable('EXPO_PUBLIC_BUILD_VARIANT').orElse('release'))
         task.inputs.file(file('../../scripts/verify-release-bundle.cjs'))
-        task.outputs.file(layout.buildDirectory.file('release-proof/release-flags.json'))
+        task.outputs.file(layout.buildDirectory.file("${variant}-proof/${variant}-flags.json"))
+        task.outputs.file(layout.buildDirectory.file("${variant}-proof/index.android.bundle.js"))
     }
 }
 
@@ -124,6 +128,7 @@ android {
         applicationId 'com.projectscaleup.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
+        buildConfigField "boolean", "TEST_TOOLS_ENABLED", "false"
         versionCode 1
         versionName "1.0.0"
 
@@ -147,6 +152,7 @@ android {
     }
     buildTypes {
         debug {
+            buildConfigField "boolean", "TEST_TOOLS_ENABLED", "true"
             signingConfig signingConfigs.debug
         }
         release {
@@ -157,6 +163,14 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
+        }
+        qa {
+            initWith release
+            applicationIdSuffix ".qa"
+            versionNameSuffix "-qa"
+            signingConfig signingConfigs.debug
+            buildConfigField "boolean", "TEST_TOOLS_ENABLED", "true"
+            matchingFallbacks = ['release']
         }
     }
     packagingOptions {

@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getAppState,
   removeAppState,
+  resetOnboardingProgress,
   setAppState,
 } from './src/data/appStateRepository';
 import { drainAwayLog, purgeOldAwayLog } from './src/domain/awayTime';
@@ -56,6 +57,8 @@ function App(): React.JSX.Element {
     useState<RequiredPermissionStatus | null>(null);
   const [sessionActive, setSessionActive] = useState(false);
   const didApplyResetOnboardingRef = useRef(false);
+  const launchGateRevision = useRef(0);
+  const restartingOnboarding = useRef(false);
 
   useEffect(() => startAppRulesSync(), []);
 
@@ -139,6 +142,7 @@ function App(): React.JSX.Element {
   }, [sessionActive]);
 
   const evaluateLaunchGate = async (hasActiveSession: boolean) => {
+    const revision = ++launchGateRevision.current;
     if (
       Platform.OS !== 'android' &&
       !(Platform.OS === 'ios' && DEV_FLAGS.iosOnboardingPreview)
@@ -158,6 +162,7 @@ function App(): React.JSX.Element {
       getRequiredPermissionStatus(),
     ]);
 
+    if (revision !== launchGateRevision.current) return;
     setRequiredPermissions(permissionStatus);
 
     if (onboardingComplete !== 'true') {
@@ -175,9 +180,23 @@ function App(): React.JSX.Element {
     setGate('ready');
   };
 
+  const restartOnboarding = async () => {
+    if (!TIER_SWITCHER_ENABLED || Platform.OS !== 'android' || sessionActive || restartingOnboarding.current) return;
+    restartingOnboarding.current = true;
+    try {
+      await resetOnboardingProgress();
+      // Ignore a foreground permission check that began before the reset.
+      launchGateRevision.current++;
+      setActiveScreen('home');
+      setSessionMessage(null);
+      setGate('onboarding');
+    } finally { restartingOnboarding.current = false; }
+  };
+
   const completeOnboarding = async () => {
     await setAppState(ONBOARDING_STEP_KEY, 'done');
     await setAppState(ONBOARDING_COMPLETE_KEY, 'true');
+    launchGateRevision.current++;
     setGate('ready');
   };
 
@@ -248,6 +267,8 @@ function App(): React.JSX.Element {
             <SettingsScreen
               isActive={activeScreen === 'settings'}
               onNavigate={handleNavigate}
+              onRestartOnboarding={restartOnboarding}
+              canRestartOnboarding={!sessionActive}
             />
           </View>
           {gate === 'permissions' ? (

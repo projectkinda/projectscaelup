@@ -66,3 +66,6 @@ local-*.properties
 key.properties
 keystore.properties
 signing.properties
+
+# Standalone QA APKs (local only)
+/artifacts/
