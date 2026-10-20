@@ -16,6 +16,26 @@ export type ScreenTimeDistraction = {
   appKey: string | null;
 };
 
+export type AwayUseRecord = {
+  /** The flagged app's stable, opaque key. */
+  appKey: string;
+  usedAtMs: number;
+};
+
+export type AwayGapRecord = {
+  startedMs: number;
+  endedMs: number;
+};
+
+export type AwayStatus = {
+  enabled: boolean;
+  /** Screen Time access is granted; without it nothing can be tracked. */
+  authorized: boolean;
+  /** The last moment tracking was confirmed armed, or null. */
+  lastHeartbeatMs: number | null;
+  lastFailureMs: number | null;
+};
+
 export type FlaggedAppsViewProps = {
   /** Change this after the picker closes to redraw the icons. */
   revision: number;

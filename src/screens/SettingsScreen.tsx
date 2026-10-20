@@ -6,6 +6,7 @@ import { CUSTOM_MODES_INTRO, customModeDetail } from '../domain/customModeCopy';
 import { usePaywall } from '../components/PaywallProvider';
 import { AppPickerModal } from '../components/AppPickerModal';
 import { DevAppRulesControls } from '../components/DevAppRulesControls';
+import { DevAwayControls } from '../components/DevAwayControls';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
 import { DevCoachSampleControls } from '../components/DevCoachSampleControls';
@@ -55,6 +56,7 @@ import {
 import { LockdownModule } from '../domain/lockdownModule';
 import { IosFlaggedApps } from '../components/IosFlaggedApps';
 import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
+import { isAwayTrackingSupported } from '../domain/awayPlatform';
 import {
   isAwayTrackingOptedIn,
   setAwayTrackingEnabled,
@@ -824,7 +826,7 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                 </View>
               </View>
 
-              {Platform.OS === 'android' ? (
+              {isAwayTrackingSupported() ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Away time</Text>
                   <View style={styles.panelShell}>
@@ -867,6 +869,12 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                       </Pressable>
                     </LinearGradient>
                   </View>
+                </View>
+              ) : null}
+
+              {TIER_SWITCHER_ENABLED && Platform.OS === 'ios' ? (
+                <View style={styles.section}>
+                  <DevAwayControls />
                 </View>
               ) : null}
 

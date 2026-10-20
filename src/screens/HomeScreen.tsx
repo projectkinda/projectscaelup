@@ -36,6 +36,7 @@ import { loadFocusCoachData } from '../data/focusCoachRepository';
 import { loadAvailableModes } from '../data/modesRepository';
 import { loadModeSessionDurations, saveModeSessionDuration, loadSettingsData, type CustomMode } from '../data/settingsRepository';
 import type { FocusCoachResult } from '../domain/focusCoach';
+import { isAwayTrackingSupported } from '../domain/awayPlatform';
 import {
   getAwayDisplay,
   getPreviousSessionAwayDisplay,
@@ -882,7 +883,7 @@ export function HomeScreen({
     getAppState(AWAY_TRACKING_PROMPTED_KEY)
       .then(prompted => {
         if (
-          Platform.OS !== 'android' ||
+          !isAwayTrackingSupported() ||
           prompted === 'true' ||
           nextCount !== 1
         ) {

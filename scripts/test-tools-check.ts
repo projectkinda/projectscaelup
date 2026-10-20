@@ -32,6 +32,8 @@ function load(file: string, enabled: boolean, dev: boolean, platform = 'android'
     if (id.endsWith('/useIsPaidUser')) return { useIsPaidUser: () => false };
     if (id.endsWith('/androidLiveTimer')) return { getLiveTimerStyleOverride: () => null };
     if (id.endsWith('/AppPickerList')) return { filterAppsForPicker: () => [] };
+    if (id.endsWith('/awayPlatform')) return { isAwayTrackingSupported: () => platform === 'android' };
+    if (id.endsWith('/DevAwayControls')) return { DevAwayControls: () => null };
     if (id.endsWith('/DevAppRulesControls')) return load(files[0], enabled, dev, platform).api;
     if (id.endsWith('/DevCoachSampleControls')) return load(files[1], enabled, dev, platform).api;
     if (id === 'react-native-safe-area-context') return { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) };

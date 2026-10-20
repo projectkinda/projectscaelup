@@ -34,13 +34,17 @@ public final class ScreenTimeEngine: Sendable {
   private let shields: any ShieldApplying
   private let scheduler: any WakeScheduling
   private let usage: any UsageMonitoring
+  private let away: (any AwayReconciling)?
   private let now: @Sendable () -> Date
 
+  /// `away` is told about every session change, so all-day tracking pauses for
+  /// a session and resumes when it ends (even if the app was killed meanwhile).
   public init(
     store: any ScreenTimeStateStore,
     shields: any ShieldApplying,
     scheduler: any WakeScheduling,
     usage: any UsageMonitoring,
+    away: (any AwayReconciling)? = nil,
     policy: ScreenTimePolicy = ScreenTimePolicy(),
     now: @escaping @Sendable () -> Date = { Date() }
   ) {
@@ -48,6 +52,7 @@ public final class ScreenTimeEngine: Sendable {
     self.shields = shields
     self.scheduler = scheduler
     self.usage = usage
+    self.away = away
     self.policy = policy
     self.now = now
   }
@@ -130,6 +135,7 @@ public final class ScreenTimeEngine: Sendable {
   private func apply(_ state: ScreenTimeState, at now: Date) {
     shields.apply(policy.shieldPlan(in: state))
     usage.monitorUsage(policy.usagePlan(in: state))
+    away?.reconcile(sessionActive: state.session != nil)
     scheduler.scheduleWake(
       policy.nextTransition(in: state, after: now).map { WakePlanner.window(toWakeAt: $0, now: now) }
     )

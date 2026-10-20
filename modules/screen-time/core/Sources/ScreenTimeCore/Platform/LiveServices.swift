@@ -8,6 +8,8 @@ import ManagedSettings
 // MARK: - State
 
 final class AppGroupStateStore: ScreenTimeStateStore {
+  static let shared = AppGroupStateStore()
+
   private let file = CoordinatedFile<ScreenTimeState>(named: "screen-time-state.json")
 
   func read() -> ScreenTimeState {
@@ -262,10 +264,11 @@ final class DeviceActivityWakeScheduler: WakeScheduling {
 extension ScreenTimeEngine {
   /// The engine every process uses: the app, the monitor and both shield extensions.
   public static let live = ScreenTimeEngine(
-    store: AppGroupStateStore(),
+    store: AppGroupStateStore.shared,
     shields: ManagedShieldController(flaggedApps: .shared),
     scheduler: DeviceActivityWakeScheduler(),
-    usage: DeviceActivityUsageMonitor(flaggedApps: .shared)
+    usage: DeviceActivityUsageMonitor(flaggedApps: .shared),
+    away: AwayTracker.live
   )
 
   /// Called by the monitor extension when a threshold event fires.

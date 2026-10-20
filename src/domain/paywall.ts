@@ -49,6 +49,9 @@ export const DEV_FLAGS = {
   // Runs the iPhone onboarding and permissions gate before the App.tsx
   // bypass comes out. Pair with resetOnboarding to see it from the start.
   iosOnboardingPreview: false,
+  // Away-time tracking on iPhone (docs/away-time-ios-spec.md). A prototype: it
+  // needs the all-day reliability test on a real iPhone before it can ship.
+  iosAwayTrackingPreview: false,
 };
 
 if (!(typeof __DEV__ !== 'undefined' && __DEV__) && DEV_FLAGS.tierSwitcher && process.env.EXPO_PUBLIC_BUILD_VARIANT !== 'qa') {
