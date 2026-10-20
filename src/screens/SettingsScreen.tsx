@@ -872,7 +872,7 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                 </View>
               ) : null}
 
-              {TIER_SWITCHER_ENABLED && Platform.OS === 'ios' ? (
+              {TIER_SWITCHER_ENABLED && isAwayTrackingSupported() && Platform.OS === 'ios' ? (
                 <View style={styles.section}>
                   <DevAwayControls />
                 </View>

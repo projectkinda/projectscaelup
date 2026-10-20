@@ -5,6 +5,19 @@ import FamilyControls
 import Foundation
 import ManagedSettings
 
+// MARK: - Authorization
+
+extension AuthorizationCenter {
+  /// Without Screen Time access every DeviceActivity call fails and logs an
+  /// error, so callers skip them rather than rely on catching the failure.
+  var isApproved: Bool {
+    if authorizationStatus == .approved { return true }
+    // iOS 26.4 added `approvedWithDataAccess`; it grants everything we use.
+    if #available(iOS 26.4, *), authorizationStatus == .approvedWithDataAccess { return true }
+    return false
+  }
+}
+
 // MARK: - State
 
 final class AppGroupStateStore: ScreenTimeStateStore {
@@ -157,6 +170,7 @@ final class DeviceActivityUsageMonitor: UsageMonitoring {
   }
 
   func monitorUsage(_ plan: UsagePlan?) {
+    guard AuthorizationCenter.shared.isApproved else { return }
     let center = DeviceActivityCenter()
     let current = center.activities.filter { $0.rawValue.hasPrefix(Self.activityPrefix) }
 
@@ -216,6 +230,8 @@ final class DeviceActivityWakeScheduler: WakeScheduling {
   private static let tolerance: TimeInterval = 60
 
   func scheduleWake(_ window: WakeWindow?) {
+    // Expected until the user grants Screen Time access; the app reconciles once they do.
+    guard AuthorizationCenter.shared.isApproved else { return }
     let center = DeviceActivityCenter()
     let calendar = Calendar.current
 

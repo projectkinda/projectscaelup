@@ -59,10 +59,14 @@ final class DeviceActivityAmbientMonitor: AmbientMonitoring {
   private static var mainActivity: DeviceActivityName { DeviceActivityName(mainName) }
 
   var isRunning: Bool {
-    DeviceActivityCenter().activities.contains(Self.mainActivity)
+    AuthorizationCenter.shared.isApproved && DeviceActivityCenter().activities.contains(Self.mainActivity)
   }
 
   func arm() -> AmbientArmResult {
+    guard AuthorizationCenter.shared.isApproved else {
+      screenTimeLog.debug("Skipped ambient monitoring: Screen Time isn't authorized")
+      return .failed
+    }
     let center = DeviceActivityCenter()
     ensureKeepers(center)
 
@@ -84,6 +88,7 @@ final class DeviceActivityAmbientMonitor: AmbientMonitoring {
   }
 
   func rearm() -> AmbientArmResult {
+    guard AuthorizationCenter.shared.isApproved else { return .failed }
     let center = DeviceActivityCenter()
     stopMain(center)
     let tokens = flaggedApps.tokensByKey()
@@ -92,10 +97,12 @@ final class DeviceActivityAmbientMonitor: AmbientMonitoring {
   }
 
   func pause() {
+    guard AuthorizationCenter.shared.isApproved else { return }
     stopMain(DeviceActivityCenter())
   }
 
   func stopAll() {
+    guard AuthorizationCenter.shared.isApproved else { return }
     let center = DeviceActivityCenter()
     let ours = center.activities.filter(Self.owns)
     if !ours.isEmpty {
@@ -129,9 +136,6 @@ final class DeviceActivityAmbientMonitor: AmbientMonitoring {
     )
     do {
       try center.startMonitoring(Self.mainActivity, during: schedule, events: events)
-    } catch DeviceActivityCenter.MonitoringError.unauthorized {
-      screenTimeLog.debug("Skipped ambient monitoring: Screen Time isn't authorized")
-      return .failed
     } catch {
       screenTimeLog.error("Starting ambient monitoring failed: \(error)")
       return .failed
