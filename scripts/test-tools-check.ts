@@ -32,6 +32,7 @@ function load(file: string, enabled: boolean, dev: boolean, platform = 'android'
     if (id.endsWith('/useIsPaidUser')) return { useIsPaidUser: () => false };
     if (id.endsWith('/androidLiveTimer')) return { getLiveTimerStyleOverride: () => null };
     if (id.endsWith('/AppPickerList')) return { filterAppsForPicker: () => [] };
+    if (id.endsWith('/config/legal')) return { LEGAL_LINKS: [], APP_VERSION: '1.0.0' };
     if (id.endsWith('/awayPlatform')) return { isAwayTrackingSupported: () => platform === 'android' };
     if (id.endsWith('/DevAwayControls')) return { DevAwayControls: () => null };
     if (id.endsWith('/DevAppRulesControls')) return load(files[0], enabled, dev, platform).api;

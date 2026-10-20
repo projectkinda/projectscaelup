@@ -15,6 +15,7 @@ import {
 } from '../../domain/onboardingState';
 import { colors, layout } from '../../theme/tokens';
 import { BackButton } from './DoneStep';
+import { PermissionGlyph } from './PermissionGlyph';
 
 export type PermissionKind = 'camera' | 'accessibility' | 'overlay' | 'screenTime';
 
@@ -124,7 +125,11 @@ export function PermissionsHub({
                   ]}
                 >
                   <View style={styles.iconBubble}>
-                    <Text style={styles.iconText}>{row.icon}</Text>
+                    {Platform.OS === 'ios' && (row.id === 'camera' || row.id === 'screenTime') ? (
+                      <PermissionGlyph kind={row.id} />
+                    ) : (
+                      <Text style={styles.iconText}>{row.icon}</Text>
+                    )}
                   </View>
                   <View style={styles.rowText}>
                     <View style={styles.rowHeader}>

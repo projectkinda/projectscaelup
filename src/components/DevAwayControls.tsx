@@ -60,7 +60,7 @@ export function DevAwayControls() {
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: 8, padding: 12, backgroundColor: colors.panelBottom },
+  panel: { gap: 8, paddingVertical: 12 },
   title: { ...typography.body, color: colors.ink, fontWeight: '600' },
   button: { padding: 12, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.panelTop },
   label: { ...typography.label, color: colors.ink },

@@ -46,6 +46,7 @@ live (needs the account), or hide Pro surfaces on iOS for 1.0. Options and impac
 | Network | None. ATS blocks arbitrary loads (`NSAllowsLocalNetworking` is the Expo default, harmless). |
 | Crash / hang | Launch, background/foreground, session start, pause/resume and end verified on the simulator (iPhone 17 and 17 Pro Max, iOS 26.5). |
 | Contrast (WCAG AA) | ⚠ **Open, design decision.** `muted` (#7E7E7E) is 3.25:1 on the lighter panel gradient and 4.42:1 on the darker end, below AA 4.5:1 for small text. Raising it to about #9A9A9A fixes it. It is a shared token (changes Android's look too), so it was not changed. |
+| UI scan (2026-10-20) | Every screen captured on iPhone 17 Pro Max and iPhone 17e (small), Debug and Release. **Fixed:** Settings dev tools were scattered across the Subscription panel with clipped boxes (now one "Developer tools" section, absent in Release); "Last 0 sessions" shown to new users; mode tabs cut mid-letter (edge fade added); letter placeholders in the permissions hub (camera and hourglass icons). **Added:** Settings > About with the version, plus Privacy Policy and Support rows that appear once their URLs are set in `src/config/legal.ts`. |
 | Pro modes in lists | ⚠ Progress lists Pro-only modes ("Meditation, Exam Prep…") with "No data" for free users. Harmless, but worth hiding if Pro is hidden on iOS. |
 
 ## Still to verify on a real iPhone 🔑 (the simulator can't)
@@ -54,6 +55,7 @@ live (needs the account), or hide Pro surfaces on iOS for 1.0. Options and impac
 - Camera presence detection with a real face; battery and thermal behaviour in a 50-minute session.
 - VoiceOver pass on every screen (labels exist, 143 accessibility props, but a spoken pass hasn't been done).
 - Away time (prototype, flag off): follow `docs/away-time-ios-prototype.md`. It is **not** part of 1.0 unless it passes.
+- Add the hosted policy and support URLs to `src/config/legal.ts` so Settings > About links to them.
 - Onboarding: the flow exists but is behind `DEV_FLAGS.iosOnboardingPreview`. Turn it on and remove the `App.tsx` bypass only after the real-device test; Harsha reviews that diff.
 
 ## Release switches to confirm before archiving

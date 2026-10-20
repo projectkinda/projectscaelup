@@ -36,7 +36,7 @@ export function DevCoachSampleControls() {
   </View>;
 }
 const styles = StyleSheet.create({
-  controls: { padding: 12, gap: 8, backgroundColor: colors.panelBottom },
+  controls: { paddingVertical: 12, gap: 8 },
   button: { paddingVertical: 10, paddingHorizontal: 8, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.panelTop },
   text: { color: colors.ink, fontFamily: 'Geist', ...typography.caption },
   pressed: { opacity: .7 },

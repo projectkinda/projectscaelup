@@ -235,6 +235,11 @@ export function HomeScreen({
   const modeTabsRef = useRef<ScrollView>(null);
   const modeTabLayouts = useRef(new Map<string, { x: number; width: number }>());
   const modeTabsWidth = useRef(0);
+  const modeTabsContentWidth = useRef(0);
+  const [modeTabsMoreAhead, setModeTabsMoreAhead] = useState(false);
+  const updateModeTabsFade = useCallback((scrollX: number) => {
+    setModeTabsMoreAhead(modeTabsContentWidth.current - modeTabsWidth.current - scrollX > 4);
+  }, []);
   const pendingModeReveal = useRef<string | null>(null);
   const revealCreatedMode = useCallback(() => {
     const id = pendingModeReveal.current;
@@ -1121,8 +1126,10 @@ export function HomeScreen({
             <ScrollView
               testID="home-mode-tabs"
               ref={modeTabsRef}
-              onLayout={event => { modeTabsWidth.current = event.nativeEvent.layout.width; revealCreatedMode(); }}
-              onContentSizeChange={revealCreatedMode}
+              onLayout={event => { modeTabsWidth.current = event.nativeEvent.layout.width; updateModeTabsFade(0); revealCreatedMode(); }}
+              onContentSizeChange={width => { modeTabsContentWidth.current = width; updateModeTabsFade(0); revealCreatedMode(); }}
+              onScroll={event => updateModeTabsFade(event.nativeEvent.contentOffset.x)}
+              scrollEventThrottle={32}
               horizontal
               bounces={false}
               nestedScrollEnabled
@@ -1155,6 +1162,15 @@ export function HomeScreen({
                 );
               })}
             </ScrollView>
+            {modeTabsMoreAhead ? (
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(18, 18, 18, 0)', colors.background]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.modeTabsFade}
+              />
+            ) : null}
           </View>
 
           <Animated.View
@@ -1306,6 +1322,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // Hints that more modes are off-screen instead of cutting a label in half.
+  modeTabsFade: { position: 'absolute', right: 0, top: 0, bottom: 0, width: 36 },
   moreModesButton: {
     width: 40,
     height: 44,
