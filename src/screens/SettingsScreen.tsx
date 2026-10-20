@@ -6,6 +6,7 @@ import { CUSTOM_MODES_INTRO, customModeDetail } from '../domain/customModeCopy';
 import { usePaywall } from '../components/PaywallProvider';
 import { AppPickerModal } from '../components/AppPickerModal';
 import { DevAppRulesControls } from '../components/DevAppRulesControls';
+import { DevAwayControls } from '../components/DevAwayControls';
 import { typography } from '../theme/typography';
 import { Text } from '../components/AppText';
 import { DevCoachSampleControls } from '../components/DevCoachSampleControls';
@@ -55,6 +56,8 @@ import {
 import { LockdownModule } from '../domain/lockdownModule';
 import { IosFlaggedApps } from '../components/IosFlaggedApps';
 import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
+import { APP_VERSION, LEGAL_LINKS } from '../config/legal';
+import { isAwayTrackingSupported } from '../domain/awayPlatform';
 import {
   isAwayTrackingOptedIn,
   setAwayTrackingEnabled,
@@ -824,7 +827,7 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                 </View>
               </View>
 
-              {Platform.OS === 'android' ? (
+              {isAwayTrackingSupported() ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionLabel}>Away time</Text>
                   <View style={styles.panelShell}>
@@ -890,52 +893,6 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                 </View>
               ) : null}
 
-              {TIER_SWITCHER_ENABLED ? (
-                <View style={styles.section}>
-                  <Text style={styles.sectionLabel}>Coach dev seeding</Text>
-                  <View style={styles.panelShell}>
-                    <LinearGradient
-                      colors={['#333333', '#141414']}
-                      style={styles.panel}
-                    >
-                      {(
-                        [
-                          'rising',
-                          'plateau',
-                          'slipping',
-                          'early_breaker',
-                        ] as CoachSeedPattern[]
-                      ).map(pattern => (
-                        <Pressable
-                          key={pattern}
-                          accessibilityRole="button"
-                          onPress={() => seedCoach(pattern)}
-                          style={({ pressed }) => [
-                            styles.row,
-                            pressed && styles.pressed,
-                          ]}
-                        >
-                          <Text style={styles.addText}>
-                            Seed {pattern.replace('_', ' ')}
-                          </Text>
-                        </Pressable>
-                      ))}
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={clearCoachSeed}
-                        style={({ pressed }) => [
-                          styles.row,
-                          pressed && styles.pressed,
-                        ]}
-                      >
-                        <Text style={styles.addText}>Clear seeded sessions</Text>
-                      </Pressable>
-                      {coachSeedOutput ? <Text selectable accessibilityLiveRegion="polite" style={styles.addText}>{coachSeedOutput}</Text> : null}
-                    </LinearGradient>
-                  </View>
-                </View>
-              ) : null}
-
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Subscription</Text>
                 <View style={styles.panelShell}>
@@ -943,61 +900,6 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                     colors={['#333333', '#141414']}
                     style={styles.panel}
                   >
-                    {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ? <View>
-                      <Pressable accessibilityRole="button" onPress={changeLiveTimerStyle} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
-                        <View style={styles.rowTextWrap}>
-                          <Text style={styles.rowTitle}>Live timer style: {liveTimerStyle === 'standard' ? 'Status-bar chip' : 'One-line row'}</Text>
-                          <Text style={styles.rowDetail}>One-line row / Status-bar chip</Text>
-                        </View>
-                      </Pressable>
-                      {liveTimerStyleOutput ? <Text accessibilityLiveRegion="polite" style={styles.rowDetail}>{liveTimerStyleOutput}</Text> : null}
-                    </View> : null}
-                    {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ?
-                      <DevAppRulesControls flaggedPackages={flaggedApps.map(app => app.appIdentifier)} /> : null}
-                    {TIER_SWITCHER_ENABLED ? <DevCoachSampleControls /> : null}
-                    {TIER_SWITCHER_ENABLED ? (
-                      <View style={styles.row}>
-                        <View style={styles.rowTextWrap}>
-                          <Text style={styles.rowTitle}>
-                            Test tier (testing only)
-                          </Text>
-                          <Text style={styles.rowDetail}>
-                            {testTierOverride
-                              ? `TEST: ${testTierOverride.toUpperCase()}`
-                              : 'No test override set'}
-                          </Text>
-                        </View>
-                        <View style={styles.tierSwitcher}>
-                          {(['free', 'paid'] as const).map(tier => {
-                            const selected =
-                              (testTierOverride ??
-                                (paidUser ? 'paid' : 'free')) === tier;
-                            return (
-                              <Pressable
-                                key={tier}
-                                accessibilityRole="button"
-                                accessibilityState={{ selected }}
-                                onPress={() => setTestTier(tier)}
-                                style={({ pressed }) => [
-                                  styles.tierOption,
-                                  selected && styles.tierOptionSelected,
-                                  pressed && styles.pressed,
-                                ]}
-                              >
-                                <Text
-                                  style={[
-                                    styles.tierOptionText,
-                                    selected && styles.tierOptionTextSelected,
-                                  ]}
-                                >
-                                  {tier === 'free' ? 'Free' : 'Paid'}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    ) : null}
                     <View style={styles.row}>
                       <View style={styles.rowTextWrap}>
                         <Text style={styles.rowTitle}>Current tier</Text>
@@ -1037,6 +939,132 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                   </LinearGradient>
                 </View>
               </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionLabel}>About</Text>
+                <View style={styles.panelShell}>
+                  <LinearGradient colors={['#333333', '#141414']} style={styles.panel}>
+                    {LEGAL_LINKS.map(link => (
+                      <Pressable
+                        key={link.label}
+                        accessibilityRole="link"
+                        onPress={() => Linking.openURL(link.url)}
+                        style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.addText}>{link.label}</Text>
+                      </Pressable>
+                    ))}
+                    <View style={styles.row}>
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>Version</Text>
+                      </View>
+                      <Text style={styles.tierText}>{APP_VERSION}</Text>
+                    </View>
+                  </LinearGradient>
+                </View>
+              </View>
+
+              {TIER_SWITCHER_ENABLED ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionLabel}>Developer tools (testing only)</Text>
+                  <View style={styles.panelShell}>
+                    <View style={styles.devPanel}>
+                  {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ? <View>
+                    <Pressable accessibilityRole="button" onPress={changeLiveTimerStyle} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>Live timer style: {liveTimerStyle === 'standard' ? 'Status-bar chip' : 'One-line row'}</Text>
+                        <Text style={styles.rowDetail}>One-line row / Status-bar chip</Text>
+                      </View>
+                    </Pressable>
+                    {liveTimerStyleOutput ? <Text accessibilityLiveRegion="polite" style={styles.rowDetail}>{liveTimerStyleOutput}</Text> : null}
+                  </View> : null}
+                  {TIER_SWITCHER_ENABLED && Platform.OS === 'android' ?
+                    <DevAppRulesControls flaggedPackages={flaggedApps.map(app => app.appIdentifier)} /> : null}
+
+                  {TIER_SWITCHER_ENABLED ? (
+                    <View style={styles.row}>
+                      <View style={styles.rowTextWrap}>
+                        <Text style={styles.rowTitle}>
+                          Test tier (testing only)
+                        </Text>
+                        <Text style={styles.rowDetail}>
+                          {testTierOverride
+                            ? `TEST: ${testTierOverride.toUpperCase()}`
+                            : 'No test override set'}
+                        </Text>
+                      </View>
+                      <View style={styles.tierSwitcher}>
+                        {(['free', 'paid'] as const).map(tier => {
+                          const selected =
+                            (testTierOverride ??
+                              (paidUser ? 'paid' : 'free')) === tier;
+                          return (
+                            <Pressable
+                              key={tier}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              onPress={() => setTestTier(tier)}
+                              style={({ pressed }) => [
+                                styles.tierOption,
+                                selected && styles.tierOptionSelected,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.tierOptionText,
+                                  selected && styles.tierOptionTextSelected,
+                                ]}
+                              >
+                                {tier === 'free' ? 'Free' : 'Paid'}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
+                      <DevCoachSampleControls />
+                      {Platform.OS === 'ios' && isAwayTrackingSupported() ? <DevAwayControls /> : null}
+                      <Text style={styles.devSubheading}>Coach dev seeding</Text>
+                      {(
+                        [
+                          'rising',
+                          'plateau',
+                          'slipping',
+                          'early_breaker',
+                        ] as CoachSeedPattern[]
+                      ).map(pattern => (
+                        <Pressable
+                          key={pattern}
+                          accessibilityRole="button"
+                          onPress={() => seedCoach(pattern)}
+                          style={({ pressed }) => [
+                            styles.row,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.addText}>
+                            Seed {pattern.replace('_', ' ')}
+                          </Text>
+                        </Pressable>
+                      ))}
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={clearCoachSeed}
+                        style={({ pressed }) => [
+                          styles.row,
+                          pressed && styles.pressed,
+                        ]}
+                      >
+                        <Text style={styles.addText}>Clear seeded sessions</Text>
+                      </Pressable>
+                      {coachSeedOutput ? <Text selectable accessibilityLiveRegion="polite" style={styles.devOutput}>{coachSeedOutput}</Text> : null}
+                    </View>
+                  </View>
+                </View>
+              ) : null}
             </>
           )}
         </View>
@@ -1290,6 +1318,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   premiumText: { color: colors.rewardAmber },
+  // Developer tools live in one panel; every item carries its own spacing, so nothing
+  // is clipped by the card's rounded corners or the last-row divider trick above.
+  devPanel: { paddingHorizontal: 14, paddingVertical: 6 },
+  devSubheading: { ...typography.label, color: colors.muted, paddingTop: 16, paddingBottom: 4 },
+  devOutput: { ...typography.caption, color: colors.muted, paddingVertical: 12 },
   tierSwitcher: {
     flexDirection: 'row',
     borderRadius: 12,

@@ -28,7 +28,7 @@ export function FocusCoachCard({ coach, paidUser, onLockedSection }: {
     {!fontsLoaded && !fontError ? <ActivityIndicator color={colors.muted} accessibilityLabel={COACH_COPY.loading} /> : <>
       <View style={styles.eyebrow}>
         <Text style={styles.muted}>{COACH_COPY.title}</Text>
-        <Text style={styles.muted}>{evidenceLabel(selection.evidenceCount)}</Text>
+        {selection.evidenceCount > 0 ? <Text style={styles.muted}>{evidenceLabel(selection.evidenceCount)}</Text> : null}
       </View>
       <Text style={styles.headline}>{selection.headline}</Text>
       {selection.state === 'too_early' ? <>

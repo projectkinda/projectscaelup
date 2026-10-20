@@ -1,6 +1,12 @@
 import { NativeModule, requireOptionalNativeModule } from 'expo';
 
-import type { ScreenTimeDistraction, ScreenTimeStatus } from './ScreenTime.types';
+import type {
+  AwayGapRecord,
+  AwayStatus,
+  AwayUseRecord,
+  ScreenTimeDistraction,
+  ScreenTimeStatus,
+} from './ScreenTime.types';
 
 declare class ScreenTimeNativeModule extends NativeModule {
   getStatus(): ScreenTimeStatus;
@@ -13,6 +19,14 @@ declare class ScreenTimeNativeModule extends NativeModule {
   endSession(id: number): Promise<{ occurredAtMs: number; appKey: string | null }[]>;
   lockDown(untilMs: number, appKeys: string[] | null): Promise<void>;
   reconcile(): Promise<void>;
+  setAwayTrackingEnabled(enabled: boolean): Promise<void>;
+  drainAwayUses(): Promise<AwayUseRecord[]>;
+  drainAwayGaps(): Promise<AwayGapRecord[]>;
+  getAwayStatus(): AwayStatus;
+  // Debug builds only; absent from release builds.
+  debugStopAwayTracking?(): Promise<void>;
+  debugSimulateAwayFailure?(): Promise<void>;
+  debugClearAwayHeartbeat?(): Promise<void>;
 }
 
 // iOS only. Elsewhere (and in builds without the module) every call is a no-op.
@@ -65,5 +79,34 @@ export const ScreenTime = {
   /** Brings the shields in line with the current time. Call when the app becomes active. */
   async reconcile(): Promise<void> {
     await native?.reconcile();
+  },
+
+  /**
+   * Away time (opt-in): watches flagged apps outside sessions so the app can
+   * say how long the user has stayed away. Turning it off deletes native data.
+   */
+  async setAwayTrackingEnabled(enabled: boolean): Promise<void> {
+    await native?.setAwayTrackingEnabled(enabled);
+  },
+
+  /** Uses the extension buffered while the app was closed; returns and clears them. */
+  async drainAwayUses(): Promise<AwayUseRecord[]> {
+    return (await native?.drainAwayUses()) ?? [];
+  },
+
+  /** Stretches when tracking wasn't provably alive; returns and clears them. */
+  async drainAwayGaps(): Promise<AwayGapRecord[]> {
+    return (await native?.drainAwayGaps()) ?? [];
+  },
+
+  getAwayStatus(): AwayStatus | null {
+    return native?.getAwayStatus() ?? null;
+  },
+
+  /** Dev-only hooks for the dead-tracking test. They don't exist in release builds. */
+  debug: {
+    stopAwayTracking: async () => native?.debugStopAwayTracking?.(),
+    simulateAwayFailure: async () => native?.debugSimulateAwayFailure?.(),
+    clearAwayHeartbeat: async () => native?.debugClearAwayHeartbeat?.(),
   },
 };

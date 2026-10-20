@@ -2,21 +2,11 @@ import { Platform } from 'react-native';
 
 import { getAppState, setAppState } from '../data/appStateRepository';
 import { ensureSchema, getDatabase } from '../data/database';
-import { UsageTrackingModule } from './usageTrackingModule';
+import { getAwayBackend } from './awayPlatform';
 
 export type AwayDisplay =
   | { kind: 'about' | 'at_least'; seconds: number; text: string }
   | { kind: 'hidden' };
-
-type NativeAwayLogRow = {
-  package: string;
-  usedAtMs: number;
-};
-
-type NativeAwayGapRow = {
-  startedMs: number;
-  endedMs: number;
-};
 
 type LastUseRow = {
   used_at: string;
@@ -44,16 +34,15 @@ function subtractDays(date: Date, days: number) {
 }
 
 async function getHeartbeatStatus(): Promise<HeartbeatStatus> {
-  if (Platform.OS !== 'android') {
+  const backend = getAwayBackend();
+  if (!backend) {
     return { lastHeartbeatMs: null, enabled: false };
   }
 
-  const [enabled, lastHeartbeatMs] = await Promise.all([
-    UsageTrackingModule.isEnabled(),
-    UsageTrackingModule.getLastHeartbeatMs(),
-  ]);
-
-  return { enabled, lastHeartbeatMs };
+  return backend.getStatus().then(({ enabled, lastHeartbeatMs }) => ({
+    enabled,
+    lastHeartbeatMs,
+  }));
 }
 
 async function getTrackingStartedAtMs(): Promise<number | null> {
@@ -151,7 +140,7 @@ export async function setAwayTrackingEnabled(enabled: boolean) {
       );
     });
   }
-  await UsageTrackingModule.setAwayTrackingEnabled(enabled);
+  await getAwayBackend()?.setEnabled(enabled);
 }
 
 export async function isAwayTrackingOptedIn() {
@@ -171,10 +160,9 @@ export async function drainAwayLog() {
   await ensureSchema(database);
   await purgeOldAwayLog();
 
-  const rows: NativeAwayLogRow[] =
-    Platform.OS === 'android' ? await UsageTrackingModule.drainUseLog() : [];
-  const gaps: NativeAwayGapRow[] =
-    Platform.OS === 'android' ? await UsageTrackingModule.drainGaps() : [];
+  const backend = getAwayBackend();
+  const rows = backend ? await backend.drainUses() : [];
+  const gaps = backend ? await backend.drainGaps() : [];
 
   if (rows.length > 0 || gaps.length > 0) {
     await database.withTransactionAsync(async () => {
@@ -184,7 +172,7 @@ export async function drainAwayLog() {
             INSERT OR IGNORE INTO app_use_log (app_identifier, used_at, platform)
             VALUES (?, ?, ?);
           `,
-          [row.package, new Date(row.usedAtMs).toISOString(), 'android'],
+          [row.identifier, new Date(row.usedAtMs).toISOString(), backend!.platform],
         );
       }
       for (const gap of gaps) {

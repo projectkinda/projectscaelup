@@ -84,6 +84,30 @@ public final class ScreenTimeModule: Module {
       Self.engine.reconcile()
     }
 
+    // Away time (opt-in): see docs/away-time-ios-spec.md.
+    AsyncFunction("setAwayTrackingEnabled") { (enabled: Bool) in
+      AwayTracker.live.setEnabled(enabled)
+    }
+
+    AsyncFunction("drainAwayUses") { () -> [AwayUseRecord] in
+      AwayTracker.live.drainUses().map(AwayUseRecord.init)
+    }
+
+    AsyncFunction("drainAwayGaps") { () -> [AwayGapRecord] in
+      AwayTracker.live.drainGaps().map(AwayGapRecord.init)
+    }
+
+    Function("getAwayStatus") { () -> AwayStatusRecord in
+      AwayStatusRecord(AwayTracker.live.status(), authorized: Self.isAuthorized)
+    }
+
+    #if DEBUG
+    // Hooks for the dead-tracking test. Compiled out of release builds.
+    AsyncFunction("debugStopAwayTracking") { AwayTracker.live.debugStopAmbient() }
+    AsyncFunction("debugSimulateAwayFailure") { AwayTracker.live.debugSimulateFailure() }
+    AsyncFunction("debugClearAwayHeartbeat") { AwayTracker.live.debugClearHeartbeat() }
+    #endif
+
     View(FlaggedAppsView.self) {
       Prop("revision") { (view: FlaggedAppsView, _: Int) in
         view.reload()
@@ -119,6 +143,10 @@ public final class ScreenTimeModule: Module {
     status.canEditFlaggedApps = engine.canEditFlaggedApps()
     status.strictMode = ScreenTimePreferences.shared.strictMode
     return status
+  }
+
+  private static var isAuthorized: Bool {
+    authorizationName(AuthorizationCenter.shared.authorizationStatus) == "approved"
   }
 
   private static func authorizationName(_ status: AuthorizationStatus) -> String {
@@ -160,6 +188,46 @@ struct DistractionRecord: Record {
   init(_ distraction: Distraction) {
     occurredAtMs = distraction.occurredAt.timeIntervalSince1970 * 1000
     appKey = distraction.appKey
+  }
+}
+
+struct AwayUseRecord: Record {
+  @Field var appKey: String = ""
+  @Field var usedAtMs: Double = 0
+
+  init() {}
+
+  init(_ use: AwayUse) {
+    appKey = use.appKey
+    usedAtMs = use.usedAt.timeIntervalSince1970 * 1000
+  }
+}
+
+struct AwayGapRecord: Record {
+  @Field var startedMs: Double = 0
+  @Field var endedMs: Double = 0
+
+  init() {}
+
+  init(_ gap: AwayGap) {
+    startedMs = gap.startedAt.timeIntervalSince1970 * 1000
+    endedMs = gap.endedAt.timeIntervalSince1970 * 1000
+  }
+}
+
+struct AwayStatusRecord: Record {
+  @Field var enabled: Bool = false
+  @Field var authorized: Bool = false
+  @Field var lastHeartbeatMs: Double?
+  @Field var lastFailureMs: Double?
+
+  init() {}
+
+  init(_ state: AwayState, authorized: Bool) {
+    enabled = state.enabled
+    self.authorized = authorized
+    lastHeartbeatMs = state.lastHeartbeat.map { $0.timeIntervalSince1970 * 1000 }
+    lastFailureMs = state.lastFailure.map { $0.timeIntervalSince1970 * 1000 }
   }
 }
 

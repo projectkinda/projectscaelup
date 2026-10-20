@@ -49,6 +49,7 @@
         }
       ],
       "expo-sqlite",
+      "./plugins/withIosNoBackgroundAudio",
       [
         "expo-audio",
         {
