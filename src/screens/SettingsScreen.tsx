@@ -57,6 +57,7 @@ import { LockdownModule } from '../domain/lockdownModule';
 import { IosFlaggedApps } from '../components/IosFlaggedApps';
 import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
 import { APP_VERSION, LEGAL_LINKS } from '../config/legal';
+import { restorePurchases } from '../domain/purchases';
 import { isAwayTrackingSupported } from '../domain/awayPlatform';
 import {
   isAwayTrackingOptedIn,
@@ -502,10 +503,7 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
   const handleRestore = async () => {
     setIsRestoring(true);
     try {
-      Alert.alert(
-        'Restore purchases',
-        'RevenueCat is not connected yet. This button is ready for the restore call when billing is added.',
-      );
+      restorePurchases();
     } finally {
       setIsRestoring(false);
     }

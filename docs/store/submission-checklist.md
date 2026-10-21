@@ -62,3 +62,25 @@ live (needs the account), or hide Pro surfaces on iOS for 1.0. Options and impac
 
 `DEV_FLAGS` in `src/domain/paywall.ts`: `iosOnboardingPreview` (decide), `iosAwayTrackingPreview: false`, `resetOnboarding: false`,
 `forcePaidUser: false`. Bump `CFBundleVersion` for every upload.
+
+## Legal pages, store forms and open legal items (added 2026-10-21)
+
+Pages: `site/terms.html`, `site/privacy.html` (Android + iPhone), `site/support.html`, `site/index.html`. Hosting steps: `../hosting-legal.md`. In-app links come from `src/config/legal.ts` and stay hidden until each URL is set.
+
+- **Google Play Console, privacy policy URL:** App content > Privacy policy: the hosted `privacy.html` URL.
+- **Accessibility API declaration:** the policy has an "Accessibility service" section describing it: one event type (window came to front), package and class name only, `canRetrieveWindowContent=false`, flagged apps only, on-device, not an accessibility tool. Keep the policy URL live and consistent with the declaration and the in-app disclosure (`settingsGuideConfig.ts`).
+- **Data safety form (from the 2026-10-21 audit):** data collected: **none** (no app code makes network requests; no analytics/ads/crash reporting). Data shared: none. Tick "data is processed on device"; no account; deletion: uninstall / clear storage. ⚠ Re-check the SDK dependency question: INTERNET is declared (merged from libraries; see `release-checklist.md`). After RevenueCat ships: add *Purchase history* and *Device or other IDs* (anonymous app user ID), collected, for app functionality, not for tracking, encrypted in transit. Mention Android Auto Backup is enabled (`allowBackup=true`); Google's backup is not "collection by the developer".
+- **Apple privacy label:** *Data Not Collected* until RevenueCat ships; then Purchases and Identifiers (User ID), not linked for tracking. Tracking: No. Privacy manifest unchanged.
+- **Apple EULA:** either use Apple's standard EULA (default) and say so in the listing, or paste `terms.html`'s URL as a custom EULA in App Store Connect. Subscription apps must show the Terms and Privacy links in the app and the listing's description once Pro is live.
+- **Paywall disclosure:** `src/config/subscription.ts` supplies price/period (null now; hidden in release). Fill from RevenueCat offerings.
+
+### Open legal items ⚠
+
+- [ ] Legal entity name
+- [ ] Support/contact email
+- [ ] Governing law / jurisdiction (and liability cap, if any)
+- [ ] Effective date
+- [ ] Host the pages and set the URLs in `src/config/legal.ts`
+- [ ] Lawyer review of Terms and Privacy Policy before launch
+- [ ] Decide on `allowBackup` (see release checklist) and add an in-app "delete my data" if wanted
+- [ ] Re-issue the policy and Data safety/privacy label when RevenueCat goes live

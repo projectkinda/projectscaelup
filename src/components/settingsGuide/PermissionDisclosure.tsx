@@ -1,4 +1,5 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { legalUrl } from '../../config/legal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackButton } from '../../screens/onboarding/DoneStep';
@@ -16,6 +17,18 @@ type Props = {
   onDecline: () => void;
   onBack: () => void;
 };
+
+function LegalLinks() {
+  const privacy = legalUrl('privacy');
+  const terms = legalUrl('terms');
+  if (!privacy && !terms) return null;
+  return (
+    <View style={styles.legal}>
+      {privacy ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL(privacy)} hitSlop={8}><Text style={styles.legalLink}>Read our Privacy Policy</Text></Pressable> : null}
+      {terms ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL(terms)} hitSlop={8}><Text style={styles.legalLink}>Read our Terms of Service</Text></Pressable> : null}
+    </View>
+  );
+}
 
 /**
  * The in-app disclosure shown before anyone is sent to Settings. Google Play
@@ -57,6 +70,7 @@ export function PermissionDisclosure({
               <Text style={[styles.body, styles.bulletText]}>{line}</Text>
             </View>
           ))}
+          <LegalLinks />
         </View>
       </ScrollView>
 
@@ -104,6 +118,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.pine,
   },
   bulletText: { flex: 1 },
+  legal: { marginTop: 28, gap: 12 },
+  legalLink: { color: colors.pine, ...typography.body, fontWeight: '600', textDecorationLine: 'underline' },
   bar: {
     alignItems: 'center',
     paddingHorizontal: layout.horizontalPadding,

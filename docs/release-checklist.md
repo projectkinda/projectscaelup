@@ -127,3 +127,12 @@ App-picker diagnostics were run on a connected Samsung S23 Ultra using the custo
 - [ ] Supply real upload credentials, build/verify the signed AAB, complete Accessibility API and specialUse FGS declarations, then test Play-delivered splits. Actual release-key signing, AAB size and Play approval remain unverified. Existing purchase/restore integration gaps remain unchanged.
 
 No screenshots, APKs, keystores or build outputs are committed.
+
+## Legal and store privacy items (added 2026-10-21)
+
+- [ ] Legal pages hosted ([hosting-legal.md](hosting-legal.md)); URLs set in `src/config/legal.ts`.
+- [ ] Release gate: `RELEASE=1 npx tsx scripts/paywall-check.ts` passes (no ⚠ / `[PLACEHOLDER]` in `docs/store/site`, no legal link with a null URL).
+- [ ] Play Console: privacy policy URL; Accessibility API declaration matches the policy's accessibility section; specialUse FGS declaration; Data safety form per `store/submission-checklist.md`.
+- [ ] **Backup decision:** `allowBackup="true"` means history, flagged apps, rules and settings can be copied to the user's Google backup. The policy says so. Recommended: if you want "data never leaves the device" to be literally true, set `android:allowBackup="false"` (or add `dataExtractionRules`/`fullBackupContent` excludes) and drop the backup paragraph from `privacy.html`. Not changed here.
+- [ ] Paywall: price/period supplied by RevenueCat into `src/config/subscription.ts`; with Pro live, update the Purchases section of the policy.
+- [ ] Lawyer review of `terms.html` and `privacy.html`.

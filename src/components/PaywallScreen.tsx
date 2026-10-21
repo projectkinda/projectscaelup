@@ -1,4 +1,7 @@
-import { beginProPurchase } from '../domain/purchases';
+import { beginProPurchase, restorePurchases } from '../domain/purchases';
+import { Linking } from 'react-native';
+import { legalUrl } from '../config/legal';
+import { subscriptionDisclosure } from '../config/subscription';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { Text, InlineText } from './AppText';
@@ -70,6 +73,9 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
 }) {
   const rows = proFeaturesFor(feature, Platform.OS);
   const { title, subtitle } = PAYWALL_COPY[feature];
+  const disclosure = subscriptionDisclosure();
+  const termsUrl = legalUrl('terms');
+  const privacyUrl = legalUrl('privacy');
   return <Modal visible={visible} presentationStyle="fullScreen" animationType="slide" statusBarTranslucent onRequestClose={onClose}>
     <View testID="upgrade-screen" style={styles.screen}>
       <View testID="upgrade-close-row" collapsable={false} style={[styles.closeRow, { paddingTop: topInset + 16 }]}>
@@ -91,6 +97,7 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
         {PAYWALL_LAYOUT === 'list' ? <FeatureList rows={rows} feature={feature}/> : <FeatureTable rows={rows} feature={feature}/>}
       </ScrollView>
       <View testID="upgrade-footer" style={[styles.footer, { paddingBottom: Math.max(24, bottomInset + 16) }]}>
+        {disclosure ? <Text testID="upgrade-disclosure" style={styles.disclosure}>{disclosure}</Text> : null}
         <Pressable testID="upgrade-primary" accessibilityRole="button" accessibilityLabel="Upgrade to Pro" onPress={beginProPurchase}
           style={({ pressed }) => [styles.primary, pressed && styles.pressed]}>
           <Text style={styles.primaryText}>Upgrade to Pro</Text>
@@ -99,6 +106,15 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
         <Pressable accessibilityRole="button" accessibilityLabel="Not now" onPress={onClose} style={({ pressed }) => [styles.notNow, pressed && styles.pressed]}>
           <Text style={styles.notNowText}>Not now</Text>
         </Pressable>
+        <Pressable testID="upgrade-restore" accessibilityRole="link" accessibilityLabel="Restore purchases" onPress={restorePurchases} hitSlop={8}
+          style={({ pressed }) => [styles.restore, pressed && styles.pressed]}>
+          <Text style={styles.footerLink}>Restore purchases</Text>
+        </Pressable>
+        {termsUrl || privacyUrl ? <View testID="upgrade-legal" style={styles.legalRow}>
+          {termsUrl ? <Pressable accessibilityRole="link" accessibilityLabel="Terms of Service" hitSlop={8} onPress={() => Linking.openURL(termsUrl)}><Text style={styles.footerLink}>Terms</Text></Pressable> : null}
+          {termsUrl && privacyUrl ? <Text style={styles.footerLink}> · </Text> : null}
+          {privacyUrl ? <Pressable accessibilityRole="link" accessibilityLabel="Privacy Policy" hitSlop={8} onPress={() => Linking.openURL(privacyUrl)}><Text style={styles.footerLink}>Privacy</Text></Pressable> : null}
+        </View> : null}
       </View>
     </View>
   </Modal>;
@@ -139,5 +155,9 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background, ...typography.body, fontWeight: '700' },
   comingSoon: { marginTop: 12, color: colors.muted, ...typography.caption, textAlign: 'center' },
   notNow: { marginTop: 4, height: 48, alignItems: 'center', justifyContent: 'center' },
+  disclosure: { color: colors.muted, ...typography.caption, textAlign: 'center', marginBottom: 12 },
+  restore: { height: 40, alignItems: 'center', justifyContent: 'center' },
+  legalRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingBottom: 4 },
+  footerLink: { color: colors.muted, ...typography.caption, textDecorationLine: 'underline' },
   notNowText: { color: colors.muted, ...typography.label },
 });

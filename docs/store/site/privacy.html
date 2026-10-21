@@ -1,35 +1,79 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project ScaleUp: Privacy Policy</title><style>:root{color-scheme:dark light}body{font:17px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,Arial,sans-serif;max-width:720px;margin:0 auto;padding:32px 20px 64px;background:#121212;color:#ededed}h1{font-size:32px;margin:0 0 4px}h2{font-size:21px;margin-top:36px}p,li{color:#d0d0d0}a{color:#4eaa91}small{color:#9a9a9a}@media(prefers-color-scheme:light){body{background:#fff;color:#1a1a1a}p,li{color:#333}small{color:#666}}</style></head><body>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Project ScaleUp: Privacy Policy</title><style>:root{color-scheme:dark light}body{font:17px/1.6 -apple-system,BlinkMacSystemFont,'SF Pro Text',Roboto,Helvetica,Arial,sans-serif;max-width:720px;margin:0 auto;padding:32px 20px 64px;background:#121212;color:#ededed}h1{font-size:32px;margin:0 0 4px}h2{font-size:21px;margin-top:36px}h3{font-size:18px;margin-top:24px}p,li{color:#d0d0d0}a{color:#4eaa91}small{color:#9a9a9a}mark{background:#5a4a00;color:#ffe08a;padding:0 4px;border-radius:3px}.note{border-left:3px solid #4eaa91;padding:2px 14px;margin:16px 0;background:rgba(78,170,145,.08)}nav{margin-bottom:20px;font-size:15px}@media(prefers-color-scheme:light){body{background:#fff;color:#1a1a1a}p,li{color:#333}small{color:#666}mark{background:#fff0b3;color:#5a4a00}}</style></head><body>
+<nav><a href="index.html">Home</a> · <a href="terms.html">Terms of Service</a> · <a href="support.html">Support</a></nav>
 <h1>Privacy Policy</h1>
-<small>Project ScaleUp for iPhone · Last updated: ⚠ DATE · Draft: have it reviewed before publishing.</small>
+<small>Project ScaleUp for Android and iPhone · Effective: <mark>⚠ [EFFECTIVE DATE]</mark></small>
 
-<p>Project ScaleUp ("the app") is a focus timer. This policy says what the app does with information. The short version: <strong>everything stays on your iPhone. We don't collect your data.</strong></p>
+<p>Project ScaleUp ("the app") is a focus timer with optional app blocking. It is provided by <mark>⚠ [LEGAL ENTITY NAME]</mark> ("we", "us"). This one policy covers the Android and iPhone versions; the sections marked <em>Android</em> and <em>iPhone</em> apply only to that version.</p>
+<p>The short version: <strong>your focus history, settings and app choices stay on your device. We don't have accounts, we don't run analytics, advertising or tracking, and we do not sell your data.</strong> One exception applies once paid subscriptions launch; see <a href="#purchases">Purchases</a>.</p>
 
 <h2>What we collect</h2>
-<p>Nothing. The app has no account, makes no network requests, and contains no analytics, advertising or tracking software. We don't receive anything about you or your device.</p>
+<p>Today, nothing. The app has no account or sign-in. It contains no analytics, advertising, tracking or crash-reporting software, and its own code makes no network requests, so nothing about you or your device is sent to us or to anyone else by the app. When the app opens a web page (for example this policy, or your store's subscription page) your browser or the store app does that, and that site sees your visit as any website would.</p>
 
-<h2>What the app does on your device</h2>
+<h2>What the app stores on your device</h2>
+<p>The app keeps the following in its private storage on your device, so it can show your progress and apply your choices:</p>
+<ul>
+<li><strong>Session history:</strong> when each focus session started, its length, the mode, whether it was completed, pauses, and a record of each distraction (its type, the identifier of the flagged app involved, time and duration). This powers your tally, streaks and progress.</li>
+<li><strong>Your choices:</strong> custom modes you create, your flagged apps (the app's identifier, name and icon), app rules (schedules and daily limits), timer lengths and other settings.</li>
+<li><strong>App-use records:</strong> time spent in your flagged apps, recorded on the device only.</li>
+<li><strong>Coach notes:</strong> the Focus coach's trends and suggestions are worked out on your device from your own session history.</li>
+<li><strong>Permission choices:</strong> whether you agreed to the in-app explanations for the permissions below.</li>
+</ul>
+<p>None of this is sent to us.</p>
+
+<h2>Android</h2>
+<h3>Accessibility service</h3>
+<p>If you turn it on in Android Settings, Project ScaleUp's accessibility service tells the app <em>which app has just come to the front</em>. We use this for one thing: to notice when one of your flagged apps is opened, count the time you spend in it, and apply the schedules and limits you set.</p>
+<ul>
+<li>It listens to a single event type: a window coming to the front. It reads only the app's package name and the window's class name.</li>
+<li>It is configured <strong>not</strong> to retrieve window content. It does not read what is on your screen, your messages, passwords, or anything you type.</li>
+<li>Only use of your flagged apps is recorded. Other apps are ignored.</li>
+<li>Nothing from it leaves your phone.</li>
+</ul>
+<p>You can turn it off at any time in Android Settings &gt; Accessibility. Without it, app tracking and blocking stop; the timer and camera check still work.</p>
+<h3>Display over other apps (overlay)</h3>
+<p>If you allow it, the app draws a lock screen on top of an app you flagged while a block, schedule or limit applies. It only draws that screen; it does not read the apps underneath. Turn it off any time in Android Settings.</p>
+<h3>Foreground service and notifications</h3>
+<p>While app rules are active, the app runs a foreground service (shown as a low-priority "Project ScaleUp lockdown active" notification) so Android keeps the blocking working. If you allow notifications, the app also shows your running focus timer in the notification bar. Notifications are created on your device; none are sent from a server. You can turn them off in Android Settings.</p>
+<h3>Installed apps</h3>
+<p>To let you pick apps to flag, the app lists the launchable apps installed on your phone. That list is used on your device to show the picker and is not sent anywhere. Only the apps you choose are saved.</p>
+<h3>Camera</h3>
+<p>During a focus session the front camera checks that you are at your desk. About every second and a half the app takes a small, low-quality still image without a shutter sound and analyses it on your phone (using an on-device face detector). The temporary image file is deleted straight afterwards; the app does not keep it. No photo or video is saved to your gallery, shown to anyone or uploaded. The camera is on only while a session is running and not paused.</p>
+<h3>Storage and Android backup</h3>
+<p>The app's data lives in its private storage. <strong>Android's backup is allowed for this app</strong>: if you have Google's backup turned on for your device, Android can copy the app's private data (including the history and settings above) to your Google account as part of its device backup, and restore it when you set up a new phone. That backup is handled by Google under your Google account settings; we do not receive it or have access to it. You can turn it off in Android Settings &gt; Google &gt; Backup, and delete existing backups there.</p>
+
+<h2>iPhone</h2>
 <ul>
 <li><strong>Camera.</strong> During a focus session the front camera is used to check that you're at your desk. Live video is analysed on your iPhone using Apple's Vision framework. No photo or video is taken, saved, uploaded or shown to anyone. The camera is off when no session is running or while a session is paused.</li>
 <li><strong>Screen Time.</strong> If you allow it, the app uses Apple's Screen Time frameworks (Family Controls) to notice when you open apps you chose during a session, and to lock those apps afterwards. You choose the apps in Apple's own picker. The app receives only opaque tokens and never learns which apps you picked. Your Screen Time data is not readable by the app and doesn't leave your device.</li>
-<li><strong>Your sessions.</strong> The app keeps a history on your device: when sessions happened, how long they were, which mode you used, and counts of distractions. This powers your tally, streaks and progress. It's stored in the app's private storage and an app group shared only with the app's own Screen Time extensions.</li>
-<li><strong>Away-time tracking (optional).</strong> If a future version offers it and you turn it on, the app records when your chosen apps are used outside sessions, on the device only, keeps the raw log for 30 days, and deletes it when you turn the feature off.</li>
+<li><strong>Your sessions.</strong> History is kept on your device, in the app's private storage and in an app group shared only with the app's own Screen Time extensions.</li>
+<li><strong>Backups.</strong> iPhone backups (iCloud or your computer) are made by iOS under your own settings and may include the app's data; we have no access to them.</li>
 </ul>
+<p>If a future version adds optional away-time tracking and you turn it on, it records when your chosen apps are used outside sessions, on the device only, and is turned off by switching it off in the app.</p>
+
+<h2 id="purchases">Purchases</h2>
+<div class="note"><p><strong>Applies once purchases launch.</strong> Paid "Pro" subscriptions are not available yet, so none of the following happens in the current version. This section will apply from the version that adds them, and we will update this policy before then.</p></div>
+<p>When purchases are live, the app will use RevenueCat, a subscription service, to manage Pro. RevenueCat receives an anonymous app user ID generated for your installation and your subscription status and purchase records (which product, when, whether active), and the information needed to talk to Google Play or the App Store. We do not give it your name or email, and your focus history is not sent. Payments are handled by Google Play or the Apple App Store; we do not see or store your card details. RevenueCat processes this data for us under its own privacy policy. When the app then makes these network requests, "makes no network requests" above will no longer be true, and this policy will say so.</p>
 
 <h2>Sharing</h2>
-<p>We don't share, sell or transfer your information, because we don't have it.</p>
+<p>We do not sell your data, and we do not share it for advertising. Today we don't have your data to share. Once purchases launch, the only third party that receives anything from the app is the subscription service described above.</p>
 
-<h2>Your choices</h2>
+<h2>Retention and deletion</h2>
 <ul>
-<li>Turn the camera or Screen Time off any time in iOS Settings. The app keeps working without Screen Time; only app tracking and locking stop.</li>
-<li>Deleting the app deletes its data from your device.</li>
+<li>Your data stays on your device until you remove it. We hold no copy and cannot delete it for you.</li>
+<li>In the app you can delete individual custom modes and remove flagged apps and app rules. There is currently no single "delete everything" button.</li>
+<li>To delete everything: uninstall the app, or on Android go to Settings &gt; Apps &gt; Project ScaleUp &gt; Storage &gt; Clear storage.</li>
+<li>If your device backup is on (Google on Android, iCloud or computer backup on iPhone), a copy may remain in that backup until you delete it there or it is replaced by a newer backup.</li>
 </ul>
 
 <h2>Children</h2>
-<p>The app isn't directed at children and collects no personal information from anyone.</p>
+<p>The app isn't directed at children under 13 (or the higher age required where you live) and we do not knowingly collect personal information from anyone. If you believe a child has given us information, contact us and we will delete it.</p>
+
+<h2>Your rights</h2>
+<p>Because we do not hold your personal data, there is usually nothing for us to access, correct or delete, and you control it all on your device. If you are in the EU/UK or California, you have the right to ask what we hold, to have it corrected or deleted, and to object or withdraw consent; we do not sell or share personal information for cross-context advertising. Contact us and we will respond within the time the law requires. You can also complain to your local data protection authority.</p>
 
 <h2>Changes</h2>
-<p>If this changes (for example, if purchases are added and a payment provider handles purchase information), we'll update this page and the date above before the change ships.</p>
+<p>If we change this policy (for example when purchases launch) we will update this page and the effective date before the change ships.</p>
 
 <h2>Contact</h2>
-<p>⚠ <a href="mailto:you@example.com">you@example.com</a></p>
+<p><mark>⚠ [LEGAL ENTITY NAME]</mark> · <mark>⚠ [SUPPORT EMAIL]</mark></p>
 </body></html>
