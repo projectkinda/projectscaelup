@@ -82,13 +82,35 @@ console.log('PASS single purchase entry point uses the launch alert');
   }
   const legal = { exports: {} as any };
   runInNewContext(transpileModule(legalCode, { compilerOptions: { module: ModuleKind.CommonJS, resolveJsonModule: true } }).outputText, {
-    exports: legal.exports, require: () => ({ expo: { version: '0' } }),
+    exports: legal.exports, require: (id: string) => id.endsWith('app.json') ? { expo: { version: '0' } } : { DEV_FLAGS: { tierSwitcher: false } },
   });
-  const { LEGAL_PAGES, LEGAL_LINKS } = legal.exports;
+  const { LEGAL_PAGES, legalEntries, UNHOSTED_CAPTION } = legal.exports;
   for (const [key, page] of Object.entries<any>(LEGAL_PAGES)) {
     if (release) assert(page.url, 'legal link "' + page.label + '" (' + key + ') has a null URL (RELEASE)');
-    else if (!page.url) assert(!LEGAL_LINKS.some((link: any) => link.label === page.label), 'a link renders for a null URL: ' + key);
   }
+  // Null url: hidden with test tools off (release behaviour); shown, captioned and non-navigating with them on.
+  assert.equal(UNHOSTED_CAPTION, 'Not hosted yet');
+  for (const [key, page] of Object.entries<any>(LEGAL_PAGES)) {
+    if (page.url) continue;
+    assert(!legalEntries([key], false).some((entry: any) => entry.page === key), key + ': row must be hidden with test tools off');
+    const shown = legalEntries([key], true).filter((entry: any) => entry.page === key);
+    assert.equal(shown.length, 1, key + ': row must show with test tools on');
+    assert.equal(shown[0].url, null, key + ': unhosted row carries no url');
+  }
+  assert.equal(legalEntries(undefined, false).length, Object.values<any>(LEGAL_PAGES).filter(page => page.url).length, 'release shows only hosted pages');
+  assert.equal(legalEntries(undefined, true).length, 3);
+  assert.equal(legalEntries(['privacy', 'terms'], true).map((entry: any) => entry.page).join(), 'privacy,terms');
+  const settingsSrc = readFileSync('src/screens/SettingsScreen.tsx', 'utf8');
+  const paywallSrc = readFileSync('src/components/PaywallScreen.tsx', 'utf8');
+  const disclosureSrc = readFileSync('src/components/settingsGuide/PermissionDisclosure.tsx', 'utf8');
+  for (const [name, src] of [['Settings', settingsSrc], ['Paywall', paywallSrc], ['Disclosure', disclosureSrc]]) {
+    assert(src.includes('legalEntries(') && src.includes('UNHOSTED_CAPTION'), name + ' renders unhosted entries via legalEntries/UNHOSTED_CAPTION');
+    assert(!src.includes('legalUrl('), name + ' must not read legalUrl directly');
+    assert(src.split('Linking.openURL(entry.url!)').length === 2, name + ': only the hosted branch navigates');
+  }
+  assert(settingsSrc.includes("'about-unhosted-' + entry.page"), 'Settings unhosted row is present');
+  const unhostedRow = settingsSrc.slice(settingsSrc.indexOf("'about-unhosted-'"), settingsSrc.indexOf('UNHOSTED_CAPTION}'));
+  assert(!unhostedRow.includes('onPress'), 'Settings unhosted row has no navigation');
   const sub = { exports: {} as any };
   runInNewContext(transpileModule(readFileSync('src/config/subscription.ts', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS } }).outputText, {
     exports: sub.exports, require: () => ({ Platform: { OS: 'android' } }),

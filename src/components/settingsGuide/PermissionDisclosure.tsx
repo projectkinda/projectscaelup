@@ -1,5 +1,5 @@
 import { Linking, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { legalUrl } from '../../config/legal';
+import { legalEntries, UNHOSTED_CAPTION } from '../../config/legal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackButton } from '../../screens/onboarding/DoneStep';
@@ -19,13 +19,13 @@ type Props = {
 };
 
 function LegalLinks() {
-  const privacy = legalUrl('privacy');
-  const terms = legalUrl('terms');
-  if (!privacy && !terms) return null;
+  const entries = legalEntries(['privacy', 'terms']);
+  if (!entries.length) return null;
   return (
     <View style={styles.legal}>
-      {privacy ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL(privacy)} hitSlop={8}><Text style={styles.legalLink}>Read our Privacy Policy</Text></Pressable> : null}
-      {terms ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL(terms)} hitSlop={8}><Text style={styles.legalLink}>Read our Terms of Service</Text></Pressable> : null}
+      {entries.map(entry => entry.url
+        ? <Pressable key={entry.page} accessibilityRole="link" onPress={() => Linking.openURL(entry.url!)} hitSlop={8}><Text style={styles.legalLink}>{'Read our ' + entry.label}</Text></Pressable>
+        : <Text key={entry.page} testID={'legal-unhosted-' + entry.page} style={styles.legalUnhosted}>{'Read our ' + entry.label + ' (' + UNHOSTED_CAPTION + ')'}</Text>)}
     </View>
   );
 }
@@ -119,6 +119,7 @@ const styles = StyleSheet.create({
   },
   bulletText: { flex: 1 },
   legal: { marginTop: 28, gap: 12 },
+  legalUnhosted: { color: colors.muted, ...typography.body, opacity: .7 },
   legalLink: { color: colors.pine, ...typography.body, fontWeight: '600', textDecorationLine: 'underline' },
   bar: {
     alignItems: 'center',

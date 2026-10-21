@@ -1,6 +1,6 @@
 import { beginProPurchase, restorePurchases } from '../domain/purchases';
 import { Linking } from 'react-native';
-import { legalUrl } from '../config/legal';
+import { legalEntries, UNHOSTED_CAPTION } from '../config/legal';
 import { subscriptionDisclosure } from '../config/subscription';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -74,8 +74,7 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
   const rows = proFeaturesFor(feature, Platform.OS);
   const { title, subtitle } = PAYWALL_COPY[feature];
   const disclosure = subscriptionDisclosure();
-  const termsUrl = legalUrl('terms');
-  const privacyUrl = legalUrl('privacy');
+  const legal = legalEntries(['terms', 'privacy']);
   return <Modal visible={visible} presentationStyle="fullScreen" animationType="slide" statusBarTranslucent onRequestClose={onClose}>
     <View testID="upgrade-screen" style={styles.screen}>
       <View testID="upgrade-close-row" collapsable={false} style={[styles.closeRow, { paddingTop: topInset + 16 }]}>
@@ -110,10 +109,13 @@ export function PaywallScreen({ visible = true, feature, onClose, topInset = 0, 
           style={({ pressed }) => [styles.restore, pressed && styles.pressed]}>
           <Text style={styles.footerLink}>Restore purchases</Text>
         </Pressable>
-        {termsUrl || privacyUrl ? <View testID="upgrade-legal" style={styles.legalRow}>
-          {termsUrl ? <Pressable accessibilityRole="link" accessibilityLabel="Terms of Service" hitSlop={8} onPress={() => Linking.openURL(termsUrl)}><Text style={styles.footerLink}>Terms</Text></Pressable> : null}
-          {termsUrl && privacyUrl ? <Text style={styles.footerLink}> · </Text> : null}
-          {privacyUrl ? <Pressable accessibilityRole="link" accessibilityLabel="Privacy Policy" hitSlop={8} onPress={() => Linking.openURL(privacyUrl)}><Text style={styles.footerLink}>Privacy</Text></Pressable> : null}
+        {legal.length ? <View testID="upgrade-legal" style={styles.legalRow}>
+          {legal.map((entry, index) => <View key={entry.page} style={styles.legalItem}>
+            {index > 0 ? <Text style={styles.footerLink}>{' · '}</Text> : null}
+            {entry.url
+              ? <Pressable accessibilityRole="link" accessibilityLabel={entry.label} hitSlop={8} onPress={() => Linking.openURL(entry.url!)}><Text style={styles.footerLink}>{entry.page === 'terms' ? 'Terms' : 'Privacy'}</Text></Pressable>
+              : <Text testID={'upgrade-legal-unhosted-' + entry.page} style={styles.unhosted}>{(entry.page === 'terms' ? 'Terms' : 'Privacy') + ' (' + UNHOSTED_CAPTION + ')'}</Text>}
+          </View>)}
         </View> : null}
       </View>
     </View>
@@ -158,6 +160,8 @@ const styles = StyleSheet.create({
   disclosure: { color: colors.muted, ...typography.caption, textAlign: 'center', marginBottom: 12 },
   restore: { height: 40, alignItems: 'center', justifyContent: 'center' },
   legalRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingBottom: 4 },
+  legalItem: { flexDirection: 'row', alignItems: 'center' },
+  unhosted: { color: colors.muted, ...typography.caption, opacity: .7 },
   footerLink: { color: colors.muted, ...typography.caption, textDecorationLine: 'underline' },
   notNowText: { color: colors.muted, ...typography.label },
 });

@@ -56,7 +56,7 @@ import {
 import { LockdownModule } from '../domain/lockdownModule';
 import { IosFlaggedApps } from '../components/IosFlaggedApps';
 import { ScreenTime, type ScreenTimeStatus } from '../../modules/screen-time';
-import { APP_VERSION, LEGAL_LINKS } from '../config/legal';
+import { APP_VERSION, legalEntries, UNHOSTED_CAPTION } from '../config/legal';
 import { restorePurchases } from '../domain/purchases';
 import { isAwayTrackingSupported } from '../domain/awayPlatform';
 import {
@@ -942,15 +942,22 @@ export function SettingsScreen({ isActive, onNavigate, onRestartOnboarding, canR
                 <Text style={styles.sectionLabel}>About</Text>
                 <View style={styles.panelShell}>
                   <LinearGradient colors={['#333333', '#141414']} style={styles.panel}>
-                    {LEGAL_LINKS.map(link => (
+                    {legalEntries().map(entry => entry.url ? (
                       <Pressable
-                        key={link.label}
+                        key={entry.page}
                         accessibilityRole="link"
-                        onPress={() => Linking.openURL(link.url)}
+                        onPress={() => Linking.openURL(entry.url!)}
                         style={({ pressed }) => [styles.row, pressed && styles.pressed]}
                       >
-                        <Text style={styles.addText}>{link.label}</Text>
+                        <Text style={styles.addText}>{entry.label}</Text>
                       </Pressable>
+                    ) : (
+                      <View key={entry.page} testID={'about-unhosted-' + entry.page} style={styles.row}>
+                        <View style={styles.rowTextWrap}>
+                          <Text style={styles.rowTitle}>{entry.label}</Text>
+                        </View>
+                        <Text style={styles.tierText}>{UNHOSTED_CAPTION}</Text>
+                      </View>
                     ))}
                     <View style={styles.row}>
                       <View style={styles.rowTextWrap}>
